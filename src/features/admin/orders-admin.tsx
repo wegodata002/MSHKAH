@@ -29,7 +29,6 @@ import {
   isToday,
   orderSearchText,
 } from "@/lib/orders/operations";
-import { resolveOrderType } from "@/lib/orders/delivery";
 import { kitchenTicketHtml, printKitchenTicket } from "@/lib/orders/kitchen-ticket";
 import { exportHtmlAsPdf } from "@/lib/export-pdf";
 import { useT } from "@/components/providers/locale-provider";
@@ -124,7 +123,7 @@ export function OrdersAdmin() {
       })
       .filter((order) => statusFilter === "all" || order.status === statusFilter)
       .filter((order) => paymentFilter === "all" || effectivePaymentStatus(order) === paymentFilter)
-      .filter((order) => typeFilter === "all" || resolveOrderType(order) === typeFilter)
+      .filter((order) => typeFilter === "all" || order.orderType === typeFilter)
       .filter((order) => !search || orderSearchText(order).includes(search))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [dateFilter, effectiveOrders, paymentFilter, search, statusFilter, tab, typeFilter]);

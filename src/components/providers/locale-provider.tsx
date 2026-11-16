@@ -41,35 +41,27 @@ function readStoredLocale(): Locale {
   return DEFAULT_LOCALE;
 }
 
-const SEED_STRINGS: Record<Locale, TranslationMap> = {
-  he: { ...UI_TRANSLATIONS_SEED.he, ...ADMIN_TRANSLATIONS.he },
-  ar: { ...UI_TRANSLATIONS_SEED.ar, ...ADMIN_TRANSLATIONS.ar },
-  en: { ...UI_TRANSLATIONS_SEED.en, ...ADMIN_TRANSLATIONS.en },
-};
-
 export function LocaleProvider({ children }: { children: ReactNode }) {
   const [locale, setLocaleState] = useState<Locale>(DEFAULT_LOCALE);
-  const [strings, setStrings] = useState<Record<Locale, TranslationMap>>(SEED_STRINGS);
+  const [strings, setStrings] = useState<Record<Locale, TranslationMap>>({
+    he: {},
+    ar: {},
+    en: {},
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const initial = readStoredLocale();
     setLocaleState(initial);
     applyLocaleFonts(initial);
-    fetchAllLocaleStrings()
-      .then((all) => {
-        setStrings({
-          he: { ...SEED_STRINGS.he, ...all.he },
-          ar: { ...SEED_STRINGS.ar, ...all.ar },
-          en: { ...SEED_STRINGS.en, ...all.en },
-        });
-      })
-      .catch(() => {
-        setStrings(SEED_STRINGS);
-      })
-      .finally(() => {
-        setLoading(false);
+    fetchAllLocaleStrings().then((all) => {
+      setStrings({
+        he: { ...UI_TRANSLATIONS_SEED.he, ...ADMIN_TRANSLATIONS.he, ...all.he },
+        ar: { ...UI_TRANSLATIONS_SEED.ar, ...ADMIN_TRANSLATIONS.ar, ...all.ar },
+        en: { ...UI_TRANSLATIONS_SEED.en, ...ADMIN_TRANSLATIONS.en, ...all.en },
       });
+      setLoading(false);
+    });
   }, []);
 
   const setLocale = useCallback((next: Locale) => {

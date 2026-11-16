@@ -1,15 +1,5 @@
 import type { Order } from "@/types";
 import { formatPrice } from "@/lib/utils";
-import {
-  orderTypeLabelAr,
-  resolveOrderType,
-} from "@/lib/orders/delivery";
-
-export {
-  formatDeliveryAddressParts,
-  orderTypeLabelAr,
-  resolveOrderType,
-} from "@/lib/orders/delivery";
 
 function escapeHtml(value: string): string {
   return value
@@ -21,9 +11,6 @@ function escapeHtml(value: string): string {
 }
 
 export function kitchenTicketHtml(order: Order): string {
-  const orderType = resolveOrderType(order);
-  const typeLabel = orderTypeLabelAr(orderType);
-
   const items = order.items
     .map((item) => {
       const modifiers = [
@@ -42,33 +29,14 @@ export function kitchenTicketHtml(order: Order): string {
     })
     .join("");
 
-  const deliveryBlock =
-    orderType === "delivery"
-      ? `<section class="delivery">
-          <p><strong>اسم الزبون:</strong> ${escapeHtml(order.customerName || "—")}</p>
-          ${
-            order.customerPhone
-              ? `<p dir="ltr" class="phone"><strong>الهاتف:</strong> ${escapeHtml(order.customerPhone)}</p>`
-              : ""
-          }
-          ${
-            order.deliveryAddress?.trim()
-              ? `<p><strong>عنوان التوصيل:</strong> ${escapeHtml(order.deliveryAddress.trim())}</p>`
-              : ""
-          }
-        </section>`
-      : "";
-
   return `
     <main dir="rtl">
       <header>
         <h1>MISHKAT CAFÉ</h1>
         <h2>#${escapeHtml(order.orderNumber)}</h2>
         <p>${new Date(order.createdAt).toLocaleString()}</p>
-        <p class="order-type"><strong>نوع الطلب: ${escapeHtml(typeLabel)}</strong></p>
       </header>
       <hr />
-      ${deliveryBlock}${deliveryBlock ? "<hr />" : ""}
       ${items}
       ${
         order.notes
@@ -84,7 +52,7 @@ export function printKitchenTicket(order: Order): void {
   const printWindow = window.open("", "_blank", "width=520,height=760");
   if (!printWindow) return;
   printWindow.document.write(`<!doctype html>
-    <html lang="ar" dir="rtl">
+    <html lang="he" dir="rtl">
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(order.orderNumber)}</title>
@@ -96,9 +64,6 @@ export function printKitchenTicket(order: Order): void {
           h1 { margin: 0; font-size: 24px; }
           h2 { margin: 8px 0 2px; font-size: 23px; }
           p { margin: 4px 0; }
-          .order-type { margin-top: 10px; font-size: 20px; }
-          .delivery { text-align: start; }
-          .delivery .phone { unicode-bidi: plaintext; }
           hr { border: 0; border-top: 2px dashed #111; margin: 14px 0; }
           .item { margin: 0 0 16px; break-inside: avoid; }
           .item > strong { font-size: 21px; }

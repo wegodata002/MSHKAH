@@ -17,7 +17,6 @@ import {
   nextOrderStatus,
   orderAgeMinutes,
 } from "@/lib/orders/operations";
-import { resolveOrderType } from "@/lib/orders/delivery";
 import { formatDate, formatPrice, cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/types";
 
@@ -120,7 +119,6 @@ export function OrderCard({
   const age = orderAgeMinutes(order);
   const urgent = age >= 15 && order.status === "pending";
   const paymentStatus = effectivePaymentStatus(order);
-  const orderType = resolveOrderType(order);
 
   return (
     <article
@@ -169,9 +167,9 @@ export function OrderCard({
 
         <div className="text-end">
           <p className="text-xl font-bold text-coffee">{formatPrice(order.total)}</p>
-          <p className="text-xs font-medium text-coffee/60">
-            {t(`admin.orders.type.${orderType}`)}
-          </p>
+          {order.orderType && (
+            <p className="text-xs text-coffee/45">{t(`admin.orders.type.${order.orderType}`)}</p>
+          )}
         </div>
       </div>
 
@@ -185,15 +183,7 @@ export function OrderCard({
             <p className="font-semibold">{t("orders.customer")}</p>
             <p>{order.customerName}</p>
             {order.customerPhone && <p dir="ltr" className="text-start">{order.customerPhone}</p>}
-            <p className="text-coffee/70">
-              {t("checkout.orderType")}: {t(`admin.orders.type.${orderType}`)}
-            </p>
-            {orderType === "delivery" && order.deliveryAddress && (
-              <p>
-                <span className="font-medium">{t("admin.orders.deliveryAddress")}: </span>
-                {order.deliveryAddress}
-              </p>
-            )}
+            {order.deliveryAddress && <p>{order.deliveryAddress}</p>}
           </div>
           <div className="space-y-1">
             <p className="font-semibold">{t("orders.date")}</p>
