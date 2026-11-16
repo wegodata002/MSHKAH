@@ -15,10 +15,10 @@ import { useT } from "@/components/providers/locale-provider";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
 import { createOrderFromCart, getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
+import { formatDeliveryAddressParts } from "@/lib/orders/delivery";
 import { formatPrice } from "@/lib/utils";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
 import { ShoppingBag } from "lucide-react";
-import type { Product } from "@/types";
 
 function OrderLineItem({ item }: { item: import("@/types").CartItem }) {
   const localized = useLocalizedProduct(item.product);
@@ -48,7 +48,9 @@ export default function CheckoutPage() {
   } = useCart();
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [address, setAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [street, setStreet] = useState("");
+  const [building, setBuilding] = useState("");
   const [notes, setNotes] = useState("");
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [loading, setLoading] = useState(false);
@@ -74,8 +76,20 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone) { setError(t("validation.required")); return; }
-    if (orderType === "delivery" && !address) { setError(t("validation.required")); return; }
+    if (!name.trim() || !phone.trim()) {
+      setError(t("validation.required"));
+      return;
+    }
+
+    const deliveryAddress =
+      orderType === "delivery"
+        ? formatDeliveryAddressParts({ city, street, building })
+        : "";
+
+    if (orderType === "delivery" && (!city.trim() || !street.trim() || !building.trim())) {
+      setError(t("checkout.deliveryAddressRequired"));
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -85,15 +99,15 @@ export default function CheckoutPage() {
       const orderNotes = [
         notes.trim(),
         phone.trim() ? `${t("checkout.phone")}: ${phone.trim()}` : "",
-        orderType === "delivery" && address.trim()
-          ? `${t("checkout.address")}: ${address.trim()}`
+        orderType === "delivery" && deliveryAddress
+          ? `${t("checkout.address")}: ${deliveryAddress}`
           : "",
         orderType === "pickup" ? t("checkout.pickup") : t("checkout.delivery"),
       ]
         .filter(Boolean)
         .join("\n");
 
-      const result = await createOrderFromCart(items, GUEST_CUSTOMER_ID, name, {
+      const result = await createOrderFromCart(items, GUEST_CUSTOMER_ID, name.trim(), {
         subtotal,
         discount,
         delivery: deliveryFee,
@@ -101,7 +115,7 @@ export default function CheckoutPage() {
         paymentMethod: payment,
         customerPhone: phone.trim(),
         orderType,
-        deliveryAddress: orderType === "delivery" ? address.trim() : undefined,
+        deliveryAddress: orderType === "delivery" ? deliveryAddress : undefined,
         notes: orderNotes || undefined,
       });
       if (!result.success) {
@@ -180,9 +194,41 @@ export default function CheckoutPage() {
                         <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="mt-1" required />
                       </div>
                       {orderType === "delivery" && (
-                        <div>
-                          <Label className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.address")}</Label>
-                          <Input value={address} onChange={(e) => setAddress(e.target.value)} className="mt-1" />
+                        <div className="space-y-4 rounded-xl border border-beige-dark/20 bg-cream/40 p-4">
+                          <p className="flex items-center gap-1 text-sm font-medium text-coffee/80">
+                            <MapPin className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            {t("checkout.address")}
+                          </p>
+                          <div>
+                            <Label>{t("checkout.city")}</Label>
+                            <Input
+                              value={city}
+                              onChange={(e) => setCity(e.target.value)}
+                              className="mt-1"
+                              required
+                              autoComplete="address-level2"
+                            />
+                          </div>
+                          <div>
+                            <Label>{t("checkout.street")}</Label>
+                            <Input
+                              value={street}
+                              onChange={(e) => setStreet(e.target.value)}
+                              className="mt-1"
+                              required
+                              autoComplete="street-address"
+                            />
+                          </div>
+                          <div>
+                            <Label>{t("checkout.building")}</Label>
+                            <Input
+                              value={building}
+                              onChange={(e) => setBuilding(e.target.value)}
+                              className="mt-1"
+                              required
+                              autoComplete="off"
+                            />
+                          </div>
                         </div>
                       )}
                       <div>
