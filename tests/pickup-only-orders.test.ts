@@ -3,8 +3,12 @@ import { forcePickupForNewOrder } from "@/lib/orders/fulfillment";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-describe("pickup-only new orders", () => {
-  it("forces pickup, zero delivery fee, and drops address", () => {
+/**
+ * Oct 29 policy update: pickup OR delivery is allowed.
+ * Delivery surcharge stays 0 (no fee change vs this production build).
+ */
+describe("new order fulfillment", () => {
+  it("allows delivery type/address and keeps delivery fee at 0", () => {
     const result = forcePickupForNewOrder({
       subtotal: 100,
       discount: 10,
@@ -14,13 +18,13 @@ describe("pickup-only new orders", () => {
       deliveryAddress: "Some street 1",
     });
 
-    expect(result.orderType).toBe("pickup");
+    expect(result.orderType).toBe("delivery");
     expect(result.delivery).toBe(0);
-    expect(result.deliveryAddress).toBeUndefined();
+    expect(result.deliveryAddress).toBe("Some street 1");
     expect(result.total).toBe(90);
   });
 
-  it("recalculates total from products only when no discount", () => {
+  it("recalculates total from products only (fee stays 0)", () => {
     const result = forcePickupForNewOrder({
       subtotal: 30,
       delivery: 15,
@@ -31,22 +35,22 @@ describe("pickup-only new orders", () => {
     expect(result.delivery).toBe(0);
   });
 
-  it("checkout UI no longer offers delivery choice", () => {
+  it("checkout UI offers pickup and delivery", () => {
     const checkout = readFileSync(
       resolve(process.cwd(), "src/app/checkout/page.tsx"),
       "utf8"
     );
-    expect(checkout).not.toMatch(/setOrderType/);
-    expect(checkout).not.toMatch(/\["pickup", "delivery"\]/);
-    expect(checkout).toMatch(/checkout\.pickupFromStore/);
+    expect(checkout).toMatch(/setOrderType/);
+    expect(checkout).toMatch(/\["pickup", "delivery"\]/);
+    expect(checkout).toMatch(/checkout\.address/);
   });
 
-  it("createOrder always applies pickup-only policy", () => {
+  it("createOrder still normalizes fulfillment fields", () => {
     const service = readFileSync(
       resolve(process.cwd(), "src/services/orderService.ts"),
       "utf8"
     );
     expect(service).toMatch(/forcePickupForNewOrder/);
-    expect(service).toMatch(/NEW_ORDER_FULFILLMENT/);
+    expect(service).toMatch(/deliveryAddress/);
   });
 });

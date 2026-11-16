@@ -13,6 +13,7 @@ const COPY: Record<
     cash: string;
     card: string;
     pickup: string;
+    delivery: string;
     paymentUnknown: string;
   }
 > = {
@@ -23,6 +24,7 @@ const COPY: Record<
     cash: "نقداً",
     card: "بطاقة",
     pickup: "استلام ذاتي",
+    delivery: "توصيل",
     paymentUnknown: "غير محدد",
   },
   he: {
@@ -32,6 +34,7 @@ const COPY: Record<
     cash: "מזומן",
     card: "כרטיס",
     pickup: "איסוף עצמי",
+    delivery: "משלוח",
     paymentUnknown: "לא צוין",
   },
   en: {
@@ -41,6 +44,7 @@ const COPY: Record<
     cash: "Cash",
     card: "Card",
     pickup: "Pickup",
+    delivery: "Delivery",
     paymentUnknown: "Unspecified",
   },
 };
@@ -65,6 +69,13 @@ export function paymentMethodLabel(method: string | undefined, locale: PrintLoca
 
 export function pickupLabel(locale: PrintLocale): string {
   return COPY[locale].pickup;
+}
+
+export function fulfillmentLabel(
+  locale: PrintLocale,
+  orderType?: "pickup" | "delivery"
+): string {
+  return orderType === "delivery" ? COPY[locale].delivery : COPY[locale].pickup;
 }
 
 export function formatMoney(amount: number): string {
@@ -152,6 +163,8 @@ type OrderLike = {
   paymentMethod?: string;
   locale?: string;
   createdAt: string;
+  orderType?: "pickup" | "delivery";
+  deliveryAddress?: string;
 };
 
 export function buildReceiptModelFromOrder(
@@ -163,6 +176,7 @@ export function buildReceiptModelFromOrder(
   const { date, time } = formatReceiptDateParts(order.createdAt, locale);
   const discount = order.discount && order.discount > 0 ? order.discount : undefined;
   const subtotal = discount && order.subtotal && order.subtotal > 0 ? order.subtotal : undefined;
+  const isDelivery = order.orderType === "delivery";
 
   return {
     locale,
@@ -180,7 +194,9 @@ export function buildReceiptModelFromOrder(
     discount,
     total: order.total,
     paymentLabel: paymentMethodLabel(order.paymentMethod, locale),
-    pickupLabel: copy.pickup,
+    pickupLabel: fulfillmentLabel(locale, order.orderType),
+    orderType: isDelivery ? "delivery" : "pickup",
+    deliveryAddress: isDelivery ? order.deliveryAddress?.trim() || undefined : undefined,
     createdTime: time,
   };
 }
@@ -203,6 +219,8 @@ export function buildReceiptModelFromFirestoreOrder(
       paymentMethod: data.paymentMethod,
       locale: data.locale,
       createdAt: createdAtIso,
+      orderType: data.orderType,
+      deliveryAddress: data.deliveryAddress,
     },
     localeOverride
   );

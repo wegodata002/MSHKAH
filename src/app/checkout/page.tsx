@@ -10,6 +10,8 @@ import {
   User,
   MessageSquare,
   Store,
+  Truck,
+  MapPin,
   CheckCircle2,
   Banknote,
   CreditCard,
@@ -62,6 +64,8 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
+  const [orderType, setOrderType] = useState<"pickup" | "delivery">("pickup");
+  const [address, setAddress] = useState("");
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [hypAvailability, setHypAvailability] = useState<"unknown" | "enabled" | "disabled">("unknown");
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
@@ -121,6 +125,10 @@ export default function CheckoutPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone) { setError(t("validation.required")); return; }
+    if (orderType === "delivery" && !address.trim()) {
+      setError(t("validation.required"));
+      return;
+    }
     const normalizedEmail = normalizeCustomerEmail(email);
     if (payment === "card" && !normalizedEmail) {
       setError(t("validation.email"));
@@ -145,10 +153,17 @@ export default function CheckoutPage() {
         : null;
       const customerId = customerData?.customerId || GUEST_CUSTOMER_ID;
 
+      const fulfillmentNote =
+        orderType === "delivery"
+          ? t("checkout.delivery")
+          : t("checkout.pickupFromStore", "איסוף עצמי מהעסק");
       const orderNotes = [
         notes.trim(),
         phone.trim() ? `${t("checkout.phone")}: ${phone.trim()}` : "",
-        t("checkout.pickupFromStore", "איסוף עצמי מהעסק"),
+        fulfillmentNote,
+        orderType === "delivery" && address.trim()
+          ? `${t("checkout.address")}: ${address.trim()}`
+          : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -164,6 +179,8 @@ export default function CheckoutPage() {
           customerEmail: normalizedEmail || undefined,
           notes: orderNotes || undefined,
           locale,
+          orderType,
+          deliveryAddress: orderType === "delivery" ? address.trim() : undefined,
         });
         if (!result.success) {
           console.error("[checkout] order failed:", result.error, result.code);
@@ -251,9 +268,35 @@ export default function CheckoutPage() {
 
               <form onSubmit={handleSubmit} className="mt-8 grid gap-8 lg:grid-cols-5">
                 <div className="space-y-6 lg:col-span-3">
-                  <div className="flex items-center gap-2 rounded-2xl bg-warm-white px-4 py-3 text-sm text-coffee/80 shadow-soft">
-                    <Store className="h-4 w-4 shrink-0 text-turquoise" strokeWidth={1.75} />
-                    <span>{t("checkout.pickupFromStore", "איסוף עצמי מהעסק")}</span>
+                  <div className="rounded-2xl bg-warm-white p-5 shadow-soft">
+                    <h2 className="text-sm font-semibold">{t("checkout.orderType")}</h2>
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {(["pickup", "delivery"] as const).map((type) => (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => setOrderType(type)}
+                          className={cn(
+                            "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border-2 px-4 py-4 text-start transition-all",
+                            orderType === type
+                              ? "border-turquoise bg-turquoise/5"
+                              : "border-beige-dark/30 bg-warm-white"
+                          )}
+                        >
+                          {type === "pickup" ? (
+                            <Store className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                          ) : (
+                            <Truck className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                          )}
+                          <span className="font-semibold">
+                            {type === "pickup" ? t("checkout.pickup") : t("checkout.delivery")}
+                          </span>
+                          {orderType === type && (
+                            <CheckCircle2 className="ms-auto h-5 w-5 shrink-0 text-turquoise" strokeWidth={1.75} />
+                          )}
+                        </button>
+                      ))}
+                    </div>
                   </div>
 
                   <div className="rounded-2xl bg-warm-white p-5 shadow-soft">
@@ -274,6 +317,18 @@ export default function CheckoutPage() {
                         <Label className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.phone")}</Label>
                         <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="mt-1" required />
                       </div>
+                      {orderType === "delivery" && (
+                        <div>
+                          <Label className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.address")}</Label>
+                          <Input
+                            value={address}
+                            onChange={(e) => setAddress(e.target.value)}
+                            className="mt-1"
+                            autoComplete="street-address"
+                            required
+                          />
+                        </div>
+                      )}
                       <div>
                         <Label className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.email")}</Label>
                         <Input
@@ -369,7 +424,9 @@ export default function CheckoutPage() {
                           <span>-{formatPrice(discount)}</span>
                         </div>
                       )}
-                      <p className="text-xs text-coffee/50">{t("cart.pickupOnly", "איסוף עצמי בלבד")}</p>
+                      <p className="text-xs text-coffee/50">
+                        {orderType === "delivery" ? t("checkout.delivery") : t("checkout.pickupFromStore")}
+                      </p>
                       <div className="flex justify-between pt-2 text-lg font-bold">
                         <span>{t("cart.total")}</span>
                         <span className="text-turquoise">{formatPrice(total)}</span>

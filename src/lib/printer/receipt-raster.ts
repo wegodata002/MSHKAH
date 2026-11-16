@@ -262,11 +262,26 @@ export async function renderReceiptRaster(
   ops.push(gap(SECTION_GAP_MEDIUM));
   ops.push(rule(true));
 
-  // Pickup only — big, plus the two other languages small under it
+  // Fulfillment type — pickup or delivery
   ops.push(gap(SECTION_GAP_MEDIUM));
   ops.push(text(model.pickupLabel, FONT.pickupPrimary, { bold: true, align: "center" }));
   ops.push(gap(SECTION_GAP_SMALL));
-  if (model.locale === "ar") {
+  if (model.orderType === "delivery") {
+    if (model.locale === "ar") {
+      ops.push(text("DELIVERY", FONT.pickupSecondary, { align: "center", dir: "ltr" }));
+      ops.push(text("משלוח", FONT.pickupSecondary, { align: "center" }));
+    } else if (model.locale === "he") {
+      ops.push(text("DELIVERY", FONT.pickupSecondary, { align: "center", dir: "ltr" }));
+      ops.push(text("توصيل", FONT.pickupSecondary, { align: "center" }));
+    } else {
+      ops.push(text("توصيل", FONT.pickupSecondary, { align: "center" }));
+      ops.push(text("משלוח", FONT.pickupSecondary, { align: "center" }));
+    }
+    if (model.deliveryAddress) {
+      ops.push(gap(SECTION_GAP_SMALL));
+      ops.push(text(model.deliveryAddress, FONT.pickupSecondary, { align: "center" }));
+    }
+  } else if (model.locale === "ar") {
     ops.push(text("PICKUP ONLY", FONT.pickupSecondary, { align: "center", dir: "ltr" }));
     ops.push(text("איסוף עצמי", FONT.pickupSecondary, { align: "center" }));
   } else if (model.locale === "he") {

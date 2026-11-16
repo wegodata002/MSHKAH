@@ -293,7 +293,7 @@ export async function createOrder(input: OrderInput): Promise<ServiceResult<Orde
         new ServiceError("Ordering is disabled on the menu display", "VIEW_ONLY_MENU")
       );
     }
-    // New orders are pickup-only; never persist delivery / address / delivery fee.
+    // Keep delivery fee at 0; allow pickup/delivery type + address when provided.
     const parsed = forcePickupForNewOrder(orderSchema.parse(input));
     const db = getDb();
     const orderNumber = await generateOrderNumber();
@@ -329,6 +329,8 @@ export async function createOrderFromCart(
     customerEmail?: string;
     notes?: string;
     locale?: "ar" | "he" | "en";
+    orderType?: "pickup" | "delivery";
+    deliveryAddress?: string;
   }
 ): Promise<ServiceResult<Order>> {
   const locale = checkout?.locale;
@@ -388,7 +390,9 @@ export async function createOrderFromCart(
     customerPhone: checkout?.customerPhone,
     customerEmail: checkout?.customerEmail,
     customerFullName: customerName.trim(),
-    orderType: NEW_ORDER_FULFILLMENT,
+    orderType: checkout?.orderType === "delivery" ? "delivery" : NEW_ORDER_FULFILLMENT,
+    deliveryAddress:
+      checkout?.orderType === "delivery" ? checkout.deliveryAddress?.trim() : undefined,
     notes,
     isTestOrder: isTestOrder || undefined,
     locale,

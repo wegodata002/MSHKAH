@@ -5669,7 +5669,7 @@ export const ADMIN_TRANSLATIONS: Record<Locale, TranslationMap> = {
     "admin.orders.lastWeek": "آخر 7 أيام",
     "admin.orders.allPayments": "كل حالات الدفع",
     "admin.orders.allTypes": "كل أنواع الطلب",
-    "admin.orders.type.pickup": "استلام",
+    "admin.orders.type.pickup": "استلام ذاتي",
     "admin.orders.type.delivery": "توصيل",
     "admin.orders.noResults": "لا توجد طلبات مطابقة",
     "admin.orders.justNow": "الآن",

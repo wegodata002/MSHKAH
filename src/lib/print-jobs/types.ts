@@ -75,6 +75,8 @@ export interface ReceiptModel {
   total: number;
   paymentLabel: string;
   pickupLabel: string;
+  orderType?: "pickup" | "delivery";
+  deliveryAddress?: string;
   createdTime?: string;
   isTest?: boolean;
 }

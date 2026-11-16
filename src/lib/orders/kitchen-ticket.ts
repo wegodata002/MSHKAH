@@ -26,8 +26,17 @@ function formatTicketDate(iso: string): string {
 }
 
 function orderTypeLabel(order: Order): string {
-  if (order.orderType === "delivery") return "משלוח";
-  if (order.orderType === "pickup") return "איסוף עצמי";
+  const locale = order.locale ?? "he";
+  if (order.orderType === "delivery") {
+    if (locale === "ar") return "توصيل";
+    if (locale === "en") return "Delivery";
+    return "משלוח · توصيل";
+  }
+  if (order.orderType === "pickup") {
+    if (locale === "ar") return "استلام ذاتي";
+    if (locale === "en") return "Pickup";
+    return "איסוף עצמי · استلام ذاتي";
+  }
   return "";
 }
 
@@ -271,9 +280,11 @@ export function kitchenTicketHtml(order: Order): string {
       `<div class="info-row"><span class="info-label">טלפון</span><span class="info-value" dir="ltr">${escapeHtml(phone)}</span></div>`
     );
   }
-  if (order.deliveryAddress?.trim()) {
+  if (order.orderType === "delivery" && order.deliveryAddress?.trim()) {
+    const addressLabel =
+      order.locale === "ar" ? "العنوان" : order.locale === "en" ? "Address" : "כתובת";
     infoRows.push(
-      `<div class="info-row"><span class="info-label">כתובת</span><span class="info-value">${escapeHtml(order.deliveryAddress.trim())}</span></div>`
+      `<div class="info-row"><span class="info-label">${addressLabel}</span><span class="info-value">${escapeHtml(order.deliveryAddress.trim())}</span></div>`
     );
   }
 
