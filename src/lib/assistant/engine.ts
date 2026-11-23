@@ -1,5 +1,6 @@
 import type { Locale } from "@/lib/i18n/types";
 import { fuzzyScore, matchesAny, normalizeText } from "@/lib/assistant/fuzzy";
+import { getCategoryMeta } from "@/lib/menu/category-meta";
 import type {
   AssistantChatRequest,
   AssistantChatResponse,
@@ -151,15 +152,58 @@ function cartTotals(ctx: AssistantContext, req: AssistantChatRequest) {
   return { count: ids.length, total };
 }
 
+/** Adds every descendant (via parentId, any depth) of the given category ids. Cycle-safe. */
+function withDescendants(ctx: AssistantContext, rootIds: Iterable<string>): Set<string> {
+  const result = new Set(rootIds);
+  let added = true;
+  while (added) {
+    added = false;
+    for (const c of ctx.categories) {
+      if (c.parentId && result.has(c.parentId) && !result.has(c.id)) {
+        result.add(c.id);
+        added = true;
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Resolves a quick-action category id to the set of category ids whose products
+ * should be shown. Always includes the id itself (previous behaviour), plus:
+ * - categories whose name (he/ar/en) matches the seed names for that id, so a
+ *   seed id like "desserts" still works when the real category has an
+ *   auto-generated id;
+ * - all subcategories of every matched category.
+ */
+export function resolveCategoryIds(ctx: AssistantContext, categoryId: string): Set<string> {
+  const roots = new Set<string>([categoryId]);
+  const meta = getCategoryMeta(categoryId);
+  if (meta) {
+    const wanted = new Set(
+      [meta.nameHe, meta.nameAr, meta.nameEn].map(normalizeText).filter(Boolean)
+    );
+    for (const c of ctx.categories) {
+      const names = (c.names?.length ? c.names : [c.name]).map(normalizeText);
+      if (names.some((n) => wanted.has(n))) roots.add(c.id);
+    }
+  }
+  return withDescendants(ctx, roots);
+}
+
 function byCategory(ctx: AssistantContext, categoryId: string, limit = 8): AssistantProduct[] {
+  const ids = resolveCategoryIds(ctx, categoryId);
   return top(
-    available(ctx).filter((p) => p.categoryId === categoryId),
+    available(ctx).filter((p) => ids.has(p.categoryId)),
     limit
   );
 }
 
 function byCategories(ctx: AssistantContext, categoryIds: string[], limit = 8): AssistantProduct[] {
-  const set = new Set(categoryIds);
+  const set = new Set<string>();
+  for (const id of categoryIds) {
+    for (const resolved of resolveCategoryIds(ctx, id)) set.add(resolved);
+  }
   return top(
     available(ctx).filter((p) => set.has(p.categoryId)),
     limit
@@ -304,13 +348,20 @@ function runQuickAction(action: AssistantQuickAction, ctx: AssistantContext, req
       break;
     case "category":
       if (action.categoryId) {
-        const cat = ctx.categories.find((c) => c.id === action.categoryId);
-        return respond(ctx, t.categoryIntro(cat?.name ?? action.categoryId), byCategory(ctx, action.categoryId, 8));
+        const items = byCategory(ctx, action.categoryId, 8);
+        if (items.length === 0) break; // fall through to "no results" + popular
+        const ids = resolveCategoryIds(ctx, action.categoryId);
+        const cat =
+          ctx.categories.find((c) => c.id === action.categoryId) ??
+          ctx.categories.find((c) => ids.has(c.id) && !(c.parentId && ids.has(c.parentId)));
+        return respond(ctx, t.categoryIntro(cat?.name ?? action.categoryId), items);
       }
       break;
     case "categories":
       if (action.categoryIds?.length) {
-        return respond(ctx, t.categoriesIntro, byCategories(ctx, action.categoryIds, 8));
+        const items = byCategories(ctx, action.categoryIds, 8);
+        if (items.length === 0) break; // fall through to "no results" + popular
+        return respond(ctx, t.categoriesIntro, items);
       }
       break;
   }

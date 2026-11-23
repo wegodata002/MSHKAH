@@ -214,7 +214,15 @@ export interface AssistantChatResponse {
 export interface AssistantContext {
   locale: Locale;
   products: AssistantProduct[];
-  categories: { id: string; name: string; searchText: string }[];
+  categories: {
+    id: string;
+    name: string;
+    searchText: string;
+    /** Parent category id (subcategories), if any. */
+    parentId?: string | null;
+    /** All localized names (he/ar/en), used to resolve seed category ids by name. */
+    names?: string[];
+  }[];
   config: AssistantConfig;
   settings: {
     phone: string;
