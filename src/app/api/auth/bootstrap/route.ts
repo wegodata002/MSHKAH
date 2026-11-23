@@ -3,6 +3,19 @@ import { COLLECTIONS } from "@/lib/firebase/collections";
 import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST() {
+  if (process.env.ADMIN_BOOTSTRAP_ENABLED !== "true") {
+    return Response.json({ error: "Not found" }, { status: 404 });
+  }
+
+  const email = process.env.ADMIN_BOOTSTRAP_EMAIL?.trim();
+  const password = process.env.ADMIN_BOOTSTRAP_PASSWORD;
+  if (!email || !password?.trim()) {
+    return Response.json(
+      { error: "ADMIN_BOOTSTRAP_EMAIL and ADMIN_BOOTSTRAP_PASSWORD must be set" },
+      { status: 500 }
+    );
+  }
+
   try {
     const db = getAdminDb();
     const auth = getAdminAuth();
@@ -17,10 +30,6 @@ export async function POST() {
       return Response.json({ bootstrapped: true, created: false });
     }
 
-    const email =
-      process.env.ADMIN_BOOTSTRAP_EMAIL ?? "admin@mishkat.cafe";
-    const password =
-      process.env.ADMIN_BOOTSTRAP_PASSWORD ?? "MishkatAdmin2026!";
     const displayName =
       process.env.ADMIN_BOOTSTRAP_NAME ?? "MISHKAT Admin";
 
@@ -50,15 +59,10 @@ export async function POST() {
     return Response.json({
       bootstrapped: true,
       created: true,
-      email,
       message: "Admin user created. Change password after first login.",
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Bootstrap failed";
     return Response.json({ error: message }, { status: 500 });
   }
-}
-
-export async function GET() {
-  return POST();
 }
