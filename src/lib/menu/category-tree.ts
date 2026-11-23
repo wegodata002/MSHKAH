@@ -1,4 +1,6 @@
-import type { Category, Product } from "@/types";
+import type { Category, Product, ProductFilters } from "@/types";
+import type { Locale } from "@/lib/i18n/types";
+import { getLocalizedName } from "@/lib/i18n/localized-content";
 
 export function isPublicMenuCategory(category: Category): boolean {
   if (!category.active) return false;
@@ -130,4 +132,49 @@ export function sortProducts(products: Product[]): Product[] {
       Number(b.isPopular) - Number(a.isPopular) ||
       a.sortOrder - b.sortOrder
   );
+}
+
+function createdAtMs(product: Product): number {
+  const ms = new Date(product.createdAt).getTime();
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+/**
+ * Storefront display filters + sort (customer catalog, browse and search).
+ * Default / "popular" sort is identical to sortProducts(); ties fall back to sortOrder.
+ */
+export function applyDisplayFilters(
+  products: Product[],
+  filters: ProductFilters | undefined,
+  locale: Locale
+): Product[] {
+  let result = products;
+  if (filters?.minPrice !== undefined) {
+    result = result.filter((p) => p.price >= filters.minPrice!);
+  }
+  if (filters?.maxPrice !== undefined) {
+    result = result.filter((p) => p.price <= filters.maxPrice!);
+  }
+  if (filters?.isPopular) result = result.filter((p) => p.isPopular);
+  if (filters?.isNew) result = result.filter((p) => p.isNew);
+  if (filters?.available === true) result = result.filter((p) => p.available);
+
+  const bySortOrder = (a: Product, b: Product) => a.sortOrder - b.sortOrder;
+  switch (filters?.sortBy) {
+    case "price-asc":
+      return [...result].sort((a, b) => a.price - b.price || bySortOrder(a, b));
+    case "price-desc":
+      return [...result].sort((a, b) => b.price - a.price || bySortOrder(a, b));
+    case "name-asc":
+      return [...result].sort(
+        (a, b) =>
+          getLocalizedName(a, locale).localeCompare(getLocalizedName(b, locale), locale) ||
+          bySortOrder(a, b)
+      );
+    case "newest":
+      return [...result].sort((a, b) => createdAtMs(b) - createdAtMs(a) || bySortOrder(a, b));
+    case "popular":
+    default:
+      return sortProducts(result);
+  }
 }
