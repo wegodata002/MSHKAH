@@ -24,7 +24,7 @@ import {
 import { useAllCategories, useAllProducts } from "@/hooks/useProducts";
 import { useT } from "@/components/providers/locale-provider";
 import { AdminPageHeader } from "./components/admin-page-header";
-import { ADMIN_SIDEBAR_WIDTH_PX } from "./admin-layout-config";
+import { UnsavedChangesBar, useUnsavedChangesGuard } from "./components/unsaved-changes-bar";
 import type {
   AssistantConfig,
   AssistantFaqItem,
@@ -155,37 +155,7 @@ export function AssistantManagerAdmin() {
     }
   };
 
-  // Warn before closing/reloading the tab with unsaved changes.
-  useEffect(() => {
-    if (!dirty) return;
-    const onBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", onBeforeUnload);
-    return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [dirty]);
-
-  // Confirm before following an in-app link (e.g. the admin sidebar) with unsaved changes.
-  // Capture phase on document runs before Next.js <Link> handles the click.
-  useEffect(() => {
-    if (!dirty) return;
-    const onClick = (event: MouseEvent) => {
-      if (event.defaultPrevented || event.button !== 0) return;
-      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      const anchor = (event.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
-      if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
-      const url = new URL(anchor.href, window.location.href);
-      if (url.origin !== window.location.origin) return;
-      if (url.pathname === window.location.pathname && url.search === window.location.search) return;
-      if (!window.confirm(t("admin.assistant.leaveConfirm"))) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-    };
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
-  }, [dirty, t]);
+  useUnsavedChangesGuard(dirty, t("admin.assistant.leaveConfirm"));
 
   const sortedActions = useMemo(
     () => (config ? [...config.quickActions].sort((a, b) => a.sortOrder - b.sortOrder) : []),
@@ -506,31 +476,13 @@ export function AssistantManagerAdmin() {
         <AdminModalHeader onClose={() => setMobilePreview(false)}><AdminModalTitle>{t("admin.assistant.preview")}</AdminModalTitle></AdminModalHeader>
         <AdminModalBody className="p-3"><AssistantManagerPreview config={config} /></AdminModalBody>
       </AdminModal>
-      {/* Fixed save bar while there are unsaved changes. On mobile it sits above the admin
-          bottom nav; on desktop it is offset by the sidebar width (padding-inline-start). */}
-      {dirty && (
-        <>
-          <div aria-hidden className="h-28 lg:h-20" />
-          <div
-            className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.5rem)] z-[95] px-4 lg:bottom-4 lg:pe-6 lg:ps-[calc(var(--admin-sidebar-w)+1.5rem)] print:hidden"
-            style={{ "--admin-sidebar-w": `${ADMIN_SIDEBAR_WIDTH_PX}px` } as React.CSSProperties}
-          >
-            <div
-              role="status"
-              className="pointer-events-auto mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-warm-white px-4 py-3 shadow-elevated dark:border-amber-500/40 dark:bg-[#1a1412]"
-            >
-              <span className="inline-flex items-center gap-2 text-sm font-medium text-amber-700 dark:text-amber-400">
-                <span className="h-2 w-2 shrink-0 rounded-full bg-amber-500" />
-                {t("admin.assistant.unsaved")}
-              </span>
-              <Button onClick={() => void handleSave()} disabled={saving} className="shrink-0">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                {saving ? t("admin.productForm.saving") : t("admin.assistant.saveChanges")}
-              </Button>
-            </div>
-          </div>
-        </>
-      )}
+      <UnsavedChangesBar
+        visible={dirty}
+        saving={saving}
+        onSave={() => void handleSave()}
+        label={t("admin.assistant.unsaved")}
+        saveLabel={t("admin.assistant.saveChanges")}
+      />
 
       <AdminToastStack toasts={toasts} onDismiss={(id) => setToasts((current) => current.filter((toast) => toast.id !== id))} />
     </div>
