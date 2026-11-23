@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import Image from "next/image";
-import { Upload, X, Loader2 } from "lucide-react";
+import { Upload, X, Loader2, Maximize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/providers/locale-provider";
@@ -19,6 +20,11 @@ interface ImageUploadProps {
   className?: string;
   /** Smaller upload zone for dialogs (e.g. category create). */
   compact?: boolean;
+  /**
+   * "contain": small preview frame that shows the whole image without cropping
+   * (logos / branding). Default "cover" keeps the full-width cropped preview.
+   */
+  fit?: "cover" | "contain";
 }
 
 export function ImageUpload({
@@ -29,7 +35,9 @@ export function ImageUpload({
   label,
   className,
   compact = false,
+  fit = "cover",
 }: ImageUploadProps) {
+  const contain = fit === "contain";
   const t = useT();
   const resolvedLabel = label ?? t("admin.upload.image");
   const [progress, setProgress] = useState(0);
@@ -37,6 +45,7 @@ export function ImageUpload({
   const [error, setError] = useState<string | null>(null);
   const [lastFile, setLastFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = async (file: File) => {
@@ -72,16 +81,33 @@ export function ImageUpload({
 
   return (
     <div className={cn("space-y-2", className)}>
+      {zoomed && value ? <ImageLightbox src={value} onClose={() => setZoomed(false)} /> : null}
       <p className="text-sm font-medium text-dark-brown dark:text-warm-white">{resolvedLabel}</p>
 
       {value ? (
         <div
           className={cn(
             "relative w-full overflow-hidden rounded-xl border border-beige-dark/30 dark:border-white/10",
-            compact ? "h-28" : "aspect-video"
+            contain ? "h-40 max-w-xs bg-beige/30 dark:bg-white/5" : compact ? "h-28" : "aspect-video"
           )}
         >
-          <Image src={value} alt={t("admin.upload.preview")} fill unoptimized={value.includes("firebasestorage")} className="object-cover" sizes="400px" />
+          <Image
+            src={value}
+            alt={t("admin.upload.preview")}
+            fill
+            unoptimized={value.includes("firebasestorage")}
+            className={contain ? "object-contain p-2" : "object-cover"}
+            sizes={contain ? "320px" : "400px"}
+          />
+          <button
+            type="button"
+            onClick={() => setZoomed(true)}
+            aria-label={t("admin.upload.enlarge")}
+            title={t("admin.upload.enlarge")}
+            className="absolute top-2 start-2 flex h-8 w-8 items-center justify-center rounded-full bg-dark-brown/70 text-warm-white hover:bg-dark-brown"
+          >
+            <Maximize2 className="h-4 w-4" />
+          </button>
           {!uploading && (
             <button
               type="button"
@@ -111,7 +137,7 @@ export function ImageUpload({
           }}
           className={cn(
             "flex w-full flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-beige-dark/50 bg-beige/20 transition-colors hover:border-turquoise/50 hover:bg-beige/40 dark:border-white/10 dark:bg-white/5",
-            compact ? "h-28 py-3" : "aspect-video",
+            contain ? "h-40 max-w-xs py-3" : compact ? "h-28 py-3" : "aspect-video",
             dragging && "border-turquoise bg-turquoise/10"
           )}
         >
@@ -171,5 +197,56 @@ export function ImageUpload({
         }}
       />
     </div>
+  );
+}
+
+/** Full-screen image view (admin). Closes with the ✕ button, Esc, or a click on the backdrop. */
+function ImageLightbox({ src, onClose }: { src: string; onClose: () => void }) {
+  const t = useT();
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    closeRef.current?.focus();
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("admin.upload.preview")}
+      className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/85 p-4"
+      onClick={onClose}
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element -- full-size original, any host */}
+      <img
+        src={src}
+        alt={t("admin.upload.preview")}
+        className="max-h-full max-w-full object-contain"
+        onClick={(event) => event.stopPropagation()}
+      />
+      <button
+        ref={closeRef}
+        type="button"
+        onClick={onClose}
+        aria-label={t("admin.upload.close")}
+        className="absolute top-[calc(env(safe-area-inset-top,0px)+1rem)] end-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white hover:bg-white/25"
+      >
+        <X className="h-5 w-5" />
+      </button>
+    </div>,
+    document.body
   );
 }

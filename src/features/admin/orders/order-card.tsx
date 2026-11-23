@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer } from "lucide-react";
+import { AlertTriangle, Banknote, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -44,24 +44,20 @@ const STATUS_BORDER: Record<OperationalOrderStatus, string> = {
 
 function OrderItems({
   order,
-  expanded,
   onEditItem,
 }: {
   order: Order;
-  expanded: boolean;
   onEditItem?: (index: number) => void;
 }) {
-  const items = expanded ? order.items : order.items.slice(0, 3);
-
   return (
     <div className="space-y-2">
-      {items.map((item, index) => (
+      {order.items.map((item, index) => (
         <div key={`${item.productId}-${index}`} className="text-sm">
           <div className="flex items-start justify-between gap-2">
             <p className="font-semibold text-dark-brown dark:text-warm-white">
               {item.quantity}× {item.productName}
             </p>
-            {expanded && onEditItem && order.status !== "delivered" && order.status !== "cancelled" && (
+            {onEditItem && order.status !== "delivered" && order.status !== "cancelled" && (
               <button
                 type="button"
                 onClick={() => onEditItem(index)}
@@ -88,9 +84,6 @@ function OrderItems({
           {item.notes && <p className="ps-4 text-xs italic text-coffee/60">{item.notes}</p>}
         </div>
       ))}
-      {!expanded && order.items.length > items.length && (
-        <p className="text-xs text-coffee/45">+{order.items.length - items.length}</p>
-      )}
     </div>
   );
 }
@@ -111,6 +104,7 @@ export function OrderCard({
   onCopyNumber,
   onEditItem,
   onPermanentDelete,
+  onMarkCashPaid,
   isClubMember,
 }: {
   order: Order;
@@ -128,6 +122,8 @@ export function OrderCard({
   onCopyNumber?: () => void;
   onEditItem?: (index: number) => void;
   onPermanentDelete?: () => void;
+  /** Present only while the order waits for a cash payment. */
+  onMarkCashPaid?: () => void;
   isClubMember?: boolean;
 }) {
   const t = useT();
@@ -145,210 +141,216 @@ export function OrderCard({
   return (
     <article
       className={cn(
-        "rounded-2xl border border-beige-dark/15 border-s-4 bg-warm-white p-4 shadow-soft dark:border-white/10 dark:bg-white/5",
+        "rounded-2xl border border-beige-dark/15 border-s-4 bg-warm-white p-3 shadow-soft dark:border-white/10 dark:bg-white/5",
         STATUS_BORDER[status],
         delay === "warning" && "ring-2 ring-amber-400/50",
         delay === "critical" && "ring-2 ring-red-400/60"
       )}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <button type="button" onClick={onToggle} className="min-w-0 flex-1 text-start">
-          <div className="flex flex-wrap items-center gap-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-bold text-dark-brown dark:text-warm-white">{order.orderNumber}</span>
             <Badge variant="outline" className={STATUS_STYLE[status]}>
               {t(`admin.status.${status}`)}
             </Badge>
-            {delay === "warning" && (
-              <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800">
-                {t("admin.orders.warning")}
-              </Badge>
-            )}
-            {delay === "critical" && (
-              <Badge variant="outline" className="border-red-400 bg-red-50 text-red-700">
-                {t("admin.orders.critical")}
-              </Badge>
-            )}
-            {order.isTestOrder && (
-              <Badge variant="outline" className="border-amber-400 bg-amber-50 text-amber-800">
-                TEST
-              </Badge>
-            )}
-            <Badge
-              variant="outline"
-              className={
-                paymentStatus === "paid"
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                  : paymentStatus === "failed"
-                    ? "border-red-300 bg-red-50 text-red-700"
-                    : paymentStatus === "refunded"
-                      ? "border-slate-300 bg-slate-100 text-slate-700"
-                      : "border-amber-300 bg-amber-50 text-amber-700"
-              }
-            >
-              {t(paymentLabelKey)}
-            </Badge>
-            <ChevronDown
-              className={cn("h-4 w-4 text-coffee/40 transition-transform", expanded && "rotate-180")}
-            />
-          </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-coffee/55">
-            <span className="font-medium text-coffee/75">{order.customerName}</span>
-            {isClubMember ? <ClubMemberBadge compact /> : null}
-            <span title={formatJerusalemDateTime(order.createdAt)}>
-              {new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-            </span>
-            <span
-              className={cn("inline-flex items-center gap-1", delay !== "normal" && "font-bold text-amber-800")}
-              title={formatJerusalemDateTime(order.createdAt)}
-            >
-              <Clock className="h-3.5 w-3.5" />
-              {formatOrderAge(t, ageMs)}
-            </span>
-            {ageIsAtLeastOneDay(ageMs) && (
-              <span className="text-coffee/45">{formatJerusalemDateTime(order.createdAt)}</span>
-            )}
-            {(status === "received" || status === "preparing" || status === "ready") && (
-              <span className="text-coffee/70">
-                {t(`admin.orders.stage.${status}`).replace("{age}", formatDuration(t, stageMs))}
+            {delay !== "normal" && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                  delay === "critical" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
+                )}
+              >
+                <AlertTriangle className="h-3 w-3" />
+                {t(delay === "critical" ? "admin.orders.critical" : "admin.orders.warning")}
               </span>
             )}
+            {(paymentStatus === "pending" || paymentStatus === "failed") && (
+              <span
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[11px] font-semibold",
+                  paymentStatus === "failed" ? "bg-red-50 text-red-700" : "bg-amber-50 text-amber-800"
+                )}
+              >
+                <Wallet className="h-3 w-3" />
+                {t(paymentLabelKey)}
+              </span>
+            )}
+            {order.isTestOrder && (
+              <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-semibold text-amber-800">TEST</span>
+            )}
           </div>
-        </button>
-
-        <div className="text-end">
-          <p className="text-xl font-bold text-coffee">{formatPrice(order.total)}</p>
-          {order.orderType && (
-            <p className="text-xs text-coffee/45">{t(`admin.orders.type.${order.orderType}`)}</p>
-          )}
+          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-coffee/60">
+            <span className="truncate font-medium text-coffee/80">{order.customerName}</span>
+            {isClubMember ? <ClubMemberBadge compact /> : null}
+            <span className="inline-flex items-center gap-1" title={formatJerusalemDateTime(order.createdAt)}>
+              <Clock className="h-3 w-3" />
+              {ageIsAtLeastOneDay(ageMs)
+                ? formatJerusalemDateTime(order.createdAt)
+                : new Date(order.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+            </span>
+          </div>
         </div>
+        <p className="shrink-0 text-lg font-bold text-coffee">{formatPrice(order.total)}</p>
       </div>
 
-      <div className="mt-4 rounded-xl bg-cream/55 p-3 dark:bg-white/5">
-        <OrderItems order={order} expanded={expanded} onEditItem={onEditItem} />
-      </div>
-
-      {expanded && (
-        <div className="mt-4 grid gap-4 border-t border-beige-dark/15 pt-4 text-sm md:grid-cols-2">
-          <div className="space-y-1">
-            <p className="font-semibold">{t("orders.customer")}</p>
-            <p>{order.customerFullName || order.customerName}</p>
-            {order.customerPhone && <p dir="ltr" className="text-start">{order.customerPhone}</p>}
-            {order.customerEmail && <p dir="ltr" className="text-start">{order.customerEmail}</p>}
-            {order.deliveryAddress && <p>{order.deliveryAddress}</p>}
-          </div>
-          <div className="space-y-1">
-            <p className="font-semibold">{t("orders.date")}</p>
-            <p>{formatDate(order.createdAt)}</p>
-            <p>
-              {t("admin.orders.paymentMethod")}:{" "}
-              {order.paymentProvider === "HYP" || (order.paymentMethod || "").toLowerCase() === "card"
-                ? t("admin.payment.methodCardHyp")
-                : t("admin.payment.methodCash")}
-            </p>
-            {order.paymentProvider && (
-              <p>{t("admin.payment.provider")}: {order.paymentProvider}</p>
-            )}
-            {paymentStatus === "paid" && (
-              <p>{t("admin.payment.paidAmount")}: {formatPrice(order.total)}</p>
-            )}
-            {order.paymentTransactionId && (
-              <p dir="ltr" className="text-start">
-                {t("admin.payment.transaction")}: {order.paymentTransactionId}
-              </p>
-            )}
-            <p>
-              {t("admin.payment.customerEmail")}:{" "}
-              {t(`admin.payment.notify.${order.customerConfirmationStatus || "PENDING"}`)}
-            </p>
-            <p>
-              {t("admin.payment.adminEmail")}:{" "}
-              {t(`admin.payment.notify.${order.adminNotificationStatus || "PENDING"}`)}
-            </p>
-            <p>{t("admin.payment.invoice")}: {t("admin.payment.notify.PROVIDER_REQUIRED")}</p>
-            <p>{t("admin.payment.message")}: {t("admin.payment.notify.NOT_CONFIGURED")}</p>
-          </div>
-          {order.notes && (
-            <div className="rounded-xl bg-amber-50 p-3 text-amber-900 md:col-span-2">
-              <p className="font-semibold">{t("builder.notes")}</p>
-              <p className="whitespace-pre-line">{order.notes}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div className="mt-4 flex flex-wrap items-center gap-2">
-        <Select
-          value={status}
-          onValueChange={(value) => onStatusChange(toStoredOrderStatus(value as OperationalOrderStatus))}
-          disabled={updating}
-        >
-          <SelectTrigger className="h-10 w-[145px]">
-            {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <SelectValue />}
-          </SelectTrigger>
-          <SelectContent>
-            {OPERATIONAL_FILTERS.map((value) => (
-              <SelectItem key={value} value={value}>
-                {t(`admin.status.${value}`)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
+      <div className="mt-2 flex items-center gap-2">
         {next && (
           <Button
             type="button"
-            className="min-h-10 flex-1 rounded-xl sm:flex-none"
+            size="sm"
+            className="rounded-lg"
             disabled={updating}
             onClick={() => onStatusChange(toStoredOrderStatus(next))}
           >
+            {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {t(`admin.orders.next.${status}`)}
           </Button>
         )}
-
-        <Button type="button" variant="outline" size="icon" onClick={onPrint} title={t("admin.orders.printTicket")}>
-          <Printer className="h-4 w-4" />
-        </Button>
-        {onThermalReprint && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onThermalReprint}
-            title={t("admin.orders.thermalReprint", "הדפס מחדש")}
-          >
-            {t("admin.orders.thermalReprint", "הדפס מחדש")}
-          </Button>
-        )}
-        {onResendCustomerEmail && order.customerEmail && (
-          <Button type="button" variant="outline" onClick={onResendCustomerEmail}>
-            {t("admin.payment.resendEmail")}
-          </Button>
-        )}
-        {onResendAdminEmail && (
-          <Button type="button" variant="outline" onClick={onResendAdminEmail}>
-            {t("admin.payment.resendAdminEmail")}
-          </Button>
-        )}
-        {expanded && onExportPdf && (
-          <Button type="button" variant="outline" size="icon" onClick={onExportPdf} title={t("admin.orders.exportPdf")}>
-            <FileText className="h-4 w-4" />
-          </Button>
-        )}
-        {expanded && onCopyNumber && (
-          <Button type="button" variant="outline" size="icon" onClick={onCopyNumber} title={t("admin.orders.copyNumber")}>
-            <Copy className="h-4 w-4" />
-          </Button>
-        )}
-        {status !== "cancelled" && status !== "delivered" && (
-          <Button type="button" variant="ghost" className="text-red-600" onClick={onCancel}>
-            {t("admin.orders.cancel")}
-          </Button>
-        )}
-        {onPermanentDelete && (
-          <Button type="button" variant="ghost" className="text-red-700" onClick={onPermanentDelete}>
-            {t("admin.orders.permanentDelete")}
-          </Button>
-        )}
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          className="ms-auto inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium text-turquoise hover:bg-turquoise/10"
+        >
+          {t(expanded ? "admin.orders.hideDetails" : "admin.orders.showDetails")}
+          {!expanded && order.items.length > 0 ? ` (${order.items.length})` : ""}
+          <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
+        </button>
       </div>
+
+      {expanded && (
+        <div className="mt-3 space-y-3 border-t border-beige-dark/15 pt-3">
+          {(status === "received" || status === "preparing" || status === "ready") && (
+            <p className="flex flex-wrap items-center gap-x-3 text-xs text-coffee/60">
+              <span className={cn("inline-flex items-center gap-1", delay !== "normal" && "font-bold text-amber-800")}>
+                <Clock className="h-3.5 w-3.5" />
+                {formatOrderAge(t, ageMs)}
+              </span>
+              <span>{t(`admin.orders.stage.${status}`).replace("{age}", formatDuration(t, stageMs))}</span>
+              {order.orderType && <span>{t(`admin.orders.type.${order.orderType}`)}</span>}
+            </p>
+          )}
+          <div className="rounded-xl bg-cream/55 p-3 dark:bg-white/5">
+            <OrderItems order={order} onEditItem={onEditItem} />
+          </div>
+          <div className="grid gap-4 text-sm md:grid-cols-2">
+            <div className="space-y-1">
+              <p className="font-semibold">{t("orders.customer")}</p>
+              <p>{order.customerFullName || order.customerName}</p>
+              {order.customerPhone && <p dir="ltr" className="text-start">{order.customerPhone}</p>}
+              {order.customerEmail && <p dir="ltr" className="text-start">{order.customerEmail}</p>}
+              {order.deliveryAddress && <p>{order.deliveryAddress}</p>}
+            </div>
+            <div className="space-y-1">
+              <p className="font-semibold">{t("orders.date")}</p>
+              <p>{formatDate(order.createdAt)}</p>
+              <p>
+                {t("admin.orders.paymentMethod")}:{" "}
+                {order.paymentProvider === "HYP" || (order.paymentMethod || "").toLowerCase() === "card"
+                  ? t("admin.payment.methodCardHyp")
+                  : t("admin.payment.methodCash")}
+              </p>
+              {order.paymentProvider && (
+                <p>{t("admin.payment.provider")}: {order.paymentProvider}</p>
+              )}
+              {paymentStatus === "paid" && (
+                <p>{t("admin.payment.paidAmount")}: {formatPrice(order.total)}</p>
+              )}
+              {onMarkCashPaid && (
+                <Button type="button" size="sm" variant="outline" className="mt-1 border-emerald-300 text-emerald-800" onClick={onMarkCashPaid}>
+                  <Banknote className="h-4 w-4" />
+                  {t("admin.orders.markCashPaid")}
+                </Button>
+              )}
+              {order.paymentTransactionId && (
+                <p dir="ltr" className="text-start">
+                  {t("admin.payment.transaction")}: {order.paymentTransactionId}
+                </p>
+              )}
+              <p>
+                {t("admin.payment.customerEmail")}:{" "}
+                {t(`admin.payment.notify.${order.customerConfirmationStatus || "PENDING"}`)}
+              </p>
+              <p>
+                {t("admin.payment.adminEmail")}:{" "}
+                {t(`admin.payment.notify.${order.adminNotificationStatus || "PENDING"}`)}
+              </p>
+              <p>{t("admin.payment.invoice")}: {t("admin.payment.notify.PROVIDER_REQUIRED")}</p>
+              <p>{t("admin.payment.message")}: {t("admin.payment.notify.NOT_CONFIGURED")}</p>
+            </div>
+            {order.notes && (
+              <div className="rounded-xl bg-amber-50 p-3 text-amber-900 md:col-span-2">
+                <p className="font-semibold">{t("builder.notes")}</p>
+                <p className="whitespace-pre-line">{order.notes}</p>
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 border-t border-beige-dark/15 pt-3">
+            <Select
+              value={status}
+              onValueChange={(value) => onStatusChange(toStoredOrderStatus(value as OperationalOrderStatus))}
+              disabled={updating}
+            >
+              <SelectTrigger className="h-10 w-[145px]">
+                {updating ? <Loader2 className="h-4 w-4 animate-spin" /> : <SelectValue />}
+              </SelectTrigger>
+              <SelectContent>
+                {OPERATIONAL_FILTERS.map((value) => (
+                  <SelectItem key={value} value={value}>
+                    {t(`admin.status.${value}`)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Button type="button" variant="outline" size="icon" onClick={onPrint} title={t("admin.orders.printTicket")}>
+              <Printer className="h-4 w-4" />
+            </Button>
+            {onThermalReprint && (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onThermalReprint}
+                title={t("admin.orders.thermalReprint", "הדפס מחדש")}
+              >
+                {t("admin.orders.thermalReprint", "הדפס מחדש")}
+              </Button>
+            )}
+            {onResendCustomerEmail && order.customerEmail && (
+              <Button type="button" variant="outline" onClick={onResendCustomerEmail}>
+                {t("admin.payment.resendEmail")}
+              </Button>
+            )}
+            {onResendAdminEmail && (
+              <Button type="button" variant="outline" onClick={onResendAdminEmail}>
+                {t("admin.payment.resendAdminEmail")}
+              </Button>
+            )}
+            {onExportPdf && (
+              <Button type="button" variant="outline" size="icon" onClick={onExportPdf} title={t("admin.orders.exportPdf")}>
+                <FileText className="h-4 w-4" />
+              </Button>
+            )}
+            {onCopyNumber && (
+              <Button type="button" variant="outline" size="icon" onClick={onCopyNumber} title={t("admin.orders.copyNumber")}>
+                <Copy className="h-4 w-4" />
+              </Button>
+            )}
+            {status !== "cancelled" && status !== "delivered" && (
+              <Button type="button" variant="ghost" className="text-red-600" onClick={onCancel}>
+                {t("admin.orders.cancel")}
+              </Button>
+            )}
+            {onPermanentDelete && (
+              <Button type="button" variant="ghost" className="text-red-700" onClick={onPermanentDelete}>
+                {t("admin.orders.permanentDelete")}
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
     </article>
   );
 }

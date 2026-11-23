@@ -48,6 +48,7 @@ const FALLBACK_SETTINGS: AppSettings = {
   phone: "",
   address: "",
   hours: "",
+  openingHours: null,
   currency: "ILS",
   theme: { primary: "#3D2B24", accent: "#007A80", background: "#F8F3ED" },
   seo: { title: BRAND.name, description: BRAND.taglineAlt },

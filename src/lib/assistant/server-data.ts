@@ -16,6 +16,7 @@ import { getProductImage } from "@/lib/menu/placeholders";
 import type { Category, Product } from "@/types";
 import type { FirestoreSettings } from "@/types/firestore";
 import { parseAssistantConfig } from "@/lib/assistant/parse-config";
+import { openingHoursText, resolveOpeningHours } from "@/lib/settings/opening-hours";
 import {
   ASSISTANT_DOC_ID,
   type AssistantContext,
@@ -111,7 +112,10 @@ export async function loadAssistantContext(locale: Locale): Promise<AssistantCon
     settings: {
       phone: settingsData?.phone ?? "",
       address: settingsData?.address ?? "",
-      hours: settingsData?.hours ?? "Sun–Thu 7:00–22:00",
+      hours: openingHoursText(
+        { openingHours: resolveOpeningHours(settingsData), hours: settingsData?.hours ?? "" },
+        locale
+      ),
       whatsapp: settingsData?.social?.whatsapp ?? settingsData?.phone ?? "",
       mapsUrl: settingsData?.mapsUrl ?? "",
     },

@@ -18,6 +18,7 @@ import {
 } from "@/lib/assistant/types";
 import { subscribeToAssistantConfig } from "@/services/assistantService";
 import { subscribeToSettings, type AppSettings } from "@/services/settingsService";
+import { openingHoursText } from "@/lib/settings/opening-hours";
 import { useCart } from "@/features/cart/cart-context";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useAllProducts, useAllCategories } from "@/hooks/useProducts";
@@ -150,7 +151,7 @@ function clientFallback(
       return respond(phone ? `📞 ${phone}` : (loc === "ar" ? "لا يوجد رقم هاتف." : "No phone number."));
     }
     if (lower.includes("ساعات") || lower.includes("שעות") || lower.includes("hours") || lower.includes("وقت")) {
-      const hours = settings?.hours || "";
+      const hours = openingHoursText(settings, loc);
       return respond(hours || (loc === "ar" ? "لم يتم تحديد ساعات العمل." : "Hours not set."));
     }
     const matched = available.filter((p) => {

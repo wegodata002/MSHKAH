@@ -5,11 +5,12 @@ import { BadgeCheck, ChefHat, Inbox, PackageCheck, Search, Timer, Wallet } from 
 import { useOrders } from "@/hooks/useOrders";
 import { useClubMembers } from "@/hooks/useClubMembers";
 import { updateOrderStatus } from "@/services";
-import { subscribeToPaymentFacts } from "@/services/orderService";
+import { markOrderCashPaid, subscribeToPaymentFacts } from "@/services/orderService";
 import { useAuth } from "@/components/providers/auth-provider";
 import { OrderItemExtrasDialog } from "@/features/admin/orders/order-item-extras-dialog";
 import { OrderCard } from "@/features/admin/orders/order-card";
 import { CancelOrderDialog } from "@/features/admin/orders/cancel-order-dialog";
+import { PaymentReceivedDialog } from "@/features/admin/orders/payment-received-dialog";
 import { PermanentDeleteOrderDialog } from "@/features/admin/orders/permanent-delete-dialog";
 import { isAdminRole } from "@/lib/auth/roles";
 import { KitchenView } from "@/features/admin/orders/kitchen-view";
@@ -30,7 +31,13 @@ import {
   isToday,
   orderSearchText,
 } from "@/lib/orders/operations";
-import { computeOrderDashboard, matchesOperationalFilter, type OrderStatsPeriod, type VerifiedPayment } from "@/lib/orders/dashboard";
+import {
+  computeOrderDashboard,
+  isAwaitingCashPayment,
+  matchesOperationalFilter,
+  type OrderStatsPeriod,
+  type VerifiedPayment,
+} from "@/lib/orders/dashboard";
 import {
   OPERATIONAL_FILTERS,
   type OperationalOrderStatus,
@@ -42,6 +49,8 @@ import { useT } from "@/components/providers/locale-provider";
 import { useAuthFetch } from "@/lib/auth/auth-fetch";
 import { AdminPageHeader } from "./components/admin-page-header";
 import type { Order, OrderStatus, PaymentStatus } from "@/types";
+
+const ORDERS_PAGE_SIZE = 20;
 
 type OrdersTab = "active" | "history";
 type DateFilter = "today" | "week" | "all";
@@ -58,7 +67,7 @@ export function OrdersAdmin() {
   const [tab, setTab] = useState<OrdersTab>("active");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
   const [statsPeriod, setStatsPeriod] = useState<OrderStatsPeriod>("today");
   const [payments, setPayments] = useState<VerifiedPayment[] | null>(null);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
@@ -71,6 +80,8 @@ export function OrdersAdmin() {
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<Order | null>(null);
+  /** Cash order being marked "delivered" while its payment is not recorded yet. */
+  const [paymentAsk, setPaymentAsk] = useState<Order | null>(null);
   const [kitchenOpen, setKitchenOpen] = useState(false);
   const [toasts, setToasts] = useState<AdminToast[]>([]);
   const [extrasDialog, setExtrasDialog] = useState<{ order: Order; itemIndex: number } | null>(null);
@@ -159,6 +170,24 @@ export function OrdersAdmin() {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [dateFilter, effectiveOrders, now, paymentFilter, search, statusFilter, tab, typeFilter]);
 
+  const olderActiveCount = useMemo(() => {
+    if (tab !== "active" || dateFilter === "all") return 0;
+    return effectiveOrders.filter(
+      (order) =>
+        isActiveOrder(order) &&
+        (dateFilter === "today"
+          ? !isToday(order.createdAt)
+          : now - new Date(order.createdAt).getTime() > 7 * 86_400_000)
+    ).length;
+  }, [dateFilter, effectiveOrders, now, tab]);
+
+  // "Show more": 20 orders at a time; any filter / search / tab change starts again from 20.
+  const listKey = [tab, statusFilter, paymentFilter, typeFilter, dateFilter, search].join("|");
+  const [visible, setVisible] = useState({ key: listKey, count: ORDERS_PAGE_SIZE });
+  const visibleCount = visible.key === listKey ? visible.count : ORDERS_PAGE_SIZE;
+  const shownOrders = filtered.slice(0, visibleCount);
+  const hiddenOrders = filtered.length - shownOrders.length;
+
   const activeOrders = useMemo(
     () =>
       effectiveOrders
@@ -197,6 +226,25 @@ export function OrdersAdmin() {
     });
     updatesInFlight.current.delete(order.id);
     return result.success;
+  };
+
+  const recordCashPayment = async (order: Order) => {
+    const result = await markOrderCashPaid(order.id, user?.email ?? user?.uid ?? "admin");
+    pushToast(t(result.success ? "admin.orders.cashPaidSaved" : "admin.orders.cashPaidError"), result.success ? "success" : "error");
+    return result.success;
+  };
+
+  /** Status change from a card / kitchen view: cancel opens its dialog, unpaid cash delivery asks first. */
+  const requestStatus = (order: Order, status: OrderStatus) => {
+    if (status === "cancelled") {
+      setCancelOrder(order);
+      return;
+    }
+    if (status === "delivered" && isAwaitingCashPayment(order)) {
+      setPaymentAsk(order);
+      return;
+    }
+    void changeStatus(order, status);
   };
 
   const resendCustomerEmail = async (order: Order) => {
@@ -319,7 +367,10 @@ export function OrdersAdmin() {
             type="button"
             onClick={() => {
               setTab(key === "delivered" ? "history" : "active");
-              setDateFilter(statsPeriod === "today" ? "today" : statsPeriod === "7d" ? "week" : "all");
+              // Stage cards are live counts of all active orders; only "delivered" follows the period.
+              setDateFilter(
+                key !== "delivered" ? "all" : statsPeriod === "today" ? "today" : statsPeriod === "7d" ? "week" : "all"
+              );
               setStatusFilter(key);
             }}
             className={cn(
@@ -339,13 +390,27 @@ export function OrdersAdmin() {
           <p className="text-xl font-bold text-turquoise">
             {loading && orders.length === 0 ? <Skeleton className="h-7 w-20" /> : stats.todayRevenue == null ? "—" : formatPrice(stats.todayRevenue)}
           </p>
-          <p className="text-sm text-coffee/55">{statsPeriod === "today" ? t("admin.orders.todayRevenue") : t("admin.orders.periodRevenue")}</p>
+          <p className="text-sm text-coffee/55">
+            {statsPeriod === "today" ? t("admin.orders.todayRevenue") : t("admin.orders.periodRevenue")} · {t("admin.orders.revenue.paid")}
+          </p>
           {stats.cashRevenue != null && stats.cardRevenue != null && (
             <p className="mt-1 text-[11px] leading-4 text-coffee/50">
               {t("admin.orders.cashCard").replace("{cash}", formatPrice(stats.cashRevenue)).replace("{card}", formatPrice(stats.cardRevenue))}
             </p>
           )}
           <p className="mt-1 text-[11px] leading-4 text-coffee/40">{t("admin.orders.kpi.revenueHint")}</p>
+          {!statsUnavailable && !(loading && orders.length === 0) && (
+            <p
+              className={cn(
+                "mt-2 rounded-lg px-2 py-1 text-xs font-medium",
+                stats.pendingCount > 0 ? "bg-amber-50 text-amber-800" : "bg-beige/40 text-coffee/50"
+              )}
+            >
+              {t("admin.orders.revenue.pending")
+                .replace("{amount}", formatPrice(stats.pendingRevenue))
+                .replace("{count}", String(stats.pendingCount))}
+            </p>
+          )}
           <p className="mt-1 text-[11px] text-coffee/35">{periodLabel}</p>
         </div>
         <div className="min-w-0 rounded-2xl border border-beige-dark/15 bg-warm-white p-4 shadow-soft">
@@ -370,6 +435,7 @@ export function OrdersAdmin() {
           className="mt-3 text-sm font-medium text-amber-800"
           onClick={() => {
             setTab("active");
+            setDateFilter("all");
             setStatusFilter("overdue");
           }}
         >
@@ -407,15 +473,25 @@ export function OrdersAdmin() {
           />
         </div>
         <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as DateFilter)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.date")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.date")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="today">{t("admin.orders.today")}</SelectItem>
             <SelectItem value="week">{t("admin.orders.lastWeek")}</SelectItem>
-            <SelectItem value="all">{t("admin.status.all")}</SelectItem>
+            <SelectItem value="all">{t("admin.orders.allDates")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.status")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.status")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("admin.status.all")}</SelectItem>
             <SelectItem value="overdue">{t("admin.orders.overdue")}</SelectItem>
@@ -425,7 +501,12 @@ export function OrdersAdmin() {
           </SelectContent>
         </Select>
         <Select value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as PaymentStatus | "all")}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.payment")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.payment")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("admin.orders.allPayments")}</SelectItem>
             {(["pending", "paid", "failed", "refunded"] as PaymentStatus[]).map((status) => (
@@ -434,7 +515,12 @@ export function OrdersAdmin() {
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as typeof typeFilter)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.type")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.type")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("admin.orders.allTypes")}</SelectItem>
             <SelectItem value="pickup">{t("admin.orders.type.pickup")}</SelectItem>
@@ -449,12 +535,22 @@ export function OrdersAdmin() {
         </button>
       )}
 
+      {olderActiveCount > 0 && (
+        <button
+          type="button"
+          className="mt-3 block rounded-lg bg-amber-50 px-3 py-2 text-start text-sm font-medium text-amber-800"
+          onClick={() => setDateFilter("all")}
+        >
+          {t("admin.orders.olderActive").replace("{count}", String(olderActiveCount))}
+        </button>
+      )}
+
       {error && orders.length > 0 && <p className="mt-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
 
       {loading ? (
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-64 rounded-2xl" />
+            <Skeleton key={index} className="h-24 rounded-2xl" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -463,7 +559,7 @@ export function OrdersAdmin() {
         </div>
       ) : (
         <div className="mt-5 grid items-start gap-4 md:grid-cols-2">
-          {filtered.map((order) => (
+          {shownOrders.map((order) => (
             <OrderCard
               key={order.id}
               order={order}
@@ -471,9 +567,8 @@ export function OrdersAdmin() {
               updating={updatingIds.has(order.id)}
               now={now}
               onToggle={() => setExpanded((current) => (current === order.id ? null : order.id))}
-              onStatusChange={(status) =>
-                status === "cancelled" ? setCancelOrder(order) : void changeStatus(order, status)
-              }
+              onStatusChange={(status) => requestStatus(order, status)}
+              onMarkCashPaid={isAwaitingCashPayment(order) ? () => void recordCashPayment(order) : undefined}
               onCancel={() => setCancelOrder(order)}
               onPrint={() => printKitchenTicket(order)}
               onThermalReprint={() => void reprintThermal(order)}
@@ -498,6 +593,20 @@ export function OrdersAdmin() {
         </div>
       )}
 
+      {!loading && hiddenOrders > 0 && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setVisible({ key: listKey, count: visibleCount + ORDERS_PAGE_SIZE })}
+          >
+            {t("admin.orders.showMore")
+              .replace("{count}", String(Math.min(ORDERS_PAGE_SIZE, hiddenOrders)))
+              .replace("{total}", String(hiddenOrders))}
+          </Button>
+        </div>
+      )}
+
       <CancelOrderDialog
         order={cancelOrder}
         open={cancelOrder != null}
@@ -507,6 +616,18 @@ export function OrdersAdmin() {
           if (!cancelOrder) return;
           void changeStatus(cancelOrder, "cancelled", reason).then((saved) => {
             if (saved) setCancelOrder(null);
+          });
+        }}
+      />
+      <PaymentReceivedDialog
+        order={paymentAsk}
+        onClose={() => setPaymentAsk(null)}
+        onAnswer={(paid) => {
+          const order = paymentAsk;
+          setPaymentAsk(null);
+          if (!order) return;
+          void changeStatus(order, "delivered").then((saved) => {
+            if (saved && paid) void recordCashPayment(order);
           });
         }}
       />
@@ -528,9 +649,7 @@ export function OrdersAdmin() {
         now={now}
         updatingIds={updatingIds}
         onClose={() => setKitchenOpen(false)}
-        onStatusChange={(order, status) =>
-          status === "cancelled" ? setCancelOrder(order) : void changeStatus(order, status)
-        }
+        onStatusChange={requestStatus}
         onCancel={setCancelOrder}
         onPrint={printKitchenTicket}
         onThermalReprint={(order) => void reprintThermal(order)}

@@ -3,17 +3,19 @@
 import Link from "next/link";
 import { Phone, MapPin, MessageCircle, Clock } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
-import { useT } from "@/components/providers/locale-provider";
+import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useSettings } from "@/hooks/useSettings";
 import { BRAND } from "@/lib/brand";
+import { openingHoursText } from "@/lib/settings/opening-hours";
 
 export function SiteFooter() {
   const t = useT();
+  const { locale } = useLocale();
   const { settings } = useSettings();
 
   const phone = settings?.phone ?? "";
   const address = settings?.address ?? "";
-  const hours = settings?.hours ?? "";
+  const hours = openingHoursText(settings, locale);
   const whatsapp = settings?.social?.whatsapp ?? phone;
   const mapsUrl = settings?.mapsUrl ?? "";
 

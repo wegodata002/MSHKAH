@@ -21,6 +21,7 @@ export type VerifiedPayment = {
 
 export type OrderDashboardStats = {
   loaded: number;
+  /** received / preparing / ready: orders in that stage right now (live, not period-based). */
   received: number;
   preparing: number;
   ready: number;
@@ -30,6 +31,10 @@ export type OrderDashboardStats = {
   todayRevenue: number | null;
   cashRevenue: number | null;
   cardRevenue: number | null;
+  /** Total of orders still waiting for a cash payment (created in the period). */
+  pendingRevenue: number;
+  /** Number of orders behind pendingRevenue. */
+  pendingCount: number;
   averagePrepMinutes: number | null;
 };
 
@@ -54,6 +59,24 @@ function isCardOrder(order: Order, payments: VerifiedPayment[]): boolean {
   const method = (order.paymentMethod || "").toLowerCase();
   if (order.paymentProvider === "HYP" || method === "card" || /card|credit|אשראי/.test(method)) return true;
   return payments.some((payment) => payment.provider === "HYP" || payment.provider === "card");
+}
+
+/** Card / HYP orders are settled by the payment provider, not at the counter. */
+function isCardMethodOrder(order: Pick<Order, "paymentMethod" | "paymentProvider">): boolean {
+  const method = (order.paymentMethod || "").toLowerCase();
+  return order.paymentProvider === "HYP" || method === "card" || /card|credit|אשראי/.test(method);
+}
+
+/**
+ * A real (non-test, non-cancelled) cash / pay-at-pickup order whose payment was not
+ * recorded yet. Staff confirm it with "payment received in cash".
+ */
+export function isAwaitingCashPayment(
+  order: Pick<Order, "paymentMethod" | "paymentProvider" | "paymentStatus" | "status" | "isTestOrder">
+): boolean {
+  if (isTestOrder(order) || operationalStatusOf(order) === "cancelled") return false;
+  if ((order.paymentStatus ?? "pending") !== "pending") return false;
+  return !isCardMethodOrder(order);
 }
 
 function roundMoney(value: number): number {
@@ -93,22 +116,13 @@ export function computeOrderDashboard(
   const business = uniqueOrders(orders).filter((order) => !isTestOrder(order));
   const open = (order: Order) => operationalStatusOf(order) !== "cancelled";
 
-  const received = business.filter((order) => {
-    if (!open(order)) return false;
-    return during(order.receivedAt || order.createdAt, period, now);
-  }).length;
-
-  const preparing = business.filter((order) => {
-    if (!open(order)) return false;
-    if (order.preparationStartedAt) return during(order.preparationStartedAt, period, now);
-    return period === "all" && operationalStatusOf(order) === "preparing";
-  }).length;
-
-  const ready = business.filter((order) => {
-    if (!open(order)) return false;
-    if (order.readyAt) return during(order.readyAt, period, now);
-    return period === "all" && operationalStatusOf(order) === "ready";
-  }).length;
+  // Live operational counters: how many orders are in each active stage right now.
+  // They do not depend on the selected period, so they always match the list a card filters to.
+  const countCurrent = (status: OperationalOrderStatus) =>
+    business.filter((order) => operationalStatusOf(order) === status).length;
+  const received = countCurrent("received");
+  const preparing = countCurrent("preparing");
+  const ready = countCurrent("ready");
 
   const deliveredToday = business.filter((order) => {
     if (operationalStatusOf(order) !== "delivered") return false;
@@ -131,6 +145,13 @@ export function computeOrderDashboard(
     }
   }
 
+  const pendingOrders = business.filter(
+    (order) => isAwaitingCashPayment(order) && during(order.createdAt, period, now)
+  );
+  const pendingRevenue = roundMoney(
+    pendingOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0)
+  );
+
   const prepDurations = business.flatMap((order) => {
     if (!open(order)) return [];
     const minutes = minutesBetween(order.preparationStartedAt, order.readyAt);
@@ -152,6 +173,8 @@ export function computeOrderDashboard(
     todayRevenue: cashRevenue == null || cardRevenue == null ? null : roundMoney(cashRevenue + cardRevenue),
     cashRevenue,
     cardRevenue,
+    pendingRevenue,
+    pendingCount: pendingOrders.length,
     averagePrepMinutes,
   };
 }

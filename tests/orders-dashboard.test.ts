@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOrderDashboard } from "@/lib/orders/dashboard";
+import { computeOrderDashboard, isAwaitingCashPayment } from "@/lib/orders/dashboard";
 import { overdueLevel, shouldSendCriticalEmail, stageAgeMs } from "@/lib/orders/overdue";
 import { normalizeOrderStatus } from "@/lib/orders/status";
 import { describeAge, isJerusalemToday, jerusalemDayBounds } from "@/lib/orders/time";
@@ -43,7 +43,7 @@ describe("human readable age", () => {
 describe("dashboard counters", () => {
   const now = new Date("2026-10-07T10:00:00+03:00");
 
-  it("counts confirmed paid orders as received and ignores payment for stage cards", () => {
+  it("counts active orders by their current stage, whatever the period, and ignores payment and test orders", () => {
     const orders = [
       order({
         id: "MC-2026-N67UFK6G",
@@ -74,12 +74,31 @@ describe("dashboard counters", () => {
       }),
     ];
     const stats = computeOrderDashboard(orders, now);
-    expect(stats.received).toBe(1);
+    expect(stats.received).toBe(2);
     expect(stats.preparing).toBe(0);
     expect(stats.ready).toBe(0);
     expect(stats.deliveredToday).toBe(0);
     expect(stats.todayRevenue).toBe(50);
-    expect(computeOrderDashboard(orders, now, { period: "all" }).received).toBe(3);
+    expect(computeOrderDashboard(orders, now, { period: "all" }).received).toBe(2);
+    expect(computeOrderDashboard(orders, now, { period: "yesterday" }).received).toBe(2);
+  });
+
+  it("stage cards match the current status even when timestamps are from another day", () => {
+    const orders = [
+      order({ id: "r", status: "pending", createdAt: "2026-10-01T09:00:00+03:00" }),
+      order({ id: "p1", status: "preparing", createdAt: "2026-10-07T09:00:00+03:00", preparationStartedAt: "2026-10-07T09:05:00+03:00" }),
+      order({ id: "p2", status: "in_progress", createdAt: "2026-10-05T09:00:00+03:00" }),
+      order({ id: "rd", status: "ready", createdAt: "2026-10-06T09:00:00+03:00", readyAt: "2026-10-06T09:20:00+03:00" }),
+      // Moved on: was preparing/ready earlier today but is delivered or cancelled now.
+      order({ id: "d", status: "delivered", createdAt: "2026-10-07T08:00:00+03:00", preparationStartedAt: "2026-10-07T08:05:00+03:00", readyAt: "2026-10-07T08:15:00+03:00", deliveredAt: "2026-10-07T08:30:00+03:00" }),
+      order({ id: "c", status: "cancelled", createdAt: "2026-10-07T08:00:00+03:00" }),
+    ];
+    for (const period of ["today", "7d", "all"] as const) {
+      const stats = computeOrderDashboard(orders, now, { period });
+      expect([stats.received, stats.preparing, stats.ready]).toEqual([1, 2, 1]);
+    }
+    expect(computeOrderDashboard(orders, now).deliveredToday).toBe(1);
+    expect(computeOrderDashboard(orders, now, { period: "yesterday" }).deliveredToday).toBe(0);
   });
 
   it("keeps stuck active orders in overdue even when they are not from today", () => {
@@ -91,7 +110,7 @@ describe("dashboard counters", () => {
     });
     expect(overdueLevel(stuck, now.getTime())).toBe("critical");
     expect(computeOrderDashboard([stuck], now).overdue).toBe(1);
-    expect(computeOrderDashboard([stuck], now).preparing).toBe(0);
+    expect(computeOrderDashboard([stuck], now).preparing).toBe(1);
     expect(computeOrderDashboard([stuck], now, { period: "all" }).preparing).toBe(1);
   });
 
@@ -129,10 +148,49 @@ describe("dashboard counters", () => {
       ],
     });
     expect(stats.loaded).toBe(2);
-    expect(stats.received).toBe(1);
+    expect(stats.received).toBe(0);
     expect(stats.cardRevenue).toBe(30);
     expect(stats.cashRevenue).toBe(0);
     expect(stats.todayRevenue).toBe(30);
+  });
+
+  it("shows unpaid cash orders as awaiting payment, separately from paid revenue", () => {
+    const delivered = order({
+      id: "cash-delivered",
+      status: "delivered",
+      paymentMethod: "cash",
+      createdAt: "2026-10-07T08:00:00+03:00",
+      deliveredAt: "2026-10-07T08:30:00+03:00",
+      total: 42,
+    });
+    const preparing = order({ id: "cash-prep", status: "preparing", paymentMethod: "cash", createdAt: "2026-10-07T09:00:00+03:00", total: 18 });
+    const yesterday = order({ id: "cash-old", status: "delivered", paymentMethod: "cash", createdAt: "2026-10-06T09:00:00+03:00", total: 30 });
+    const cardPending = order({ id: "card-pending", status: "received", paymentMethod: "card", createdAt: "2026-10-07T09:00:00+03:00" });
+    const cancelled = order({ id: "cash-cancelled", status: "cancelled", paymentMethod: "cash", createdAt: "2026-10-07T09:00:00+03:00" });
+    const test = order({ id: "cash-test", status: "pending", paymentMethod: "cash", isTestOrder: true, createdAt: "2026-10-07T09:00:00+03:00" });
+    const all = [delivered, preparing, yesterday, cardPending, cancelled, test];
+
+    const stats = computeOrderDashboard(all, now, { payments: [] });
+    expect(stats.todayRevenue).toBe(0);
+    expect(stats.pendingRevenue).toBe(60);
+    expect(stats.pendingCount).toBe(2);
+    expect(computeOrderDashboard(all, now, { period: "7d", payments: [] }).pendingRevenue).toBe(90);
+
+    expect(isAwaitingCashPayment(delivered)).toBe(true);
+    expect(isAwaitingCashPayment(cardPending)).toBe(false);
+    expect(isAwaitingCashPayment(cancelled)).toBe(false);
+    expect(isAwaitingCashPayment(test)).toBe(false);
+    expect(isAwaitingCashPayment({ ...delivered, paymentMethod: undefined })).toBe(true);
+    expect(isAwaitingCashPayment({ ...delivered, paymentProvider: "HYP" })).toBe(false);
+
+    // After "cash payment received" the order moves from pending to paid revenue.
+    const paid = { ...delivered, paymentStatus: "paid" as const, paidAt: "2026-10-07T08:31:00+03:00" };
+    const after = computeOrderDashboard([paid, preparing], now, { payments: [] });
+    expect(isAwaitingCashPayment(paid)).toBe(false);
+    expect(after.cashRevenue).toBe(42);
+    expect(after.todayRevenue).toBe(42);
+    expect(after.pendingRevenue).toBe(18);
+    expect(after.pendingCount).toBe(1);
   });
 
   it("keeps cash separate and drops cancelled or pending charges", () => {

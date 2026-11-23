@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,20 +18,48 @@ import {
 } from "@/services/storageService";
 import { SystemStatusCard } from "@/features/admin/system-status-card";
 import { MeasureUnitsSettings } from "@/features/admin/measure-units-settings";
+import { OpeningHoursEditor } from "@/features/admin/opening-hours-editor";
+import { DEFAULT_OPENING_HOURS, legacyHoursText } from "@/lib/settings/opening-hours";
 import { useT } from "@/components/providers/locale-provider";
 import { AdminPageHeader } from "./components/admin-page-header";
 import { AdminCard } from "./components/admin-card";
 import { adminInput } from "./components/admin-styles";
+import { UnsavedChangesBar, useUnsavedChangesGuard } from "./components/unsaved-changes-bar";
+
+/** JSON with sorted object keys, so field order from the database never counts as a change. */
+function stableJson(value: unknown): string {
+  return JSON.stringify(value, (_key, val: unknown) =>
+    val && typeof val === "object" && !Array.isArray(val)
+      ? Object.fromEntries(Object.entries(val as Record<string, unknown>).sort(([x], [y]) => x.localeCompare(y)))
+      : val
+  );
+}
 
 export function SettingsAdmin() {
   const t = useT();
+  /** Draft being edited. */
   const [settings, setSettings] = useState<AppSettings | null>(null);
+  /** Last version known to be stored in the database. */
+  const [baseline, setBaseline] = useState<AppSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const dirty = Boolean(settings && baseline && stableJson(settings) !== stableJson(baseline));
+  const dirtyRef = useRef(false);
+  dirtyRef.current = dirty;
 
   useEffect(() => {
-    return subscribeToSettings(setSettings, () => {});
+    return subscribeToSettings(
+      (data) => {
+        setBaseline(data);
+        // A live update must not overwrite edits that were not saved yet.
+        if (!dirtyRef.current) setSettings(data);
+      },
+      (message) => setSaveError(message)
+    );
   }, []);
+
+  useUnsavedChangesGuard(dirty);
 
   if (!settings) {
     return (
@@ -42,11 +70,35 @@ export function SettingsAdmin() {
   }
 
   const handleSave = async () => {
+    if (saving) return;
     setSaving(true);
-    await updateSettings(settings);
+    setSaveError(null);
+    const result = await updateSettings(settings);
     setSaving(false);
+    if (!result.success) {
+      setSaveError(t("admin.unsaved.saveFailed"));
+      return;
+    }
+    setBaseline(settings);
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const discardChanges = () => {
+    if (baseline) setSettings(baseline);
+    setSaveError(null);
+  };
+
+  /**
+   * Images are uploaded (and the previous file deleted) right away, so the new URL is stored
+   * immediately too; otherwise leaving or discarding would point at a deleted file.
+   */
+  const saveImageField = (field: "logoUrl" | "storeImageUrl", url: string) => {
+    setSettings((current) => (current ? { ...current, [field]: url } : current));
+    setBaseline((current) => (current ? { ...current, [field]: url } : current));
+    void updateSettings({ [field]: url }).then((result) => {
+      if (!result.success) setSaveError(t("admin.unsaved.saveFailed"));
+    });
   };
 
   const themeLabels = {
@@ -61,14 +113,19 @@ export function SettingsAdmin() {
         title={t("admin.settings.title")}
         subtitle={t("admin.settings.subtitle")}
         actions={
-          <Button onClick={handleSave} disabled={saving} className="h-10 rounded-xl">
+          <Button onClick={handleSave} disabled={saving || !dirty} className="h-10 rounded-xl">
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
             {saved ? t("admin.action.saved") : t("admin.settings.saveChanges")}
           </Button>
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {saveError ? (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{saveError}</p>
+      ) : null}
+
+      {/* items-start: each card is as tall as its own content (no stretched empty space). */}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
         <AdminCard title={t("admin.settings.businessInfo")}>
           <div className="space-y-4">
             <div>
@@ -96,33 +153,40 @@ export function SettingsAdmin() {
               />
             </div>
             <div>
-              <Label>{t("admin.settings.hours")}</Label>
-              <Textarea
-                value={settings.hours}
-                onChange={(e) => setSettings({ ...settings, hours: e.target.value })}
-                className={`mt-1 rounded-xl ${adminInput}`}
+              <Label className="mb-1 block">{t("admin.settings.hours")}</Label>
+              <OpeningHoursEditor
+                value={settings.openingHours ?? DEFAULT_OPENING_HOURS}
+                legacyText={settings.openingHours ? undefined : settings.hours}
+                onChange={(openingHours) =>
+                  // Keep the legacy free-text field in sync for older readers.
+                  setSettings({ ...settings, openingHours, hours: legacyHoursText(openingHours) })
+                }
               />
             </div>
           </div>
         </AdminCard>
 
         <AdminCard title={t("admin.settings.branding")}>
-          <div className="space-y-4">
+          <div className="flex flex-wrap items-start gap-3">
             <ImageUpload
               label={t("admin.settings.logo")}
               value={settings.logoUrl}
-              onChange={(url) => setSettings({ ...settings, logoUrl: url })}
+              onChange={(url) => saveImageField("logoUrl", url)}
               onUpload={(file, onProgress) => uploadSettingsImage(file, "logo", onProgress)}
               onDelete={deleteImageByUrl}
+              fit="contain"
+              className="w-full max-w-[22rem] rounded-xl border border-beige-dark/15 p-3 dark:border-white/10"
             />
             <ImageUpload
               label={t("admin.settings.storeImage")}
               value={settings.storeImageUrl}
-              onChange={(url) => setSettings({ ...settings, storeImageUrl: url })}
+              onChange={(url) => saveImageField("storeImageUrl", url)}
               onUpload={(file, onProgress) => uploadSettingsImage(file, "store", onProgress)}
               onDelete={deleteImageByUrl}
+              fit="contain"
+              className="w-full max-w-[22rem] rounded-xl border border-beige-dark/15 p-3 dark:border-white/10"
             />
-            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-beige-dark/20 px-4 py-3 dark:border-white/10">
+            <label className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-beige-dark/15 px-3 py-2 dark:border-white/10">
               <input
                 type="checkbox"
                 checked={settings.showProductThumbnails}
@@ -220,6 +284,13 @@ export function SettingsAdmin() {
           </div>
         </AdminCard>
       </div>
+
+      <UnsavedChangesBar
+        visible={dirty}
+        saving={saving}
+        onSave={() => void handleSave()}
+        onDiscard={discardChanges}
+      />
     </div>
   );
 }

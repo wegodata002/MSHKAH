@@ -119,6 +119,9 @@ export interface FirestoreOrder {
   completedAt?: Timestamp | null;
   cancelledAt?: Timestamp | null;
   paidAt?: Timestamp | null;
+  /** Staff member who confirmed a cash payment at the counter. */
+  paidBy?: string;
+  paidVia?: "cash_counter";
   alerts?: {
     receivedCritical?: FirestoreOrderAlert;
     preparingCritical?: FirestoreOrderAlert;
@@ -241,7 +244,10 @@ export interface FirestoreSettings {
   storeImageUrl: string;
   phone: string;
   address: string;
+  /** Legacy free text, kept in sync with openingHours for older readers. */
   hours: string;
+  /** Weekly schedule: { sun..sat: { open, from: "HH:MM", to: "HH:MM" } }. */
+  openingHours?: Record<string, { open: boolean; from: string; to: string }> | null;
   currency: string;
   theme: {
     primary: string;
