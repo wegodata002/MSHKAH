@@ -1,10 +1,9 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { AlertTriangle, X } from "lucide-react";
 import { useT } from "@/components/providers/locale-provider";
-import { testFirebaseConnection, isConnectionHealthy } from "@/services/connectionService";
 import type { ConnectionTestResult } from "@/services/connectionService";
 
 interface FirebaseContextValue {
@@ -21,37 +20,12 @@ const FirebaseContext = createContext<FirebaseContextValue>({
 
 export function FirebaseProvider({ children }: { children: ReactNode }) {
   const t = useT();
-  const [connected, setConnected] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [result, setResult] = useState<ConnectionTestResult | null>(null);
+  // The write-based connection test no longer runs for every visitor;
+  // admins run it on demand from the System Status card (admin settings).
+  const connected = true;
+  const loading = false;
+  const result: ConnectionTestResult | null = null;
   const [showError, setShowError] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-
-    async function checkConnection() {
-      try {
-        const testResult = await testFirebaseConnection();
-        if (!mounted) return;
-        setResult(testResult);
-        const healthy = isConnectionHealthy(testResult);
-        setConnected(healthy);
-        if (!healthy) setShowError(true);
-      } catch {
-        if (mounted) {
-          setConnected(false);
-          setShowError(true);
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    }
-
-    checkConnection();
-    return () => {
-      mounted = false;
-    };
-  }, []);
 
   return (
     <FirebaseContext.Provider value={{ connected, loading, result }}>
