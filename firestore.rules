@@ -91,8 +91,10 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Only the admin System Status card writes here. Deploy ONLY after the
+    // storefront page-load connection test has been removed in production.
     match /connection-test/{id} {
-      allow read, write: if true;
+      allow read, write: if isStaff();
     }
 
     match /modifier_groups/{id} {
