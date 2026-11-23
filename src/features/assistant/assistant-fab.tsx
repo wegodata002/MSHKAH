@@ -12,7 +12,14 @@ export function AssistantFab() {
   const pathname = usePathname();
   const { toggle, isOpen, enabled } = useAssistant();
 
-  if (pathname.startsWith("/admin") || !enabled) return null;
+  // Hidden on checkout/cart so it never covers form fields, prices or "Place Order".
+  if (
+    pathname.startsWith("/admin") ||
+    pathname.startsWith("/checkout") ||
+    pathname.startsWith("/cart") ||
+    !enabled
+  )
+    return null;
 
   return (
     <motion.button
