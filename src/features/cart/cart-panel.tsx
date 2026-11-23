@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Minus, Pencil, Plus, Trash2, ShoppingBag, Tag, ArrowRight } from "lucide-react";
+import { Minus, Pencil, Plus, Trash2, ShoppingBag, Tag, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPrice } from "@/lib/utils";
@@ -142,6 +142,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
     total,
     itemCount,
     applyCoupon,
+    removeCoupon,
     couponCode,
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
@@ -156,6 +157,20 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
     const ok = applyCoupon(couponInput);
     setCouponError(ok ? null : t("error.generic", "Invalid coupon code"));
   };
+
+  // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
+  const handleCouponInputChange = (value: string) => {
+    setCouponInput(value);
+    if (!value.trim() && couponCode) {
+      removeCoupon();
+      setCouponError(null);
+    }
+  };
+
+  // Keep an applied coupon visible in the field (e.g. applied elsewhere or after reload).
+  useEffect(() => {
+    if (couponCode) setCouponInput((current) => (current.trim() ? current : couponCode));
+  }, [couponCode]);
 
   return (
     <div className={className}>
@@ -206,7 +221,13 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
           <div className="mb-3 flex gap-2">
             <Input
               value={couponInput}
-              onChange={(e) => setCouponInput(e.target.value)}
+              onChange={(e) => handleCouponInputChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  handleCoupon();
+                }
+              }}
               placeholder={t("cart.coupon", "Coupon code")}
               aria-label={t("cart.coupon", "Coupon code")}
               className="h-9 text-base md:text-sm"
@@ -231,7 +252,21 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
             </div>
             {discount > 0 && (
               <div className="flex justify-between text-turquoise">
-                <span>{t("cart.discount", "Discount")}</span>
+                <span className="inline-flex items-center gap-1">
+                  {t("cart.discount", "Discount")}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      removeCoupon();
+                      setCouponInput("");
+                      setCouponError(null);
+                    }}
+                    aria-label={t("cart.removeCoupon", "Remove coupon")}
+                    className="inline-flex h-6 w-6 items-center justify-center rounded-full text-coffee/50 transition-colors hover:bg-beige/60 hover:text-coffee"
+                  >
+                    <X className="h-3.5 w-3.5" strokeWidth={2} />
+                  </button>
+                </span>
                 <span>-{formatPrice(discount)}</span>
               </div>
             )}

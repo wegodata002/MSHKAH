@@ -92,6 +92,16 @@ describe("cart coupon lifecycle (one order only)", () => {
     expect(next.couponDiscount).toBe(0);
   });
 
+  it("REMOVE_COUPON clears the coupon and keeps the products", () => {
+    const next = cartReducer(withCoupon([line("latte"), line("cake", 2)]), { type: "REMOVE_COUPON" });
+    expect(next.couponCode).toBe("");
+    expect(next.couponDiscount).toBe(0);
+    expect(next.items.map((i) => [i.lineId, i.quantity])).toEqual([
+      ["line-latte", 1],
+      ["line-cake", 2],
+    ]);
+  });
+
   it("recomputes the rate on reload and drops forged rates / unknown codes", () => {
     const forged = cartReducer(empty, {
       type: "HYDRATE",

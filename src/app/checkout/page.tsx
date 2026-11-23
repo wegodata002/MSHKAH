@@ -17,6 +17,7 @@ import {
   CreditCard,
   ShoppingBag,
   Tag,
+  X,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CheckoutProgress } from "@/components/checkout/checkout-progress";
@@ -59,7 +60,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const {
     items, subtotal, discount, total,
-    clearCart, couponCode, applyCoupon,
+    clearCart, couponCode, applyCoupon, removeCoupon,
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -70,6 +71,20 @@ export default function CheckoutPage() {
     const ok = applyCoupon(couponInput);
     setCouponError(ok ? null : t("error.generic", "Invalid coupon code"));
   };
+
+  // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
+  const handleCouponInputChange = (value: string) => {
+    setCouponInput(value);
+    if (!value.trim() && couponCode) {
+      removeCoupon();
+      setCouponError(null);
+    }
+  };
+
+  // Keep an applied coupon visible in the field (e.g. applied in the cart or after reload).
+  useEffect(() => {
+    if (couponCode) setCouponInput((current) => (current.trim() ? current : couponCode));
+  }, [couponCode]);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -432,7 +447,7 @@ export default function CheckoutPage() {
                     <div className="mt-4 flex gap-2">
                       <Input
                         value={couponInput}
-                        onChange={(e) => setCouponInput(e.target.value)}
+                        onChange={(e) => handleCouponInputChange(e.target.value)}
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
@@ -459,7 +474,21 @@ export default function CheckoutPage() {
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                       {discount > 0 && (
                         <div className="flex justify-between text-emerald-600">
-                          <span>{t("cart.discount")} ({couponCode})</span>
+                          <span className="inline-flex items-center gap-1">
+                            {t("cart.discount")} ({couponCode})
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removeCoupon();
+                                setCouponInput("");
+                                setCouponError(null);
+                              }}
+                              aria-label={t("cart.removeCoupon", "Remove coupon")}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-coffee/50 transition-colors hover:bg-beige/60 hover:text-coffee"
+                            >
+                              <X className="h-3.5 w-3.5" strokeWidth={2} />
+                            </button>
+                          </span>
                           <span>-{formatPrice(discount)}</span>
                         </div>
                       )}

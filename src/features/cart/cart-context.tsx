@@ -52,7 +52,8 @@ type CartAction =
   | { type: "OPEN_CART" }
   | { type: "CLOSE_CART" }
   | { type: "TOGGLE_CART" }
-  | { type: "SET_COUPON"; code: string; discount: number };
+  | { type: "SET_COUPON"; code: string; discount: number }
+  | { type: "REMOVE_COUPON" };
 
 interface AddItemOptions {
   selections?: SelectedModifier[];
@@ -83,6 +84,7 @@ interface CartContextValue {
       Pick<AddItemOptions, "notes">
   ) => void;
   applyCoupon: (code: string) => boolean;
+  removeCoupon: () => void;
   clearCart: () => void;
   openCart: () => void;
   closeCart: () => void;
@@ -206,6 +208,8 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       return { ...state, isOpen: !state.isOpen };
     case "SET_COUPON":
       return { ...state, couponCode: action.code, couponDiscount: action.discount };
+    case "REMOVE_COUPON":
+      return { ...state, couponCode: "", couponDiscount: 0 };
     default:
       return state;
   }
@@ -312,6 +316,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
     return false;
   }, []);
 
+  const removeCoupon = useCallback(() => dispatch({ type: "REMOVE_COUPON" }), []);
+
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
   const subtotal = state.items.reduce(
     (sum, item) =>
@@ -339,6 +345,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         updateQuantity,
         updateConfiguredItem,
         applyCoupon,
+        removeCoupon,
         clearCart,
         openCart,
         closeCart,
