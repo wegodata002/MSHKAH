@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Send, Phone, MessageCircle, Trash2, ShoppingBag, MapPin } from "lucide-react";
+import { X, Send, Phone, MessageCircle, Trash2, ShoppingBag, MapPin, Maximize2, Minimize2 } from "lucide-react";
 import { useAssistant, useAssistantCart } from "@/features/assistant/assistant-context";
 import {
   AssistantAvatar,
@@ -42,6 +42,13 @@ export function AssistantDrawer() {
   } = useAssistant();
 
   const [input, setInput] = useState("");
+  // Full-screen chat (desktop + mobile); resets to the normal size whenever the drawer closes.
+  const [expanded, setExpanded] = useState(false);
+  const [wasOpen, setWasOpen] = useState(isOpen);
+  if (wasOpen !== isOpen) {
+    setWasOpen(isOpen);
+    if (!isOpen) setExpanded(false);
+  }
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -109,15 +116,21 @@ export function AssistantDrawer() {
               // Above the bottom nav (z-index 100) so the message input is never covered.
               "fixed z-[111] flex flex-col glass shadow-premium overflow-hidden",
               "border border-white/40 dark:border-white/10",
-              "inset-x-0 bottom-0 max-h-[min(92vh,720px)] rounded-t-3xl",
-              "md:inset-y-0 md:end-0 md:start-auto md:w-[min(100vw-2rem,420px)] md:max-h-none md:rounded-s-3xl md:rounded-te-none"
+              expanded
+                ? "inset-0 h-dvh max-h-none rounded-none"
+                : cn(
+                    "inset-x-0 bottom-0 max-h-[min(92vh,720px)] rounded-t-3xl",
+                    "md:inset-y-0 md:end-0 md:start-auto md:w-[min(100vw-2rem,420px)] md:max-h-none md:rounded-s-3xl md:rounded-te-none"
+                  )
             )}
             initial={{ y: "100%", opacity: 0.9 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: "100%", opacity: 0 }}
             transition={{ type: "spring", stiffness: 380, damping: 34 }}
           >
-            <div className="mx-auto mt-3 h-1 w-12 shrink-0 rounded-full bg-beige-dark/50 md:hidden" />
+            {!expanded && (
+              <div className="mx-auto mt-3 h-1 w-12 shrink-0 rounded-full bg-beige-dark/50 md:hidden" />
+            )}
 
             <div className="flex items-center justify-between gap-3 border-b border-beige-dark/20 px-4 py-3">
               <div className="flex items-center gap-3">
@@ -157,6 +170,22 @@ export function AssistantDrawer() {
                 </button>
                 <button
                   type="button"
+                  onClick={() => setExpanded((v) => !v)}
+                  aria-label={
+                    expanded
+                      ? t("assistant.collapse", "Restore normal size")
+                      : t("assistant.expand", "Expand to full screen")
+                  }
+                  className="flex h-9 w-9 items-center justify-center rounded-xl text-coffee/60 hover:bg-beige/60"
+                >
+                  {expanded ? (
+                    <Minimize2 className="h-4 w-4" strokeWidth={1.75} />
+                  ) : (
+                    <Maximize2 className="h-4 w-4" strokeWidth={1.75} />
+                  )}
+                </button>
+                <button
+                  type="button"
                   onClick={close}
                   aria-label={t("common.close")}
                   className="flex h-9 w-9 items-center justify-center rounded-xl text-coffee/60 hover:bg-beige/60"
@@ -166,7 +195,8 @@ export function AssistantDrawer() {
               </div>
             </div>
 
-            <div className="flex gap-2 overflow-x-auto px-4 py-2.5 hide-scrollbar">
+            {/* All quick actions visible: content-width tags that wrap onto the next line (no sideways scrolling). */}
+            <div className="flex flex-wrap gap-1.5 px-4 py-2.5">
               {quickActions.map((action) => {
                 const Icon = resolveAssistantIcon(action);
                 const label = action.label[locale];
@@ -176,9 +206,9 @@ export function AssistantDrawer() {
                     type="button"
                     disabled={isLoading}
                     onClick={() => void sendQuickAction(action.id, label)}
-                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-beige-dark/25 bg-warm-white/70 px-3 py-1.5 text-xs font-medium text-coffee transition-colors hover:bg-beige/60 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 whitespace-nowrap rounded-full border border-beige-dark/25 bg-warm-white/70 px-2.5 py-1 text-xs font-medium text-coffee transition-colors hover:bg-beige/60 disabled:opacity-50"
                   >
-                    <Icon className="h-3.5 w-3.5 text-turquoise" strokeWidth={1.75} aria-hidden />
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-turquoise" strokeWidth={1.75} aria-hidden />
                     {label}
                   </button>
                 );

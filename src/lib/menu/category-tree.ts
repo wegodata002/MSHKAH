@@ -161,6 +161,8 @@ export function applyDisplayFilters(
 
   const bySortOrder = (a: Product, b: Product) => a.sortOrder - b.sortOrder;
   switch (filters?.sortBy) {
+    case "menu":
+      return [...result].sort(bySortOrder);
     case "price-asc":
       return [...result].sort((a, b) => a.price - b.price || bySortOrder(a, b));
     case "price-desc":
@@ -177,4 +179,81 @@ export function applyDisplayFilters(
     default:
       return sortProducts(result);
   }
+}
+
+/** Case-insensitive match on product names and descriptions in all languages. */
+export function matchesCatalogSearch(product: Product, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return [
+    product.name_he,
+    product.name_ar,
+    product.name_en,
+    product.description_he,
+    product.description_ar,
+    product.description_en,
+  ].some((text) => (text ?? "").toLowerCase().includes(q));
+}
+
+export interface CatalogSectionGroup {
+  /** null = products directly in the root category. */
+  subcategory: Category | null;
+  products: Product[];
+}
+
+export interface CatalogSection {
+  category: Category;
+  groups: CatalogSectionGroup[];
+  count: number;
+}
+
+/**
+ * Single-page catalog: one section per root category (in the admin's sortOrder), each with
+ * its products grouped by subcategory. Display filters + sort and the search query apply to
+ * every section; sections (and subcategory groups) left empty are dropped.
+ */
+export function buildCatalogSections(
+  products: Product[],
+  categories: Category[],
+  filters: ProductFilters | undefined,
+  locale: Locale,
+  search = ""
+): CatalogSection[] {
+  const visible = products.filter(
+    (p) => isPublicMenuProduct(p) && matchesCatalogSearch(p, search)
+  );
+
+  return getRootCategories(categories)
+    .map((root) => {
+      const children = categories
+        .filter((c) => c.parentId === root.id && isPublicMenuCategory(c))
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+      const childIds = new Set(children.map((c) => c.id));
+      const subOf = (p: Product): string | null =>
+        p.subcategoryId && childIds.has(p.subcategoryId)
+          ? p.subcategoryId
+          : childIds.has(p.categoryId)
+            ? p.categoryId
+            : null;
+      const inRoot = visible.filter(
+        (p) =>
+          p.categoryId === root.id ||
+          childIds.has(p.categoryId) ||
+          (p.subcategoryId != null && childIds.has(p.subcategoryId))
+      );
+
+      const groups: CatalogSectionGroup[] = [
+        { subcategory: null, products: inRoot.filter((p) => subOf(p) === null) },
+        ...children.map((child) => ({
+          subcategory: child,
+          products: inRoot.filter((p) => subOf(p) === child.id),
+        })),
+      ]
+        .map((group) => ({ ...group, products: applyDisplayFilters(group.products, filters, locale) }))
+        .filter((group) => group.products.length > 0);
+
+      const count = groups.reduce((sum, group) => sum + group.products.length, 0);
+      return { category: root, groups, count };
+    })
+    .filter((section) => section.count > 0);
 }

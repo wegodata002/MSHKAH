@@ -44,6 +44,10 @@ describe("applyDisplayFilters (customer catalog)", () => {
     expect(ids(applyDisplayFilters(menu, { sortBy: "popular" }, "he"))).toEqual(ids(sortProducts(menu)));
   });
 
+  it("'menu' sorts by the admin's sortOrder only (popular items are not pulled to the top)", () => {
+    expect(ids(applyDisplayFilters(menu, { sortBy: "menu" }, "he"))).toEqual(["cake", "latte", "salad", "espresso"]);
+  });
+
   it("sorts by price ascending and descending", () => {
     expect(ids(applyDisplayFilters(menu, { sortBy: "price-asc" }, "he"))).toEqual(["espresso", "latte", "salad", "cake"]);
     expect(ids(applyDisplayFilters(menu, { sortBy: "price-desc" }, "he"))).toEqual(["cake", "salad", "latte", "espresso"]);

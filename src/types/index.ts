@@ -168,7 +168,8 @@ export interface ProductFilters {
   isNew?: boolean;
   available?: boolean;
   active?: boolean;
-  sortBy?: "newest" | "price-asc" | "price-desc" | "name-asc" | "popular";
+  /** "menu" = the order set by the admin (sortOrder only). */
+  sortBy?: "menu" | "newest" | "price-asc" | "price-desc" | "name-asc" | "popular";
 }
 
 export interface BannerSlide {
