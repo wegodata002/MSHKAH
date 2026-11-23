@@ -50,7 +50,8 @@ function AdminFrame({
   const full = active && prefs.mode === "full";
   return (
       <div
-        className="min-h-screen overflow-x-hidden bg-cream dark:bg-[#120e0c]"
+        // overflow-x-clip (not -hidden): hidden would make this a scroll container and break the sticky sidebar.
+        className="min-h-screen overflow-x-clip bg-cream dark:bg-[#120e0c]"
         data-admin
       >
         {/* Drawer overlay — mobile & tablet only (< lg) */}
