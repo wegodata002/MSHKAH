@@ -6,39 +6,70 @@ service firebase.storage {
       return request.auth != null;
     }
 
+    // Cross-service lookup of users/{uid} in Firestore — mirrors
+    // isStaff()/isAdmin() in firestore.rules. Requires the one-time IAM
+    // grant that `firebase deploy` prompts for on first deploy.
+    function userPath() {
+      return /databases/(default)/documents/users/$(request.auth.uid);
+    }
+
+    function isActiveUser() {
+      return isSignedIn()
+        && firestore.exists(userPath())
+        && firestore.get(userPath()).data.get('active', true) != false;
+    }
+
+    function isStaff() {
+      return isActiveUser()
+        && firestore.get(userPath()).data.role in ['Admin', 'Manager', 'Employee'];
+    }
+
+    function isAdmin() {
+      return isActiveUser() && firestore.get(userPath()).data.role == 'Admin';
+    }
+
+    // Image uploads from the admin UI (accept="image/*"), max 10 MB.
+    function isImageUpload() {
+      return request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
     match /products/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create, update: if isStaff() && isImageUpload();
+      allow delete: if isStaff();
     }
 
     match /categories/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create, update: if isStaff() && isImageUpload();
+      allow delete: if isStaff();
     }
 
     match /banners/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create, update: if isStaff() && isImageUpload();
+      allow delete: if isStaff();
     }
 
     match /settings/{allPaths=**} {
       allow read: if true;
-      allow write: if isSignedIn();
+      allow create, update: if isStaff() && isImageUpload();
+      allow delete: if isStaff();
     }
 
+    // Financial documents: admin UI uploads purchase invoices; invoice-files
+    // and pos-z-reports are written by server routes via the Admin SDK.
     match /purchase-invoices/{allPaths=**} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isAdmin();
     }
 
     match /invoice-files/{allPaths=**} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isAdmin();
     }
 
     match /pos-z-reports/{allPaths=**} {
-      allow read: if isSignedIn();
-      allow write: if isSignedIn();
+      allow read, write: if isAdmin();
     }
 
     match /test/{allPaths=**} {

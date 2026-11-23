@@ -41,15 +41,27 @@ service cloud.firestore {
     }
 
     match /customers/{id} {
-      allow read: if isStaff() || id == 'guest-checkout';
-      allow create: if isStaff() || id == 'guest-checkout';
-      allow update: if isStaff() || id == 'guest-checkout';
+      // guest-checkout is no longer writable by anonymous visitors; the
+      // storefront's best-effort write is wrapped in try/catch, and server
+      // routes use the Admin SDK (which bypasses rules).
+      allow read: if isStaff();
+      allow create: if isStaff();
+      allow update: if isStaff();
       allow delete: if isStaff();
     }
 
     match /orders/{id} {
       allow read: if isStaff();
-      allow create: if true;
+      // Storefront checkout (createOrderFromCart) always sends exactly this
+      // shape. Payment status can only become 'paid' server-side (HYP).
+      allow create: if request.resource.data.status == 'pending'
+        && request.resource.data.paymentStatus == 'pending'
+        && request.resource.data.paymentMethod in ['cash', 'card']
+        && request.resource.data.total is number
+        && request.resource.data.total > 0
+        && request.resource.data.items is list
+        && request.resource.data.items.size() > 0
+        && request.resource.data.items.size() <= 100;
       allow update: if isStaff();
       allow delete: if isAdmin();
     }
