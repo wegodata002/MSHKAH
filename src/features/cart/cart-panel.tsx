@@ -202,19 +202,25 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
 
       {items.length > 0 && (
         <div className="shrink-0 border-t border-beige-dark/15 pt-4">
-          {!compact && (
-            <div className="mb-3 flex gap-2">
-              <Input
-                value={couponInput}
-                onChange={(e) => setCouponInput(e.target.value)}
-                placeholder={t("cart.coupon", "Coupon code")}
-                className="h-9 text-sm"
-              />
-              <Button variant="outline" size="sm" onClick={handleCoupon} className="shrink-0">
-                <Tag className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          )}
+          {/* Shown in the mobile/tablet drawer too. text-base below md avoids iOS focus zoom. */}
+          <div className="mb-3 flex gap-2">
+            <Input
+              value={couponInput}
+              onChange={(e) => setCouponInput(e.target.value)}
+              placeholder={t("cart.coupon", "Coupon code")}
+              aria-label={t("cart.coupon", "Coupon code")}
+              className="h-9 text-base md:text-sm"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleCoupon}
+              className="shrink-0"
+              aria-label={t("cart.coupon", "Coupon code")}
+            >
+              <Tag className="h-3.5 w-3.5" />
+            </Button>
+          </div>
           {couponError && <p className="mb-2 text-xs text-red-600">{couponError}</p>}
           {couponCode && <p className="mb-2 text-xs text-turquoise">{couponCode}</p>}
 
