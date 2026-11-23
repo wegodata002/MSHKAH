@@ -181,6 +181,7 @@ export default function CheckoutPage() {
           locale,
           orderType,
           deliveryAddress: orderType === "delivery" ? address.trim() : undefined,
+          couponCode: couponCode || undefined,
         });
         if (!result.success) {
           console.error("[checkout] order failed:", result.error, result.code);

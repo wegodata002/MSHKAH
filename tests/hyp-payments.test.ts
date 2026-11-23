@@ -5,9 +5,11 @@ import {
   amountFromOrderItems,
   authoritativeOrderAmount,
   amountsMatch,
+  chargeFromCatalogSum,
   formatHypAmount,
   parseHypAmount,
 } from "@/lib/payments/hyp/amounts";
+import { couponRate } from "@/lib/orders/coupons";
 import { applyHypCustomerParams } from "@/lib/payments/hyp/client";
 import { splitHypCustomerName } from "@/lib/payments/hyp/names";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
@@ -64,6 +66,51 @@ describe("HYP amount handling", () => {
     };
     expect(amountFromOrderItems(order)).toBe(52);
     expect(authoritativeOrderAmount(order)).toBe(52);
+  });
+});
+
+describe("HYP server-side coupon discount", () => {
+  it("ignores a forged client discount when there is no coupon", () => {
+    const forgedOrder = { discount: 99.99, total: 0.01, delivery: 0 };
+    const charge = chargeFromCatalogSum(100, forgedOrder);
+    expect(charge).toEqual({ amount: 100, discount: 0, subtotal: 100 });
+  });
+
+  it("applies exactly 10% for MISHKAT10 (case/space-insensitive)", () => {
+    expect(chargeFromCatalogSum(100, { couponCode: "MISHKAT10" })).toEqual({
+      amount: 90,
+      discount: 10,
+      subtotal: 100,
+    });
+    expect(chargeFromCatalogSum(44.5, { couponCode: "  mishkat10 " })).toEqual({
+      amount: 40.05,
+      discount: 4.45,
+      subtotal: 44.5,
+    });
+  });
+
+  it("applies exactly 15% for WELCOME15", () => {
+    expect(chargeFromCatalogSum(100, { couponCode: "WELCOME15" })).toEqual({
+      amount: 85,
+      discount: 15,
+      subtotal: 100,
+    });
+    expect(chargeFromCatalogSum(33, { couponCode: "welcome15" })).toEqual({
+      amount: 28.05,
+      discount: 4.95,
+      subtotal: 33,
+    });
+  });
+
+  it("gives no discount for unknown or empty codes", () => {
+    for (const code of ["FREE100", "MISHKAT", "", undefined, null, 15, "toString"]) {
+      expect(couponRate(code)).toBe(0);
+      expect(chargeFromCatalogSum(100, { couponCode: code })).toEqual({
+        amount: 100,
+        discount: 0,
+        subtotal: 100,
+      });
+    }
   });
 });
 

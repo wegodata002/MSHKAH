@@ -17,6 +17,7 @@ import {
   selectionsFingerprint,
 } from "@/lib/product-builder/engine";
 import { NEW_ORDER_FULFILLMENT } from "@/lib/orders/fulfillment";
+import { couponRate, normalizeCouponCode } from "@/lib/orders/coupons";
 import { isViewOnlyMenuSurface } from "@/lib/domains/host-routing";
 
 interface CartState {
@@ -289,13 +290,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const toggleCart = useCallback(() => dispatch({ type: "TOGGLE_CART" }), []);
 
   const applyCoupon = useCallback((code: string) => {
-    const normalized = code.trim().toUpperCase();
-    if (normalized === "MISHKAT10") {
-      dispatch({ type: "SET_COUPON", code: normalized, discount: 0.1 });
-      return true;
-    }
-    if (normalized === "WELCOME15") {
-      dispatch({ type: "SET_COUPON", code: normalized, discount: 0.15 });
+    const normalized = normalizeCouponCode(code);
+    const rate = couponRate(normalized);
+    if (rate > 0) {
+      dispatch({ type: "SET_COUPON", code: normalized, discount: rate });
       return true;
     }
     return false;

@@ -1,3 +1,5 @@
+import { couponRate } from "@/lib/orders/coupons";
+
 /** Format the authoritative order total for Hyp Pay Amount (up to 2 decimal digits). */
 export function formatHypAmount(total: number): string {
   if (!Number.isFinite(total)) return "";
@@ -43,6 +45,22 @@ export function amountFromOrderItems(order: {
   const discount = Math.max(0, money(order.discount));
   const delivery = Math.max(0, money(order.delivery));
   return Math.max(Math.round((itemsSum - discount + delivery) * 100) / 100, 0);
+}
+
+/**
+ * Final HYP charge from a server-computed catalog sum.
+ * The discount comes ONLY from the order's coupon code; any client-supplied
+ * `discount` amount on the order is ignored.
+ */
+export function chargeFromCatalogSum(
+  catalogSum: number,
+  order: { couponCode?: unknown; delivery?: unknown }
+): { amount: number; discount: number; subtotal: number } {
+  const subtotal = money(catalogSum);
+  const discount = money(subtotal * couponRate(order.couponCode));
+  const delivery = Math.max(0, money(order.delivery));
+  const amount = Math.max(money(subtotal - discount + delivery), 0);
+  return { amount, discount, subtotal };
 }
 
 /**
