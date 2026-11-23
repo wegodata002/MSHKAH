@@ -13,7 +13,6 @@ import { ProductFiltersBar } from "@/features/catalog/product-filters-bar";
 import { ProductGrid } from "@/features/catalog/product-grid";
 import { ProductDetailDrawer } from "@/features/catalog/product-detail-drawer";
 import { CatalogModifierPreviewProvider } from "@/features/catalog/catalog-modifier-preview-context";
-import { CatalogSeeder } from "@/components/catalog/catalog-seeder";
 import { Input } from "@/components/ui/input";
 import { useProducts, useAllProducts, useCategories } from "@/hooks/useProducts";
 import { useT, useLocale } from "@/components/providers/locale-provider";
@@ -165,7 +164,6 @@ export function CatalogView() {
   return (
     <CatalogModifierPreviewProvider>
     <>
-      <CatalogSeeder />
       <SiteHeader />
 
       {isHome && <HeroBanner />}

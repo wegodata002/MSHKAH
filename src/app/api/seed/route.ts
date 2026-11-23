@@ -1,8 +1,12 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { execSync } from "child_process";
 import { resolve } from "path";
+import { requireAdminOnly } from "@/lib/auth/verify-admin";
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const auth = await requireAdminOnly(request);
+  if (auth instanceof Response) return auth;
+
   try {
     const hasAdmin = !!(
       process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() ||
