@@ -50,6 +50,8 @@ import { useAuthFetch } from "@/lib/auth/auth-fetch";
 import { AdminPageHeader } from "./components/admin-page-header";
 import type { Order, OrderStatus, PaymentStatus } from "@/types";
 
+const ORDERS_PAGE_SIZE = 20;
+
 type OrdersTab = "active" | "history";
 type DateFilter = "today" | "week" | "all";
 type StatusFilter = OperationalOrderStatus | "all" | "overdue";
@@ -167,6 +169,13 @@ export function OrdersAdmin() {
       .filter((order) => !search || orderSearchText(order).includes(search))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [dateFilter, effectiveOrders, now, paymentFilter, search, statusFilter, tab, typeFilter]);
+
+  // "Show more": 20 orders at a time; any filter / search / tab change starts again from 20.
+  const listKey = [tab, statusFilter, paymentFilter, typeFilter, dateFilter, search].join("|");
+  const [visible, setVisible] = useState({ key: listKey, count: ORDERS_PAGE_SIZE });
+  const visibleCount = visible.key === listKey ? visible.count : ORDERS_PAGE_SIZE;
+  const shownOrders = filtered.slice(0, visibleCount);
+  const hiddenOrders = filtered.length - shownOrders.length;
 
   const activeOrders = useMemo(
     () =>
@@ -499,7 +508,7 @@ export function OrdersAdmin() {
       {loading ? (
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           {Array.from({ length: 4 }).map((_, index) => (
-            <Skeleton key={index} className="h-64 rounded-2xl" />
+            <Skeleton key={index} className="h-24 rounded-2xl" />
           ))}
         </div>
       ) : filtered.length === 0 ? (
@@ -508,7 +517,7 @@ export function OrdersAdmin() {
         </div>
       ) : (
         <div className="mt-5 grid items-start gap-4 md:grid-cols-2">
-          {filtered.map((order) => (
+          {shownOrders.map((order) => (
             <OrderCard
               key={order.id}
               order={order}
@@ -539,6 +548,20 @@ export function OrdersAdmin() {
               })()}
             />
           ))}
+        </div>
+      )}
+
+      {!loading && hiddenOrders > 0 && (
+        <div className="mt-4 flex justify-center">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setVisible({ key: listKey, count: visibleCount + ORDERS_PAGE_SIZE })}
+          >
+            {t("admin.orders.showMore")
+              .replace("{count}", String(Math.min(ORDERS_PAGE_SIZE, hiddenOrders)))
+              .replace("{total}", String(hiddenOrders))}
+          </Button>
         </div>
       )}
 
