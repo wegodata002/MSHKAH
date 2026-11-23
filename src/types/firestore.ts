@@ -93,6 +93,8 @@ export interface FirestoreOrder {
   status: OrderStatus;
   subtotal: number;
   discount: number;
+  /** Normalized coupon code; the server derives the card-payment discount from it. */
+  couponCode?: string;
   delivery: number;
   total: number;
   paymentMethod: string;

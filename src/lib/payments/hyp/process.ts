@@ -2,7 +2,11 @@ import { FieldValue } from "firebase-admin/firestore";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { COLLECTIONS } from "@/lib/firebase/collections";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
-import { authoritativeOrderAmount, formatHypAmount } from "@/lib/payments/hyp/amounts";
+import {
+  authoritativeOrderAmount,
+  chargeFromCatalogSum,
+  formatHypAmount,
+} from "@/lib/payments/hyp/amounts";
 import { paymentAudit } from "@/lib/payments/hyp/audit";
 import { createHypPaymentPage, verifyHypRedirect } from "@/lib/payments/hyp/client";
 import { HypConfigError, isHypConfigured } from "@/lib/payments/hyp/config";
@@ -27,7 +31,9 @@ function pageLangFromLocale(locale?: string): "HEB" | "ENG" {
   return locale === "en" ? "ENG" : "HEB";
 }
 
-async function trustedChargeAmount(order: FirestoreOrder): Promise<number> {
+async function trustedChargeAmount(
+  order: FirestoreOrder
+): Promise<{ amount: number; discount: number; subtotal: number }> {
   const items = order.items ?? [];
   if (items.length === 0) {
     throw new HypPaymentError("Order has no items", "INVALID_AMOUNT", 400);
@@ -56,9 +62,8 @@ async function trustedChargeAmount(order: FirestoreOrder): Promise<number> {
     }
     catalogSum += (catalogPrice + extras) * qty;
   }
-  const discount = Number(order.discount) || 0;
-  const delivery = Number(order.delivery) || 0;
-  return Math.max(Math.round((catalogSum - discount + delivery) * 100) / 100, 0);
+  // Discount is derived from the stored coupon code only — never order.discount.
+  return chargeFromCatalogSum(catalogSum, order);
 }
 
 export async function createHypPaymentAttempt(
@@ -107,12 +112,17 @@ export async function createHypPaymentAttempt(
     order = { ...order, ...customerPatch };
   }
 
-  const amount = await trustedChargeAmount(order);
+  const { amount, discount, subtotal } = await trustedChargeAmount(order);
   if (amount <= 0) {
     throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
   }
-  if (amount !== authoritativeOrderAmount(order) || amount !== order.total) {
-    await orderRef.update({ total: amount, subtotal: amount + (order.discount ?? 0) });
+  if (
+    amount !== authoritativeOrderAmount(order) ||
+    amount !== order.total ||
+    discount !== order.discount
+  ) {
+    await orderRef.update({ total: amount, subtotal, discount });
+    order = { ...order, total: amount, subtotal, discount };
   }
 
   const customerEmail = normalizeCustomerEmail(order.customerEmail);

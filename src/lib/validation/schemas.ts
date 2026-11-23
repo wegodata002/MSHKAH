@@ -86,6 +86,7 @@ export const orderSchema = z.object({
   status: z.enum(["pending", "confirmed", "preparing", "ready", "delivered", "cancelled"]),
   subtotal: z.number().min(0),
   discount: z.number().min(0).default(0),
+  couponCode: z.string().optional(),
   delivery: z.number().min(0).default(0),
   total: z.number().positive("Total must be greater than 0"),
   paymentMethod: z.string().default("cash"),

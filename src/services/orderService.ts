@@ -40,6 +40,7 @@ import {
   collectKitchenNotes,
 } from "@/lib/product-builder/engine";
 import { getLocalizedName } from "@/lib/i18n/localized-content";
+import { normalizeCouponCode } from "@/lib/orders/coupons";
 import type { Order, OrderStatus, OrderItem, CartItem, PaymentStatus } from "@/types";
 import type { FirestoreOrder, FirestoreOrderItem, FirestoreDoc } from "@/types/firestore";
 
@@ -108,6 +109,8 @@ function buildFirestoreOrder(
   if (parsed.deliveryAddress?.trim()) order.deliveryAddress = parsed.deliveryAddress.trim();
   if (parsed.locale) order.locale = parsed.locale;
   if (parsed.isTestOrder) order.isTestOrder = true;
+  const couponCode = normalizeCouponCode(parsed.couponCode);
+  if (couponCode) order.couponCode = couponCode;
   return order;
 }
 
@@ -331,6 +334,7 @@ export async function createOrderFromCart(
     locale?: "ar" | "he" | "en";
     orderType?: "pickup" | "delivery";
     deliveryAddress?: string;
+    couponCode?: string;
   }
 ): Promise<ServiceResult<Order>> {
   const locale = checkout?.locale;
@@ -396,6 +400,7 @@ export async function createOrderFromCart(
     notes,
     isTestOrder: isTestOrder || undefined,
     locale,
+    couponCode: checkout?.couponCode || undefined,
   });
 }
 

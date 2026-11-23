@@ -16,6 +16,8 @@ import {
   Banknote,
   CreditCard,
   ShoppingBag,
+  Tag,
+  X,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CheckoutProgress } from "@/components/checkout/checkout-progress";
@@ -58,8 +60,31 @@ export default function CheckoutPage() {
   const router = useRouter();
   const {
     items, subtotal, discount, total,
-    clearCart, couponCode,
+    clearCart, couponCode, applyCoupon, removeCoupon,
   } = useCart();
+  const [couponInput, setCouponInput] = useState("");
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Same logic as the cart panel (shared coupon table in cart-context).
+  const handleCoupon = () => {
+    if (!couponInput.trim()) return;
+    const ok = applyCoupon(couponInput);
+    setCouponError(ok ? null : t("error.generic", "Invalid coupon code"));
+  };
+
+  // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
+  const handleCouponInputChange = (value: string) => {
+    setCouponInput(value);
+    if (!value.trim() && couponCode) {
+      removeCoupon();
+      setCouponError(null);
+    }
+  };
+
+  // Keep an applied coupon visible in the field (e.g. applied in the cart or after reload).
+  useEffect(() => {
+    if (couponCode) setCouponInput((current) => (current.trim() ? current : couponCode));
+  }, [couponCode]);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -181,6 +206,7 @@ export default function CheckoutPage() {
           locale,
           orderType,
           deliveryAddress: orderType === "delivery" ? address.trim() : undefined,
+          couponCode: couponCode || undefined,
         });
         if (!result.success) {
           console.error("[checkout] order failed:", result.error, result.code);
@@ -416,11 +442,53 @@ export default function CheckoutPage() {
                         <OrderLineItem key={item.lineId} item={item} />
                       ))}
                     </div>
+                    {/* Coupon field — same look as the cart. Inside the order <form>, so the
+                        button is type="button" and Enter applies the coupon instead of submitting. */}
+                    <div className="mt-4 flex gap-2">
+                      <Input
+                        value={couponInput}
+                        onChange={(e) => handleCouponInputChange(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleCoupon();
+                          }
+                        }}
+                        placeholder={t("cart.coupon", "Coupon code")}
+                        aria-label={t("cart.coupon", "Coupon code")}
+                        className="h-9 text-base md:text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCoupon}
+                        className="shrink-0"
+                        aria-label={t("cart.coupon", "Coupon code")}
+                      >
+                        <Tag className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {couponError && <p className="mt-2 text-xs text-red-600">{couponError}</p>}
                     <div className="mt-4 space-y-1.5 border-t border-beige-dark/20 pt-4 text-sm">
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                       {discount > 0 && (
                         <div className="flex justify-between text-emerald-600">
-                          <span>{t("cart.discount")} ({couponCode})</span>
+                          <span className="inline-flex items-center gap-1">
+                            {t("cart.discount")} ({couponCode})
+                            <button
+                              type="button"
+                              onClick={() => {
+                                removeCoupon();
+                                setCouponInput("");
+                                setCouponError(null);
+                              }}
+                              aria-label={t("cart.removeCoupon", "Remove coupon")}
+                              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-coffee/50 transition-colors hover:bg-beige/60 hover:text-coffee"
+                            >
+                              <X className="h-3.5 w-3.5" strokeWidth={2} />
+                            </button>
+                          </span>
                           <span>-{formatPrice(discount)}</span>
                         </div>
                       )}
