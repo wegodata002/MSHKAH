@@ -19,17 +19,17 @@ import { useProducts, useAllProducts, useCategories } from "@/hooks/useProducts"
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { useLocalizedCategory } from "@/hooks/useLocalizedContent";
 import {
+  applyDisplayFilters,
   filterMenuDisplayProducts,
   filterMenuProducts,
   getRootCategories,
   hasSubcategories,
-  sortProducts,
 } from "@/lib/menu/category-tree";
 import type { Product, ProductFilters } from "@/types";
 
 export function CatalogView() {
   const t = useT();
-  const { dir } = useLocale();
+  const { dir, locale } = useLocale();
   const pathname = usePathname();
   const isHome = pathname === "/";
   const [searchQuery, setSearchQuery] = useState("");
@@ -88,13 +88,19 @@ export function CatalogView() {
   );
 
   const menuProducts = useMemo(() => {
-    if (isSearchMode) return sortProducts(searchProducts);
+    if (isSearchMode) return applyDisplayFilters(searchProducts, filters, locale);
     if (selectedSubcategoryId) {
-      return sortProducts(
-        filterMenuProducts(allProducts, selectedCategoryId, selectedSubcategoryId, categories)
+      return applyDisplayFilters(
+        filterMenuProducts(allProducts, selectedCategoryId, selectedSubcategoryId, categories),
+        filters,
+        locale
       );
     }
-    return filterMenuDisplayProducts(allProducts, selectedCategoryId, categories);
+    return applyDisplayFilters(
+      filterMenuDisplayProducts(allProducts, selectedCategoryId, categories),
+      filters,
+      locale
+    );
   }, [
     isSearchMode,
     searchProducts,
@@ -102,12 +108,16 @@ export function CatalogView() {
     selectedCategoryId,
     selectedSubcategoryId,
     categories,
+    filters,
+    locale,
   ]);
 
   const desktopMenuProducts = useMemo(() => {
     if (isSearchMode) return menuProducts;
-    return sortProducts(
-      filterMenuProducts(allProducts, selectedCategoryId, selectedSubcategoryId, categories)
+    return applyDisplayFilters(
+      filterMenuProducts(allProducts, selectedCategoryId, selectedSubcategoryId, categories),
+      filters,
+      locale
     );
   }, [
     isSearchMode,
@@ -116,6 +126,8 @@ export function CatalogView() {
     selectedCategoryId,
     selectedSubcategoryId,
     categories,
+    filters,
+    locale,
   ]);
 
   const loading = isSearchMode ? searchLoading : allLoading;
@@ -212,7 +224,7 @@ export function CatalogView() {
               />
             </div>
 
-            <div className="hidden md:block">
+            <div className="-mx-4 mt-3 md:mx-0 md:mt-0">
               <ProductFiltersBar
                 filters={combinedFilters}
                 onFiltersChange={setFilters}
