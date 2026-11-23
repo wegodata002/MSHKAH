@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ProductImage } from "@/components/catalog/product-image";
 import { deleteImageByUrl } from "@/services/storageService";
 import { formatPrice, cn } from "@/lib/utils";
+import { getLocalizedName } from "@/lib/i18n/localized-content";
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { AdminPageHeader } from "./components/admin-page-header";
 import { SortableList } from "@/components/admin/sortable-list";
@@ -77,6 +78,9 @@ export function ProductsAdmin() {
   const { categories, error: categoriesError, retry: retryCategories } = useAllCategories();
   const [view, setView] = useState<ViewMode>("grid");
   const [search, setSearch] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "available" | "unavailable">("all");
+  const [sortBy, setSortBy] = useState<"manual" | "name-asc" | "price-asc" | "price-desc">("manual");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Product | null>(null);
   const [open, setOpen] = useState(false);
@@ -101,16 +105,71 @@ export function ProductsAdmin() {
     [products]
   );
 
+  // Selected category + all of its subcategories (any depth). null = all categories.
+  const categoryFilterIds = useMemo(() => {
+    if (categoryFilter === "all") return null;
+    const ids = new Set<string>([categoryFilter]);
+    let added = true;
+    while (added) {
+      added = false;
+      for (const c of categories) {
+        if (c.parentId && ids.has(c.parentId) && !ids.has(c.id)) {
+          ids.add(c.id);
+          added = true;
+        }
+      }
+    }
+    return ids;
+  }, [categories, categoryFilter]);
+
+  // Category options: each root category followed by its subcategories.
+  const categoryOptions = useMemo(() => {
+    const bySort = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+    const known = new Set(bySort.map((c) => c.id));
+    const roots = bySort.filter((c) => !c.parentId || !known.has(c.parentId));
+    return roots.flatMap((root) => [
+      { id: root.id, label: getLocalizedName(root, locale) },
+      ...bySort
+        .filter((c) => c.parentId === root.id)
+        .map((c) => ({ id: c.id, label: `— ${getLocalizedName(c, locale)}` })),
+    ]);
+  }, [categories, locale]);
+
   const filtered = useMemo(() => {
-    if (!search) return products;
-    const q = search.toLowerCase();
-    return products.filter(
-      (p) =>
-        p.name_en.toLowerCase().includes(q) ||
-        p.name_he.includes(search) ||
-        p.name_ar.includes(search)
-    );
-  }, [products, search]);
+    let result = products;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (p) =>
+          p.name_en.toLowerCase().includes(q) ||
+          p.name_he.includes(search) ||
+          p.name_ar.includes(search)
+      );
+    }
+    if (categoryFilterIds) {
+      result = result.filter(
+        (p) =>
+          categoryFilterIds.has(p.categoryId) ||
+          (!!p.subcategoryId && categoryFilterIds.has(p.subcategoryId))
+      );
+    }
+    if (statusFilter !== "all") {
+      const wantAvailable = statusFilter === "available";
+      result = result.filter((p) => p.available === wantAvailable);
+    }
+    switch (sortBy) {
+      case "name-asc":
+        return [...result].sort((a, b) =>
+          getLocalizedName(a, locale).localeCompare(getLocalizedName(b, locale), locale)
+        );
+      case "price-asc":
+        return [...result].sort((a, b) => a.price - b.price);
+      case "price-desc":
+        return [...result].sort((a, b) => b.price - a.price);
+      default:
+        return result; // manual order (as loaded, by sortOrder)
+    }
+  }, [products, search, categoryFilterIds, statusFilter, sortBy, locale]);
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -261,6 +320,41 @@ export function ProductsAdmin() {
                 className="h-10 w-44 pl-9 sm:w-56"
               />
             </div>
+            <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+              <SelectTrigger className="h-10 w-40" aria-label={t("admin.products.allCategories")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("admin.products.allCategories")}</SelectItem>
+                {categoryOptions.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select
+              value={statusFilter}
+              onValueChange={(v) => setStatusFilter(v as typeof statusFilter)}
+            >
+              <SelectTrigger className="h-10 w-36" aria-label={t("admin.status.all")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">{t("admin.status.all")}</SelectItem>
+                <SelectItem value="available">{t("admin.status.available")}</SelectItem>
+                <SelectItem value="unavailable">{t("admin.status.unavailable")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+              <SelectTrigger className="h-10 w-40" aria-label={t("filters.sort")}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="manual">{t("admin.products.sortManual")}</SelectItem>
+                <SelectItem value="name-asc">{t("filters.sortName")}</SelectItem>
+                <SelectItem value="price-asc">{t("filters.sortPriceAsc")}</SelectItem>
+                <SelectItem value="price-desc">{t("filters.sortPriceDesc")}</SelectItem>
+              </SelectContent>
+            </Select>
             <div className="flex rounded-xl border border-beige-dark/30 p-0.5 dark:border-white/10">
               <button
                 onClick={() => setView("grid")}
