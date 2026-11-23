@@ -119,6 +119,9 @@ export interface FirestoreOrder {
   completedAt?: Timestamp | null;
   cancelledAt?: Timestamp | null;
   paidAt?: Timestamp | null;
+  /** Staff member who confirmed a cash payment at the counter. */
+  paidBy?: string;
+  paidVia?: "cash_counter";
   alerts?: {
     receivedCritical?: FirestoreOrderAlert;
     preparingCritical?: FirestoreOrderAlert;

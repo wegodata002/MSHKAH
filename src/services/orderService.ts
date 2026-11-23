@@ -465,6 +465,36 @@ export async function updateOrderStatus(
   }
 }
 
+/**
+ * Staff confirm that a cash / pay-at-pickup order was paid at the counter.
+ * Card (HYP) orders are never marked here; their status comes from the payment provider.
+ */
+export async function markOrderCashPaid(id: string, paidBy: string): Promise<ServiceResult<void>> {
+  try {
+    const ref = doc(getDb(), COLLECTIONS.orders, id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      return failure(new ServiceError("Order not found", "NOT_FOUND"));
+    }
+    const current = snap.data() as FirestoreOrder;
+    if (current.paymentStatus === "paid") return success(undefined);
+    const method = (current.paymentMethod || "").toLowerCase();
+    if (current.paymentProvider === "HYP" || method === "card") {
+      return failure(new ServiceError("Card payments are confirmed by the payment provider", "CARD_ORDER"));
+    }
+    await updateDoc(ref, {
+      paymentStatus: "paid",
+      paidAt: serverTimestamp(),
+      paidBy: paidBy.trim() || "admin",
+      paidVia: "cash_counter",
+    });
+    return success(undefined);
+  } catch (error) {
+    console.error("[markOrderCashPaid] failed:", error);
+    return failure(new ServiceError("Payment update failed", ORDER_SAVE_FAILED_CODE));
+  }
+}
+
 export async function deleteOrder(id: string): Promise<ServiceResult<void>> {
   try {
     const db = getDb();

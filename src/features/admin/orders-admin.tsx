@@ -5,11 +5,12 @@ import { BadgeCheck, ChefHat, Inbox, PackageCheck, Search, Timer, Wallet } from 
 import { useOrders } from "@/hooks/useOrders";
 import { useClubMembers } from "@/hooks/useClubMembers";
 import { updateOrderStatus } from "@/services";
-import { subscribeToPaymentFacts } from "@/services/orderService";
+import { markOrderCashPaid, subscribeToPaymentFacts } from "@/services/orderService";
 import { useAuth } from "@/components/providers/auth-provider";
 import { OrderItemExtrasDialog } from "@/features/admin/orders/order-item-extras-dialog";
 import { OrderCard } from "@/features/admin/orders/order-card";
 import { CancelOrderDialog } from "@/features/admin/orders/cancel-order-dialog";
+import { PaymentReceivedDialog } from "@/features/admin/orders/payment-received-dialog";
 import { PermanentDeleteOrderDialog } from "@/features/admin/orders/permanent-delete-dialog";
 import { isAdminRole } from "@/lib/auth/roles";
 import { KitchenView } from "@/features/admin/orders/kitchen-view";
@@ -30,7 +31,13 @@ import {
   isToday,
   orderSearchText,
 } from "@/lib/orders/operations";
-import { computeOrderDashboard, matchesOperationalFilter, type OrderStatsPeriod, type VerifiedPayment } from "@/lib/orders/dashboard";
+import {
+  computeOrderDashboard,
+  isAwaitingCashPayment,
+  matchesOperationalFilter,
+  type OrderStatsPeriod,
+  type VerifiedPayment,
+} from "@/lib/orders/dashboard";
 import {
   OPERATIONAL_FILTERS,
   type OperationalOrderStatus,
@@ -71,6 +78,8 @@ export function OrdersAdmin() {
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
   const [deleteOrder, setDeleteOrder] = useState<Order | null>(null);
+  /** Cash order being marked "delivered" while its payment is not recorded yet. */
+  const [paymentAsk, setPaymentAsk] = useState<Order | null>(null);
   const [kitchenOpen, setKitchenOpen] = useState(false);
   const [toasts, setToasts] = useState<AdminToast[]>([]);
   const [extrasDialog, setExtrasDialog] = useState<{ order: Order; itemIndex: number } | null>(null);
@@ -197,6 +206,25 @@ export function OrdersAdmin() {
     });
     updatesInFlight.current.delete(order.id);
     return result.success;
+  };
+
+  const recordCashPayment = async (order: Order) => {
+    const result = await markOrderCashPaid(order.id, user?.email ?? user?.uid ?? "admin");
+    pushToast(t(result.success ? "admin.orders.cashPaidSaved" : "admin.orders.cashPaidError"), result.success ? "success" : "error");
+    return result.success;
+  };
+
+  /** Status change from a card / kitchen view: cancel opens its dialog, unpaid cash delivery asks first. */
+  const requestStatus = (order: Order, status: OrderStatus) => {
+    if (status === "cancelled") {
+      setCancelOrder(order);
+      return;
+    }
+    if (status === "delivered" && isAwaitingCashPayment(order)) {
+      setPaymentAsk(order);
+      return;
+    }
+    void changeStatus(order, status);
   };
 
   const resendCustomerEmail = async (order: Order) => {
@@ -342,13 +370,27 @@ export function OrdersAdmin() {
           <p className="text-xl font-bold text-turquoise">
             {loading && orders.length === 0 ? <Skeleton className="h-7 w-20" /> : stats.todayRevenue == null ? "—" : formatPrice(stats.todayRevenue)}
           </p>
-          <p className="text-sm text-coffee/55">{statsPeriod === "today" ? t("admin.orders.todayRevenue") : t("admin.orders.periodRevenue")}</p>
+          <p className="text-sm text-coffee/55">
+            {statsPeriod === "today" ? t("admin.orders.todayRevenue") : t("admin.orders.periodRevenue")} · {t("admin.orders.revenue.paid")}
+          </p>
           {stats.cashRevenue != null && stats.cardRevenue != null && (
             <p className="mt-1 text-[11px] leading-4 text-coffee/50">
               {t("admin.orders.cashCard").replace("{cash}", formatPrice(stats.cashRevenue)).replace("{card}", formatPrice(stats.cardRevenue))}
             </p>
           )}
           <p className="mt-1 text-[11px] leading-4 text-coffee/40">{t("admin.orders.kpi.revenueHint")}</p>
+          {!statsUnavailable && !(loading && orders.length === 0) && (
+            <p
+              className={cn(
+                "mt-2 rounded-lg px-2 py-1 text-xs font-medium",
+                stats.pendingCount > 0 ? "bg-amber-50 text-amber-800" : "bg-beige/40 text-coffee/50"
+              )}
+            >
+              {t("admin.orders.revenue.pending")
+                .replace("{amount}", formatPrice(stats.pendingRevenue))
+                .replace("{count}", String(stats.pendingCount))}
+            </p>
+          )}
           <p className="mt-1 text-[11px] text-coffee/35">{periodLabel}</p>
         </div>
         <div className="min-w-0 rounded-2xl border border-beige-dark/15 bg-warm-white p-4 shadow-soft">
@@ -474,9 +516,8 @@ export function OrdersAdmin() {
               updating={updatingIds.has(order.id)}
               now={now}
               onToggle={() => setExpanded((current) => (current === order.id ? null : order.id))}
-              onStatusChange={(status) =>
-                status === "cancelled" ? setCancelOrder(order) : void changeStatus(order, status)
-              }
+              onStatusChange={(status) => requestStatus(order, status)}
+              onMarkCashPaid={isAwaitingCashPayment(order) ? () => void recordCashPayment(order) : undefined}
               onCancel={() => setCancelOrder(order)}
               onPrint={() => printKitchenTicket(order)}
               onThermalReprint={() => void reprintThermal(order)}
@@ -513,6 +554,18 @@ export function OrdersAdmin() {
           });
         }}
       />
+      <PaymentReceivedDialog
+        order={paymentAsk}
+        onClose={() => setPaymentAsk(null)}
+        onAnswer={(paid) => {
+          const order = paymentAsk;
+          setPaymentAsk(null);
+          if (!order) return;
+          void changeStatus(order, "delivered").then((saved) => {
+            if (saved && paid) void recordCashPayment(order);
+          });
+        }}
+      />
       <PermanentDeleteOrderDialog
         order={deleteOrder}
         open={deleteOrder != null}
@@ -531,9 +584,7 @@ export function OrdersAdmin() {
         now={now}
         updatingIds={updatingIds}
         onClose={() => setKitchenOpen(false)}
-        onStatusChange={(order, status) =>
-          status === "cancelled" ? setCancelOrder(order) : void changeStatus(order, status)
-        }
+        onStatusChange={requestStatus}
         onCancel={setCancelOrder}
         onPrint={printKitchenTicket}
         onThermalReprint={(order) => void reprintThermal(order)}

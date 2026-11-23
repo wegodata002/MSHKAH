@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer } from "lucide-react";
+import { Banknote, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -111,6 +111,7 @@ export function OrderCard({
   onCopyNumber,
   onEditItem,
   onPermanentDelete,
+  onMarkCashPaid,
   isClubMember,
 }: {
   order: Order;
@@ -128,6 +129,8 @@ export function OrderCard({
   onCopyNumber?: () => void;
   onEditItem?: (index: number) => void;
   onPermanentDelete?: () => void;
+  /** Present only while the order waits for a cash payment. */
+  onMarkCashPaid?: () => void;
   isClubMember?: boolean;
 }) {
   const t = useT();
@@ -250,6 +253,12 @@ export function OrderCard({
             )}
             {paymentStatus === "paid" && (
               <p>{t("admin.payment.paidAmount")}: {formatPrice(order.total)}</p>
+            )}
+            {onMarkCashPaid && (
+              <Button type="button" size="sm" variant="outline" className="mt-1 border-emerald-300 text-emerald-800" onClick={onMarkCashPaid}>
+                <Banknote className="h-4 w-4" />
+                {t("admin.orders.markCashPaid")}
+              </Button>
             )}
             {order.paymentTransactionId && (
               <p dir="ltr" className="text-start">

@@ -31,6 +31,10 @@ export type OrderDashboardStats = {
   todayRevenue: number | null;
   cashRevenue: number | null;
   cardRevenue: number | null;
+  /** Total of orders still waiting for a cash payment (created in the period). */
+  pendingRevenue: number;
+  /** Number of orders behind pendingRevenue. */
+  pendingCount: number;
   averagePrepMinutes: number | null;
 };
 
@@ -55,6 +59,24 @@ function isCardOrder(order: Order, payments: VerifiedPayment[]): boolean {
   const method = (order.paymentMethod || "").toLowerCase();
   if (order.paymentProvider === "HYP" || method === "card" || /card|credit|אשראי/.test(method)) return true;
   return payments.some((payment) => payment.provider === "HYP" || payment.provider === "card");
+}
+
+/** Card / HYP orders are settled by the payment provider, not at the counter. */
+function isCardMethodOrder(order: Pick<Order, "paymentMethod" | "paymentProvider">): boolean {
+  const method = (order.paymentMethod || "").toLowerCase();
+  return order.paymentProvider === "HYP" || method === "card" || /card|credit|אשראי/.test(method);
+}
+
+/**
+ * A real (non-test, non-cancelled) cash / pay-at-pickup order whose payment was not
+ * recorded yet. Staff confirm it with "payment received in cash".
+ */
+export function isAwaitingCashPayment(
+  order: Pick<Order, "paymentMethod" | "paymentProvider" | "paymentStatus" | "status" | "isTestOrder">
+): boolean {
+  if (isTestOrder(order) || operationalStatusOf(order) === "cancelled") return false;
+  if ((order.paymentStatus ?? "pending") !== "pending") return false;
+  return !isCardMethodOrder(order);
 }
 
 function roundMoney(value: number): number {
@@ -123,6 +145,13 @@ export function computeOrderDashboard(
     }
   }
 
+  const pendingOrders = business.filter(
+    (order) => isAwaitingCashPayment(order) && during(order.createdAt, period, now)
+  );
+  const pendingRevenue = roundMoney(
+    pendingOrders.reduce((sum, order) => sum + (Number(order.total) || 0), 0)
+  );
+
   const prepDurations = business.flatMap((order) => {
     if (!open(order)) return [];
     const minutes = minutesBetween(order.preparationStartedAt, order.readyAt);
@@ -144,6 +173,8 @@ export function computeOrderDashboard(
     todayRevenue: cashRevenue == null || cardRevenue == null ? null : roundMoney(cashRevenue + cardRevenue),
     cashRevenue,
     cardRevenue,
+    pendingRevenue,
+    pendingCount: pendingOrders.length,
     averagePrepMinutes,
   };
 }
