@@ -16,6 +16,7 @@ import {
   Banknote,
   CreditCard,
   ShoppingBag,
+  Tag,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CheckoutProgress } from "@/components/checkout/checkout-progress";
@@ -58,8 +59,17 @@ export default function CheckoutPage() {
   const router = useRouter();
   const {
     items, subtotal, discount, total,
-    clearCart, couponCode,
+    clearCart, couponCode, applyCoupon,
   } = useCart();
+  const [couponInput, setCouponInput] = useState("");
+  const [couponError, setCouponError] = useState<string | null>(null);
+
+  // Same logic as the cart panel (shared coupon table in cart-context).
+  const handleCoupon = () => {
+    if (!couponInput.trim()) return;
+    const ok = applyCoupon(couponInput);
+    setCouponError(ok ? null : t("error.generic", "Invalid coupon code"));
+  };
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
@@ -417,6 +427,34 @@ export default function CheckoutPage() {
                         <OrderLineItem key={item.lineId} item={item} />
                       ))}
                     </div>
+                    {/* Coupon field — same look as the cart. Inside the order <form>, so the
+                        button is type="button" and Enter applies the coupon instead of submitting. */}
+                    <div className="mt-4 flex gap-2">
+                      <Input
+                        value={couponInput}
+                        onChange={(e) => setCouponInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            handleCoupon();
+                          }
+                        }}
+                        placeholder={t("cart.coupon", "Coupon code")}
+                        aria-label={t("cart.coupon", "Coupon code")}
+                        className="h-9 text-base md:text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleCoupon}
+                        className="shrink-0"
+                        aria-label={t("cart.coupon", "Coupon code")}
+                      >
+                        <Tag className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    {couponError && <p className="mt-2 text-xs text-red-600">{couponError}</p>}
                     <div className="mt-4 space-y-1.5 border-t border-beige-dark/20 pt-4 text-sm">
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                       {discount > 0 && (
