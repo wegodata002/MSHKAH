@@ -13,6 +13,11 @@ import { nowTimestamp } from "@/types/firestore";
 import { ServiceError, type ServiceResult, success, failure } from "@/lib/errors";
 import type { FirestoreSettings } from "@/types/firestore";
 import { BRAND } from "@/lib/brand";
+import {
+  DEFAULT_OPENING_HOURS,
+  resolveOpeningHours,
+  type OpeningHours,
+} from "@/lib/settings/opening-hours";
 
 export interface AppSettings {
   storeName: string;
@@ -22,6 +27,11 @@ export interface AppSettings {
   phone: string;
   address: string;
   hours: string;
+  /**
+   * Weekly schedule shown on the site. Null only when no schedule is stored and the legacy
+   * `hours` text was customised (that text is then shown as before).
+   */
+  openingHours: OpeningHours | null;
   currency: string;
   theme: {
     primary: string;
@@ -42,6 +52,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   phone: "",
   address: "",
   hours: "Sun–Thu 7:00–22:00",
+  openingHours: DEFAULT_OPENING_HOURS,
   currency: "ILS",
   theme: {
     primary: "#3D2B24",
@@ -64,6 +75,7 @@ function mapSettings(data: FirestoreSettings | undefined): AppSettings {
     phone: data.phone ?? "",
     address: data.address ?? "",
     hours: data.hours ?? DEFAULT_SETTINGS.hours,
+    openingHours: resolveOpeningHours(data),
     currency: data.currency ?? "ILS",
     theme: data.theme ?? DEFAULT_SETTINGS.theme,
     seo: data.seo ?? DEFAULT_SETTINGS.seo,

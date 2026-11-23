@@ -18,6 +18,8 @@ import {
 } from "@/services/storageService";
 import { SystemStatusCard } from "@/features/admin/system-status-card";
 import { MeasureUnitsSettings } from "@/features/admin/measure-units-settings";
+import { OpeningHoursEditor } from "@/features/admin/opening-hours-editor";
+import { DEFAULT_OPENING_HOURS, legacyHoursText } from "@/lib/settings/opening-hours";
 import { useT } from "@/components/providers/locale-provider";
 import { AdminPageHeader } from "./components/admin-page-header";
 import { AdminCard } from "./components/admin-card";
@@ -96,11 +98,14 @@ export function SettingsAdmin() {
               />
             </div>
             <div>
-              <Label>{t("admin.settings.hours")}</Label>
-              <Textarea
-                value={settings.hours}
-                onChange={(e) => setSettings({ ...settings, hours: e.target.value })}
-                className={`mt-1 rounded-xl ${adminInput}`}
+              <Label className="mb-1 block">{t("admin.settings.hours")}</Label>
+              <OpeningHoursEditor
+                value={settings.openingHours ?? DEFAULT_OPENING_HOURS}
+                legacyText={settings.openingHours ? undefined : settings.hours}
+                onChange={(openingHours) =>
+                  // Keep the legacy free-text field in sync for older readers.
+                  setSettings({ ...settings, openingHours, hours: legacyHoursText(openingHours) })
+                }
               />
             </div>
           </div>
