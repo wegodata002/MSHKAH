@@ -104,6 +104,8 @@ export async function loadAssistantContext(locale: Locale): Promise<AssistantCon
       id: c.id,
       name: getCategoryDisplayName(c, locale),
       searchText: [c.name_he, c.name_ar, c.name_en].filter(Boolean).join(" "),
+      parentId: c.parentId ?? null,
+      names: [c.name_he, c.name_ar, c.name_en].filter(Boolean),
     })),
     config,
     settings: {
