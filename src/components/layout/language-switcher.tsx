@@ -117,7 +117,7 @@ function LanguageDropdown({ className }: { className?: string }) {
       <button
         type="button"
         onClick={() => setOpen(!open)}
-        className="flex h-10 items-center gap-1.5 rounded-xl border border-beige-dark/25 bg-warm-white/80 px-2.5 text-sm font-medium text-coffee/80 shadow-soft backdrop-blur-sm transition-colors hover:bg-beige/40 dark:border-white/10 dark:bg-white/5 dark:text-warm-white/80 dark:hover:bg-white/10"
+        className="flex h-10 max-w-full min-w-0 items-center gap-1.5 rounded-xl border border-beige-dark/25 bg-warm-white/80 px-2.5 text-sm font-medium text-coffee/80 shadow-soft backdrop-blur-sm transition-colors hover:bg-beige/40 dark:border-white/10 dark:bg-white/5 dark:text-warm-white/80 dark:hover:bg-white/10"
         aria-label={t("lang.switch")}
         aria-expanded={open}
         aria-haspopup="listbox"

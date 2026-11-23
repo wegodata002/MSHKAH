@@ -91,7 +91,7 @@ export function AssistantDrawer() {
       {isOpen && (
         <>
           <motion.div
-            className="fixed inset-0 z-[70] bg-dark-brown/30 backdrop-blur-sm"
+            className="fixed inset-0 z-[110] bg-dark-brown/30 backdrop-blur-sm"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -106,7 +106,8 @@ export function AssistantDrawer() {
             aria-labelledby="assistant-drawer-title"
             dir={dir}
             className={cn(
-              "fixed z-[71] flex flex-col glass shadow-premium overflow-hidden",
+              // Above the bottom nav (z-index 100) so the message input is never covered.
+              "fixed z-[111] flex flex-col glass shadow-premium overflow-hidden",
               "border border-white/40 dark:border-white/10",
               "inset-x-0 bottom-0 max-h-[min(92vh,720px)] rounded-t-3xl",
               "md:inset-y-0 md:end-0 md:start-auto md:w-[min(100vw-2rem,420px)] md:max-h-none md:rounded-s-3xl md:rounded-te-none"

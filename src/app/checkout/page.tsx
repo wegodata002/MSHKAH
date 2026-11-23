@@ -271,7 +271,8 @@ export default function CheckoutPage() {
   return (
     <>
       <Header searchQuery="" onSearchChange={() => {}} />
-      <div className="mx-auto max-w-4xl px-4 py-8 md:px-6">
+      {/* Extra bottom space (below lg) so content scrolls clear of the accessibility button */}
+      <div className="mx-auto max-w-4xl px-4 pt-8 pb-36 md:px-6 lg:pb-8">
         <CheckoutProgress current={success ? "confirm" : "details"} />
 
         <AnimatePresence mode="wait">
