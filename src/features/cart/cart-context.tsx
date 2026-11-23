@@ -103,7 +103,14 @@ function newLineId(
   return selectionsFingerprint(product.id, selections, notes) + Date.now();
 }
 
-function cartReducer(state: CartState, action: CartAction): CartState {
+/** A coupon applies to one order only: drop it once the cart is empty. */
+function resetCouponIfEmpty(state: CartState): CartState {
+  return state.items.length === 0 && (state.couponCode || state.couponDiscount)
+    ? { ...state, couponCode: "", couponDiscount: 0 }
+    : state;
+}
+
+export function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
     case "ADD_CONFIGURED_ITEM": {
       const fingerprint = selectionsFingerprint(
@@ -142,16 +149,16 @@ function cartReducer(state: CartState, action: CartAction): CartState {
       };
     }
     case "REMOVE_ITEM":
-      return {
+      return resetCouponIfEmpty({
         ...state,
         items: state.items.filter((i) => i.lineId !== action.lineId),
-      };
+      });
     case "UPDATE_QUANTITY": {
       if (action.quantity <= 0) {
-        return {
+        return resetCouponIfEmpty({
           ...state,
           items: state.items.filter((i) => i.lineId !== action.lineId),
-        };
+        });
       }
       return {
         ...state,
@@ -175,16 +182,22 @@ function cartReducer(state: CartState, action: CartAction): CartState {
             : item
         ),
       };
-    case "HYDRATE":
-      return {
+    case "HYDRATE": {
+      // Never trust a stored rate: recompute it from the coupon table.
+      // Unknown codes are dropped; an empty cart never restores a coupon.
+      const code = normalizeCouponCode(action.state.couponCode ?? state.couponCode);
+      const rate = couponRate(code);
+      return resetCouponIfEmpty({
         ...state,
         items: Array.isArray(action.state.items) ? action.state.items : state.items,
-        couponCode: action.state.couponCode ?? state.couponCode,
-        couponDiscount: action.state.couponDiscount ?? state.couponDiscount,
+        couponCode: rate > 0 ? code : "",
+        couponDiscount: rate,
         isOpen: false,
-      };
+      });
+    }
     case "CLEAR_CART":
-      return { ...state, items: [] };
+      // After a successful order (cash or HYP success page) the coupon is used up.
+      return { ...state, items: [], couponCode: "", couponDiscount: 0 };
     case "OPEN_CART":
       return { ...state, isOpen: true };
     case "CLOSE_CART":
