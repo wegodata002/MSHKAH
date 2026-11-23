@@ -37,7 +37,7 @@ export function CatalogView() {
   const [showFilters, setShowFilters] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [filters, setFilters] = useState<ProductFilters>({
-    sortBy: "popular",
+    sortBy: "menu",
     active: true,
   });
   const bannerTargetApplied = useRef(false);

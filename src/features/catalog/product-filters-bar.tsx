@@ -67,7 +67,7 @@ export function ProductFiltersBar({
           </Button>
 
           <Select
-            value={filters.sortBy || "newest"}
+            value={filters.sortBy || "menu"}
             onValueChange={(value) =>
               onFiltersChange({
                 ...filters,
@@ -79,6 +79,7 @@ export function ProductFiltersBar({
               <SelectValue placeholder={t("filters.sort")} />
             </SelectTrigger>
             <SelectContent>
+              <SelectItem value="menu">{t("filters.sortMenu")}</SelectItem>
               <SelectItem value="newest">{t("filters.sortNewest")}</SelectItem>
               <SelectItem value="price-asc">{t("filters.sortPriceAsc")}</SelectItem>
               <SelectItem value="price-desc">{t("filters.sortPriceDesc")}</SelectItem>

@@ -161,6 +161,8 @@ export function applyDisplayFilters(
 
   const bySortOrder = (a: Product, b: Product) => a.sortOrder - b.sortOrder;
   switch (filters?.sortBy) {
+    case "menu":
+      return [...result].sort(bySortOrder);
     case "price-asc":
       return [...result].sort((a, b) => a.price - b.price || bySortOrder(a, b));
     case "price-desc":
