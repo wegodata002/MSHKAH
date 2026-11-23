@@ -2,29 +2,24 @@
 
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
-import { Search } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { Search, X } from "lucide-react";
 import { SiteHeader } from "@/components/layout/header";
 import { HeroBanner } from "@/features/catalog/hero-banner";
-import { MenuCategoryStrip } from "@/features/catalog/menu-category-strip";
-import { MobileCategoryDropdown } from "@/features/catalog/mobile-category-dropdown";
-import { SubcategoryChips } from "@/features/catalog/subcategory-chips";
-import { ProductFiltersBar } from "@/features/catalog/product-filters-bar";
+import { CategoryNav } from "@/features/catalog/category-nav";
+import { CategoryProductSection } from "@/features/catalog/category-product-section";
+import { FilterSortButton, FilterSortPanel } from "@/features/catalog/product-filters-bar";
 import { ProductGrid } from "@/features/catalog/product-grid";
 import { ProductDetailDrawer } from "@/features/catalog/product-detail-drawer";
 import { CatalogModifierPreviewProvider } from "@/features/catalog/catalog-modifier-preview-context";
 import { Input } from "@/components/ui/input";
-import { useProducts, useAllProducts, useCategories } from "@/hooks/useProducts";
+import { useAllProducts, useCategories } from "@/hooks/useProducts";
 import { useT, useLocale } from "@/components/providers/locale-provider";
-import { useLocalizedCategory } from "@/hooks/useLocalizedContent";
-import {
-  applyDisplayFilters,
-  filterMenuDisplayProducts,
-  filterMenuProducts,
-  getRootCategories,
-  hasSubcategories,
-} from "@/lib/menu/category-tree";
+import { buildCatalogSections } from "@/lib/menu/category-tree";
+import { cn } from "@/lib/utils";
 import type { Product, ProductFilters } from "@/types";
+
+/** How long scroll-spy stays paused after a programmatic scroll (fallback when `scrollend` is unsupported). */
+const SPY_LOCK_MS = 1200;
 
 export function CatalogView() {
   const t = useT();
@@ -32,146 +27,157 @@ export function CatalogView() {
   const pathname = usePathname();
   const isHome = pathname === "/";
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
-  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
-  const [filters, setFilters] = useState<ProductFilters>({
-    sortBy: "menu",
-    active: true,
-  });
-  const bannerTargetApplied = useRef(false);
+  const [filters, setFilters] = useState<ProductFilters>({ sortBy: "menu", active: true });
+  const [activeId, setActiveId] = useState<string | null>(null);
+  const stickyRef = useRef<HTMLDivElement>(null);
+  const spyLockUntil = useRef(0);
+  const deepLinkApplied = useRef(false);
 
   const { categories } = useCategories();
-  const { products: allProducts, loading: allLoading } = useAllProducts();
-  const rootCategories = useMemo(() => getRootCategories(categories), [categories]);
+  const { products: allProducts, loading } = useAllProducts();
 
+  const sections = useMemo(
+    () => buildCatalogSections(allProducts, categories, filters, locale, searchQuery),
+    [allProducts, categories, filters, locale, searchQuery]
+  );
+  const navCategories = useMemo(() => sections.map((s) => s.category), [sections]);
+
+  // Memoised so scroll-spy updates (activeId) re-render only the nav, not ~150 product cards.
+  const sectionsContent = useMemo(
+    () => {
+      let offset = 0;
+      return sections.map((section) => {
+        const indexOffset = offset;
+        offset += section.count;
+        return (
+          <CategoryProductSection
+            key={section.category.id}
+            category={section.category}
+            groups={section.groups}
+            count={section.count}
+            indexOffset={indexOffset}
+            onProductClick={setSelectedProduct}
+          />
+        );
+      });
+    },
+    [sections]
+  );
+
+  /** Height covered by the stuck header + sticky bar (the bar's CSS `top` + its own height). */
+  const stuckOffset = useCallback(() => {
+    const el = stickyRef.current;
+    if (!el) return 0;
+    const top = parseFloat(getComputedStyle(el).top) || 0;
+    return top + el.offsetHeight;
+  }, []);
+
+  const scrollToCategory = useCallback(
+    (categoryId: string, behavior: ScrollBehavior = "smooth") => {
+      const section = document.getElementById(`category-${categoryId}`);
+      if (!section) return;
+      setActiveId(categoryId);
+      spyLockUntil.current = Date.now() + SPY_LOCK_MS;
+      const y = section.getBoundingClientRect().top + window.scrollY - stuckOffset() - 8;
+      window.scrollTo({ top: Math.max(0, y), behavior });
+    },
+    [stuckOffset]
+  );
+
+  // Scroll-spy: the active category is the last section whose top has passed under the sticky bar.
   useEffect(() => {
-    if (bannerTargetApplied.current || (categories.length === 0 && allProducts.length === 0)) return;
+    let frame = 0;
+    const update = () => {
+      frame = 0;
+      if (Date.now() < spyLockUntil.current) return;
+      const offset = stuckOffset() + 16;
+      const els = sections
+        .map((s) => document.getElementById(`category-${s.category.id}`))
+        .filter((el): el is HTMLElement => el !== null);
+      if (els.length === 0) return;
+      let current = els[0]!.dataset.categoryId ?? null;
+      const atBottom =
+        window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
+      if (atBottom) {
+        current = els[els.length - 1]!.dataset.categoryId ?? current;
+      } else {
+        for (const el of els) {
+          if (el.getBoundingClientRect().top - offset <= 0) current = el.dataset.categoryId ?? current;
+          else break;
+        }
+      }
+      setActiveId((prev) => (prev === current ? prev : current));
+    };
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update);
+    };
+    const onScrollEnd = () => {
+      spyLockUntil.current = 0;
+      onScroll();
+    };
+    update();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    window.addEventListener("scrollend", onScrollEnd);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("scrollend", onScrollEnd);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [sections, stuckOffset]);
+
+  // Banner deep links: ?category=<id> scrolls to that section, ?product=<id> opens the product.
+  useEffect(() => {
+    if (deepLinkApplied.current || loading || sections.length === 0) return;
+    deepLinkApplied.current = true;
     const params = new URLSearchParams(window.location.search);
     const categoryId = params.get("category");
     const productId = params.get("product");
-    if (categoryId && categories.some((category) => category.id === categoryId)) {
-      setSelectedCategoryId(categoryId);
-      setSelectedSubcategoryId(null);
-      bannerTargetApplied.current = true;
+    if (categoryId) {
+      const rootId = categories.find((c) => c.id === categoryId)?.parentId || categoryId;
+      requestAnimationFrame(() => scrollToCategory(rootId, "auto"));
     } else if (productId) {
       const product = allProducts.find((item) => item.id === productId);
-      if (product) {
-        setSelectedProduct(product);
-        bannerTargetApplied.current = true;
-      }
+      if (product) setSelectedProduct(product);
     }
-  }, [allProducts, categories]);
+  }, [loading, sections.length, categories, allProducts, scrollToCategory]);
 
-  useEffect(() => {
-    if (bannerTargetApplied.current || selectedCategoryId || rootCategories.length === 0) return;
-    setSelectedCategoryId(rootCategories[0]!.id);
-  }, [rootCategories, selectedCategoryId]);
+  const closeSearch = () => {
+    setSearchQuery("");
+    setSearchOpen(false);
+  };
 
-  const isSearchMode = searchQuery.trim().length > 0;
-
-  const combinedFilters = useMemo<ProductFilters>(
-    () => ({
-      ...filters,
-      search: searchQuery || undefined,
-      categoryId: isSearchMode ? undefined : selectedCategoryId ?? undefined,
-      subcategoryId: isSearchMode ? undefined : selectedSubcategoryId ?? undefined,
-      active: true,
-    }),
-    [filters, searchQuery, isSearchMode, selectedCategoryId, selectedSubcategoryId]
+  const searchInput = (autoFocus: boolean) => (
+    <div className="relative">
+      <Search
+        className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-coffee/40"
+        strokeWidth={1.75}
+      />
+      <Input
+        autoFocus={autoFocus}
+        placeholder={t("header.search")}
+        value={searchQuery}
+        onChange={(e) => setSearchQuery(e.target.value)}
+        aria-label={t("header.search")}
+        dir={dir}
+        className="h-10 border-beige-dark/25 bg-warm-white ps-10 pe-10 text-base shadow-none md:text-sm"
+      />
+      {searchQuery && (
+        <button
+          type="button"
+          onClick={() => setSearchQuery("")}
+          aria-label={t("filters.clear")}
+          className="absolute end-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-coffee/50 hover:bg-beige/60"
+        >
+          <X className="h-4 w-4" strokeWidth={1.75} />
+        </button>
+      )}
+    </div>
   );
-
-  const { products: searchProducts, loading: searchLoading } = useProducts(
-    isSearchMode ? combinedFilters : undefined
-  );
-
-  const menuProducts = useMemo(() => {
-    if (isSearchMode) return applyDisplayFilters(searchProducts, filters, locale);
-    if (selectedSubcategoryId) {
-      return applyDisplayFilters(
-        filterMenuProducts(allProducts, selectedCategoryId, selectedSubcategoryId, categories),
-        filters,
-        locale
-      );
-    }
-    return applyDisplayFilters(
-      filterMenuDisplayProducts(allProducts, selectedCategoryId, categories),
-      filters,
-      locale
-    );
-  }, [
-    isSearchMode,
-    searchProducts,
-    allProducts,
-    selectedCategoryId,
-    selectedSubcategoryId,
-    categories,
-    filters,
-    locale,
-  ]);
-
-  const desktopMenuProducts = useMemo(() => {
-    if (isSearchMode) return menuProducts;
-    return applyDisplayFilters(
-      filterMenuProducts(allProducts, selectedCategoryId, selectedSubcategoryId, categories),
-      filters,
-      locale
-    );
-  }, [
-    isSearchMode,
-    menuProducts,
-    allProducts,
-    selectedCategoryId,
-    selectedSubcategoryId,
-    categories,
-    filters,
-    locale,
-  ]);
-
-  const loading = isSearchMode ? searchLoading : allLoading;
-
-  const selectedCategory = categories.find((c) => c.id === selectedCategoryId) ?? null;
-  const selectedSub = selectedSubcategoryId
-    ? categories.find((c) => c.id === selectedSubcategoryId) ?? null
-    : null;
-
-  const heroCategory = selectedSub ?? selectedCategory;
-  const localizedHero = useLocalizedCategory(heroCategory);
-
-  const sectionTitle = useMemo(() => {
-    if (isSearchMode) return t("catalog.fullMenu");
-    return localizedHero.name || t("catalog.menuSection");
-  }, [isSearchMode, localizedHero.name, t]);
-
-  const showProducts =
-    isSearchMode ||
-    (selectedCategoryId &&
-      (!hasSubcategories(categories, selectedCategoryId) || selectedSubcategoryId));
-
-  const handleCategorySelect = useCallback((categoryId: string) => {
-    setSelectedCategoryId(categoryId);
-    setSelectedSubcategoryId(null);
-    // Wait for category strip collapse/layout, then scroll to products.
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        document.getElementById("menu")?.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      });
-    });
-  }, []);
-
-  const handleSubcategorySelect = useCallback((subcategoryId: string) => {
-    setSelectedSubcategoryId(subcategoryId);
-  }, []);
-
-  const needsSubcategoryPick =
-    !isSearchMode &&
-    selectedCategoryId &&
-    hasSubcategories(categories, selectedCategoryId) &&
-    !selectedSubcategoryId;
 
   return (
     <CatalogModifierPreviewProvider>
@@ -181,135 +187,70 @@ export function CatalogView() {
       {isHome && <HeroBanner />}
 
       <div className="mx-auto max-w-[1280px] px-4 md:px-8 lg:px-10">
-        <div className="mt-6">
-          <div className="min-w-0 pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+5.5rem)] lg:pb-12">
-            {!isSearchMode && (
-              <div className="sticky top-12 z-30 -mx-4 bg-cream/95 px-4 py-2 backdrop-blur-md md:static md:top-auto md:mx-0 md:bg-transparent md:px-0 md:py-0 md:backdrop-blur-none">
-                <section className="space-y-2">
-                  <MobileCategoryDropdown
-                    selectedId={selectedCategoryId}
-                    onSelect={handleCategorySelect}
+        <div className="mt-4 min-w-0 pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+5.5rem)] md:mt-6 lg:pb-12">
+          {/* Sticky catalog bar: categories (+ mobile icons) and the desktop search/filter row. */}
+          <div
+            ref={stickyRef}
+            id="menu"
+            className="sticky top-12 z-30 -mx-4 border-b border-beige-dark/15 bg-cream/95 px-4 py-2 backdrop-blur-md md:top-20 md:-mx-8 md:px-8 lg:-mx-10 lg:px-10"
+          >
+            <CategoryNav
+              categories={navCategories}
+              activeId={activeId}
+              onSelect={scrollToCategory}
+              trailing={
+                <div className="flex shrink-0 items-center gap-1.5 md:hidden">
+                  <button
+                    type="button"
+                    onClick={() => (searchOpen ? closeSearch() : setSearchOpen(true))}
+                    aria-label={t("header.search")}
+                    aria-expanded={searchOpen}
+                    className={cn(
+                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border bg-warm-white transition-colors",
+                      searchOpen || searchQuery ? "border-turquoise text-turquoise" : "border-beige-dark/30 text-coffee"
+                    )}
+                  >
+                    <Search className="h-4 w-4" strokeWidth={1.75} />
+                  </button>
+                  <FilterSortButton
+                    variant="icon"
+                    filters={filters}
+                    open={showFilters}
+                    onClick={() => setShowFilters((v) => !v)}
                   />
-                  <div className="hidden md:block">
-                    <MenuCategoryStrip
-                      selectedId={selectedCategoryId}
-                      onSelect={handleCategorySelect}
-                    />
-                  </div>
-                  <div className="hidden md:block">
-                    <SubcategoryChips
-                      parentId={selectedCategoryId}
-                      selectedSubId={selectedSubcategoryId}
-                      onSelect={handleSubcategorySelect}
-                    />
-                  </div>
-                </section>
+                </div>
+              }
+            />
+
+            {searchOpen && <div className="mt-2 md:hidden">{searchInput(true)}</div>}
+
+            <div className="mt-2 hidden items-center gap-3 md:flex">
+              <div className="w-full max-w-xs">{searchInput(false)}</div>
+              <FilterSortButton
+                filters={filters}
+                open={showFilters}
+                onClick={() => setShowFilters((v) => !v)}
+              />
+            </div>
+
+            {showFilters && (
+              <div className="mt-2">
+                <FilterSortPanel filters={filters} onFiltersChange={setFilters} />
               </div>
             )}
-
-            <div className="relative mt-3 hidden max-w-md md:block">
-              <Search
-                className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-coffee/40"
-                strokeWidth={1.75}
-              />
-              <Input
-                placeholder={t("header.search")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label={t("header.search")}
-                dir={dir}
-                className="h-10 border-beige-dark/25 bg-warm-white ps-10 shadow-none"
-              />
-            </div>
-
-            <div className="-mx-4 mt-3 md:mx-0 md:mt-0">
-              <ProductFiltersBar
-                filters={combinedFilters}
-                onFiltersChange={setFilters}
-                showFilters={showFilters}
-                onToggleFilters={() => setShowFilters(!showFilters)}
-              />
-            </div>
-
-            <div id="menu" className="mt-4 scroll-mt-28 md:mt-6 md:scroll-mt-8">
-              <div className="mb-4 flex items-end justify-between gap-3">
-                <h2 className="heading-section" dir={localizedHero.dir}>
-                  {sectionTitle}
-                </h2>
-                {(isSearchMode || selectedCategoryId) && (
-                  <span className="text-caption shrink-0 md:hidden">
-                    {loading ? "..." : `${menuProducts.length} ${t("catalog.productsCount")}`}
-                  </span>
-                )}
-                {showProducts && (
-                  <span className="text-caption hidden shrink-0 md:inline">
-                    {loading ? "..." : `${desktopMenuProducts.length} ${t("catalog.productsCount")}`}
-                  </span>
-                )}
-              </div>
-
-              <div className="md:hidden">
-                <AnimatePresence mode="wait">
-                  <motion.div
-                    key={`mobile-${selectedCategoryId}-${searchQuery}`}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {selectedCategoryId || isSearchMode ? (
-                      <ProductGrid
-                        products={menuProducts}
-                        loading={loading}
-                        onProductClick={setSelectedProduct}
-                      />
-                    ) : (
-                      <p className="text-body py-12 text-center">{t("catalog.pickCategory")}</p>
-                    )}
-                  </motion.div>
-                </AnimatePresence>
-              </div>
-              <div className="hidden md:block">
-                <AnimatePresence mode="wait">
-                  {needsSubcategoryPick ? (
-                    <motion.p
-                      key="pick-sub"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-body py-12 text-center"
-                    >
-                      {t("catalog.pickSubcategory")}
-                    </motion.p>
-                  ) : showProducts ? (
-                    <motion.div
-                      key={`${selectedCategoryId}-${selectedSubcategoryId}-${searchQuery}`}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                    >
-                      <ProductGrid
-                        products={desktopMenuProducts}
-                        loading={loading}
-                        onProductClick={setSelectedProduct}
-                      />
-                    </motion.div>
-                  ) : (
-                    <motion.p
-                      key="pick-cat"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="text-body py-12 text-center"
-                    >
-                      {t("catalog.pickCategory")}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </div>
-            </div>
           </div>
 
+          {loading && sections.length === 0 ? (
+            <div className="pt-6">
+              <ProductGrid products={[]} loading onProductClick={setSelectedProduct} />
+            </div>
+          ) : sections.length === 0 ? (
+            <div className="pt-6">
+              <ProductGrid products={[]} loading={false} onProductClick={setSelectedProduct} />
+            </div>
+          ) : (
+            sectionsContent
+          )}
         </div>
       </div>
 

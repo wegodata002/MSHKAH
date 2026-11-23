@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Coffee,
   GlassWater,
@@ -20,6 +20,7 @@ import { ProductCard } from "@/features/catalog/product-card";
 import { CATALOG_GRID_CLASS } from "@/features/catalog/catalog-grid";
 import { useT } from "@/components/providers/locale-provider";
 import { useLocalizedCategory } from "@/hooks/useLocalizedContent";
+import type { CatalogSectionGroup } from "@/lib/menu/category-tree";
 import type { Category, Product } from "@/types";
 
 const iconMap: Record<string, LucideIcon> = {
@@ -39,65 +40,91 @@ const iconMap: Record<string, LucideIcon> = {
 
 interface CategoryProductSectionProps {
   category: Category;
-  products: Product[];
+  groups: CatalogSectionGroup[];
+  count: number;
+  /** Number of products rendered before this section, so card `index` (image priority) is page-wide. */
+  indexOffset?: number;
   onProductClick: (product: Product) => void;
 }
 
+/**
+ * One root category in the single-page catalog: heading + products, with subcategory
+ * products under small sub-headings. `data-category-id` is read by the scroll-spy.
+ */
 export function CategoryProductSection({
   category,
-  products,
+  groups,
+  count,
+  indexOffset = 0,
   onProductClick,
 }: CategoryProductSectionProps) {
   const t = useT();
   const localized = useLocalizedCategory(category);
 
-  if (products.length === 0) return null;
+  if (count === 0) return null;
 
   const Icon = iconMap[category.icon] ?? Coffee;
 
   return (
-    <section id={`category-${category.id}`} className="scroll-mt-36 py-4 md:py-5">
-      <div className="mb-3 px-4 md:px-6">
-        <div className="flex items-center gap-3">
-          <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
-            <Icon className="h-5 w-5" strokeWidth={1.75} />
-          </span>
-          <div>
-            <h2 className="heading-section" dir={localized.dir}>
-              {localized.name}
-            </h2>
-            <p className="mt-0.5 text-sm text-coffee/55">
-              {products.length} {t("catalog.productsCount")}
-            </p>
-          </div>
+    <section
+      id={`category-${category.id}`}
+      data-category-id={category.id}
+      aria-labelledby={`category-title-${category.id}`}
+      className="pt-6 md:pt-8"
+    >
+      <div className="mb-3 flex items-center gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
+          <Icon className="h-5 w-5" strokeWidth={1.75} />
+        </span>
+        <div className="min-w-0">
+          <h2 id={`category-title-${category.id}`} className="heading-section" dir={localized.dir}>
+            {localized.name}
+          </h2>
+          <p className="mt-0.5 text-sm text-coffee/55">
+            {count} {t("catalog.productsCount")}
+          </p>
         </div>
       </div>
 
-      <div className={CATALOG_GRID_CLASS}>
-        <AnimatePresence mode="popLayout">
-          {products.map((product, index) => (
-            <motion.div
-              key={product.id}
-              layout
-              className="h-full min-w-0"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{
-                duration: 0.35,
-                delay: Math.min(index, 8) * 0.04,
-                ease: [0.22, 1, 0.36, 1],
-              }}
-            >
-              <ProductCard
-                product={product}
-                index={index}
-                onClick={() => onProductClick(product)}
-              />
-            </motion.div>
-          ))}
-        </AnimatePresence>
+      <div className="space-y-5">
+        {groups.map((group, groupIndex) => {
+          const groupOffset =
+            indexOffset + groups.slice(0, groupIndex).reduce((sum, g) => sum + g.products.length, 0);
+          return (
+            <div key={group.subcategory?.id ?? "_root"}>
+              {group.subcategory && <SubcategoryHeading category={group.subcategory} />}
+              <div className={CATALOG_GRID_CLASS}>
+                {group.products.map((product, index) => (
+                  <motion.div
+                    key={product.id}
+                    className="h-full min-w-0"
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: Math.min(index, 6) * 0.03, ease: [0.22, 1, 0.36, 1] }}
+                  >
+                    {/* Page-wide index: only the first few cards on the page get image priority. */}
+                    <ProductCard
+                      product={product}
+                      index={groupOffset + index}
+                      onClick={() => onProductClick(product)}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </section>
+  );
+}
+
+function SubcategoryHeading({ category }: { category: Category }) {
+  const localized = useLocalizedCategory(category);
+  return (
+    <h3 className="mb-2 text-sm font-semibold text-coffee/75" dir={localized.dir}>
+      {localized.name}
+    </h3>
   );
 }
 
