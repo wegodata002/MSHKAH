@@ -21,6 +21,7 @@ export type VerifiedPayment = {
 
 export type OrderDashboardStats = {
   loaded: number;
+  /** received / preparing / ready: orders in that stage right now (live, not period-based). */
   received: number;
   preparing: number;
   ready: number;
@@ -93,22 +94,13 @@ export function computeOrderDashboard(
   const business = uniqueOrders(orders).filter((order) => !isTestOrder(order));
   const open = (order: Order) => operationalStatusOf(order) !== "cancelled";
 
-  const received = business.filter((order) => {
-    if (!open(order)) return false;
-    return during(order.receivedAt || order.createdAt, period, now);
-  }).length;
-
-  const preparing = business.filter((order) => {
-    if (!open(order)) return false;
-    if (order.preparationStartedAt) return during(order.preparationStartedAt, period, now);
-    return period === "all" && operationalStatusOf(order) === "preparing";
-  }).length;
-
-  const ready = business.filter((order) => {
-    if (!open(order)) return false;
-    if (order.readyAt) return during(order.readyAt, period, now);
-    return period === "all" && operationalStatusOf(order) === "ready";
-  }).length;
+  // Live operational counters: how many orders are in each active stage right now.
+  // They do not depend on the selected period, so they always match the list a card filters to.
+  const countCurrent = (status: OperationalOrderStatus) =>
+    business.filter((order) => operationalStatusOf(order) === status).length;
+  const received = countCurrent("received");
+  const preparing = countCurrent("preparing");
+  const ready = countCurrent("ready");
 
   const deliveredToday = business.filter((order) => {
     if (operationalStatusOf(order) !== "delivered") return false;

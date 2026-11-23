@@ -319,7 +319,10 @@ export function OrdersAdmin() {
             type="button"
             onClick={() => {
               setTab(key === "delivered" ? "history" : "active");
-              setDateFilter(statsPeriod === "today" ? "today" : statsPeriod === "7d" ? "week" : "all");
+              // Stage cards are live counts of all active orders; only "delivered" follows the period.
+              setDateFilter(
+                key !== "delivered" ? "all" : statsPeriod === "today" ? "today" : statsPeriod === "7d" ? "week" : "all"
+              );
               setStatusFilter(key);
             }}
             className={cn(

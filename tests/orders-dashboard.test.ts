@@ -43,7 +43,7 @@ describe("human readable age", () => {
 describe("dashboard counters", () => {
   const now = new Date("2026-10-07T10:00:00+03:00");
 
-  it("counts confirmed paid orders as received and ignores payment for stage cards", () => {
+  it("counts active orders by their current stage, whatever the period, and ignores payment and test orders", () => {
     const orders = [
       order({
         id: "MC-2026-N67UFK6G",
@@ -74,12 +74,31 @@ describe("dashboard counters", () => {
       }),
     ];
     const stats = computeOrderDashboard(orders, now);
-    expect(stats.received).toBe(1);
+    expect(stats.received).toBe(2);
     expect(stats.preparing).toBe(0);
     expect(stats.ready).toBe(0);
     expect(stats.deliveredToday).toBe(0);
     expect(stats.todayRevenue).toBe(50);
-    expect(computeOrderDashboard(orders, now, { period: "all" }).received).toBe(3);
+    expect(computeOrderDashboard(orders, now, { period: "all" }).received).toBe(2);
+    expect(computeOrderDashboard(orders, now, { period: "yesterday" }).received).toBe(2);
+  });
+
+  it("stage cards match the current status even when timestamps are from another day", () => {
+    const orders = [
+      order({ id: "r", status: "pending", createdAt: "2026-10-01T09:00:00+03:00" }),
+      order({ id: "p1", status: "preparing", createdAt: "2026-10-07T09:00:00+03:00", preparationStartedAt: "2026-10-07T09:05:00+03:00" }),
+      order({ id: "p2", status: "in_progress", createdAt: "2026-10-05T09:00:00+03:00" }),
+      order({ id: "rd", status: "ready", createdAt: "2026-10-06T09:00:00+03:00", readyAt: "2026-10-06T09:20:00+03:00" }),
+      // Moved on: was preparing/ready earlier today but is delivered or cancelled now.
+      order({ id: "d", status: "delivered", createdAt: "2026-10-07T08:00:00+03:00", preparationStartedAt: "2026-10-07T08:05:00+03:00", readyAt: "2026-10-07T08:15:00+03:00", deliveredAt: "2026-10-07T08:30:00+03:00" }),
+      order({ id: "c", status: "cancelled", createdAt: "2026-10-07T08:00:00+03:00" }),
+    ];
+    for (const period of ["today", "7d", "all"] as const) {
+      const stats = computeOrderDashboard(orders, now, { period });
+      expect([stats.received, stats.preparing, stats.ready]).toEqual([1, 2, 1]);
+    }
+    expect(computeOrderDashboard(orders, now).deliveredToday).toBe(1);
+    expect(computeOrderDashboard(orders, now, { period: "yesterday" }).deliveredToday).toBe(0);
   });
 
   it("keeps stuck active orders in overdue even when they are not from today", () => {
@@ -91,7 +110,7 @@ describe("dashboard counters", () => {
     });
     expect(overdueLevel(stuck, now.getTime())).toBe("critical");
     expect(computeOrderDashboard([stuck], now).overdue).toBe(1);
-    expect(computeOrderDashboard([stuck], now).preparing).toBe(0);
+    expect(computeOrderDashboard([stuck], now).preparing).toBe(1);
     expect(computeOrderDashboard([stuck], now, { period: "all" }).preparing).toBe(1);
   });
 
@@ -129,7 +148,7 @@ describe("dashboard counters", () => {
       ],
     });
     expect(stats.loaded).toBe(2);
-    expect(stats.received).toBe(1);
+    expect(stats.received).toBe(0);
     expect(stats.cardRevenue).toBe(30);
     expect(stats.cashRevenue).toBe(0);
     expect(stats.todayRevenue).toBe(30);
