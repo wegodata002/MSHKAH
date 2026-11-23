@@ -67,7 +67,7 @@ export function OrdersAdmin() {
   const [tab, setTab] = useState<OrdersTab>("active");
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("all");
+  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
   const [statsPeriod, setStatsPeriod] = useState<OrderStatsPeriod>("today");
   const [payments, setPayments] = useState<VerifiedPayment[] | null>(null);
   const [paymentsError, setPaymentsError] = useState<string | null>(null);
@@ -169,6 +169,17 @@ export function OrdersAdmin() {
       .filter((order) => !search || orderSearchText(order).includes(search))
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [dateFilter, effectiveOrders, now, paymentFilter, search, statusFilter, tab, typeFilter]);
+
+  const olderActiveCount = useMemo(() => {
+    if (tab !== "active" || dateFilter === "all") return 0;
+    return effectiveOrders.filter(
+      (order) =>
+        isActiveOrder(order) &&
+        (dateFilter === "today"
+          ? !isToday(order.createdAt)
+          : now - new Date(order.createdAt).getTime() > 7 * 86_400_000)
+    ).length;
+  }, [dateFilter, effectiveOrders, now, tab]);
 
   // "Show more": 20 orders at a time; any filter / search / tab change starts again from 20.
   const listKey = [tab, statusFilter, paymentFilter, typeFilter, dateFilter, search].join("|");
@@ -424,6 +435,7 @@ export function OrdersAdmin() {
           className="mt-3 text-sm font-medium text-amber-800"
           onClick={() => {
             setTab("active");
+            setDateFilter("all");
             setStatusFilter("overdue");
           }}
         >
@@ -461,15 +473,25 @@ export function OrdersAdmin() {
           />
         </div>
         <Select value={dateFilter} onValueChange={(value) => setDateFilter(value as DateFilter)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.date")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.date")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="today">{t("admin.orders.today")}</SelectItem>
             <SelectItem value="week">{t("admin.orders.lastWeek")}</SelectItem>
-            <SelectItem value="all">{t("admin.status.all")}</SelectItem>
+            <SelectItem value="all">{t("admin.orders.allDates")}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as StatusFilter)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.status")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.status")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("admin.status.all")}</SelectItem>
             <SelectItem value="overdue">{t("admin.orders.overdue")}</SelectItem>
@@ -479,7 +501,12 @@ export function OrdersAdmin() {
           </SelectContent>
         </Select>
         <Select value={paymentFilter} onValueChange={(value) => setPaymentFilter(value as PaymentStatus | "all")}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.payment")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.payment")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("admin.orders.allPayments")}</SelectItem>
             {(["pending", "paid", "failed", "refunded"] as PaymentStatus[]).map((status) => (
@@ -488,7 +515,12 @@ export function OrdersAdmin() {
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={(value) => setTypeFilter(value as typeof typeFilter)}>
-          <SelectTrigger><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={t("admin.orders.filter.type")}>
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="shrink-0 text-coffee/50">{t("admin.orders.filter.type")}:</span>
+              <SelectValue />
+            </span>
+          </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">{t("admin.orders.allTypes")}</SelectItem>
             <SelectItem value="pickup">{t("admin.orders.type.pickup")}</SelectItem>
@@ -500,6 +532,16 @@ export function OrdersAdmin() {
       {statusFilter !== "all" && (
         <button className="mt-3 text-sm text-turquoise" onClick={() => setStatusFilter("all")}>
           {statusFilter === "overdue" ? t("admin.orders.overdue") : t(`admin.status.${statusFilter}`)} ×
+        </button>
+      )}
+
+      {olderActiveCount > 0 && (
+        <button
+          type="button"
+          className="mt-3 block rounded-lg bg-amber-50 px-3 py-2 text-start text-sm font-medium text-amber-800"
+          onClick={() => setDateFilter("all")}
+        >
+          {t("admin.orders.olderActive").replace("{count}", String(olderActiveCount))}
         </button>
       )}
 
