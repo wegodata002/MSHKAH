@@ -124,7 +124,8 @@ export function SettingsAdmin() {
         <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{saveError}</p>
       ) : null}
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      {/* items-start: each card is as tall as its own content (no stretched empty space). */}
+      <div className="grid items-start gap-6 lg:grid-cols-2">
         <AdminCard title={t("admin.settings.businessInfo")}>
           <div className="space-y-4">
             <div>
@@ -166,13 +167,15 @@ export function SettingsAdmin() {
         </AdminCard>
 
         <AdminCard title={t("admin.settings.branding")}>
-          <div className="space-y-4">
+          <div className="flex flex-wrap items-start gap-3">
             <ImageUpload
               label={t("admin.settings.logo")}
               value={settings.logoUrl}
               onChange={(url) => saveImageField("logoUrl", url)}
               onUpload={(file, onProgress) => uploadSettingsImage(file, "logo", onProgress)}
               onDelete={deleteImageByUrl}
+              fit="contain"
+              className="w-full max-w-[22rem] rounded-xl border border-beige-dark/15 p-3 dark:border-white/10"
             />
             <ImageUpload
               label={t("admin.settings.storeImage")}
@@ -180,8 +183,10 @@ export function SettingsAdmin() {
               onChange={(url) => saveImageField("storeImageUrl", url)}
               onUpload={(file, onProgress) => uploadSettingsImage(file, "store", onProgress)}
               onDelete={deleteImageByUrl}
+              fit="contain"
+              className="w-full max-w-[22rem] rounded-xl border border-beige-dark/15 p-3 dark:border-white/10"
             />
-            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-beige-dark/20 px-4 py-3 dark:border-white/10">
+            <label className="flex w-full cursor-pointer items-center gap-3 rounded-xl border border-beige-dark/15 px-3 py-2 dark:border-white/10">
               <input
                 type="checkbox"
                 checked={settings.showProductThumbnails}
