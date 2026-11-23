@@ -173,7 +173,7 @@ export function AdminMobileDrawer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className={cn("fixed inset-0 z-40 bg-dark-brown/50", ADMIN_LAYOUT.drawerOnly)}
+            className={cn("fixed inset-0 z-[105] bg-dark-brown/50", ADMIN_LAYOUT.drawerOnly)}
             onClick={onClose}
             aria-hidden
           />
@@ -183,7 +183,8 @@ export function AdminMobileDrawer({
             exit={{ x: offScreen }}
             transition={{ type: "spring", damping: 28, stiffness: 320 }}
             className={cn(
-              "fixed inset-y-0 start-0 z-50 flex flex-col bg-warm-white p-5 shadow-elevated dark:bg-[#1a1412]",
+              // Above the admin bottom nav (.mobile-bottom-nav, z-index 100) so the last items stay reachable.
+              "fixed inset-y-0 start-0 z-[110] flex flex-col bg-warm-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-elevated dark:bg-[#1a1412]",
               ADMIN_LAYOUT.drawerOnly
             )}
             style={{ width: ADMIN_SIDEBAR_WIDTH_PX }}

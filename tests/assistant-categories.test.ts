@@ -105,3 +105,45 @@ describe("assistant quick actions resolve real categories", () => {
     expect(ids(run(c, "beverages").products)).toEqual(["double-shot", "iced-latte", "tea"]);
   });
 });
+
+describe("assistant quick actions match categories whose name contains the seed name", () => {
+  // Names as they exist in the live catalog (with emoji and Hebrew/Arabic prefixes).
+  const live = () =>
+    ctx(
+      [
+        cat("trwzhFEiUaJwEGHdyMWN", ["מאפים  וקינוחים 🍰🥐  ", "مخبوزات وحلويات 🍰🥐", "Bakery & Sweets 🍰🥐"]),
+        cat("0RPzpBGlV9jAsA1JGVOn", ["הסלטים שלנו 🥗 ", "سلطاتنا 🥗", "Our Salads 🥗"]),
+        cat("oqfxEBhy2Ydvqspeuz3J", ["מילקשייקים ושייקי פירות 🥤", "ميلك شييك - شيك فواكه 🥤", "Milkshakes & Fruit Shake 🥤"]),
+        cat("soft-drinks", ["שתייה ", "مشروبات ", " Drinks"]),
+      ],
+      [
+        product("croissant", "trwzhFEiUaJwEGHdyMWN"),
+        product("salad", "0RPzpBGlV9jAsA1JGVOn"),
+        product("milkshake", "oqfxEBhy2Ydvqspeuz3J"),
+        product("cola", "soft-drinks"),
+      ]
+    );
+
+  it("'All desserts' finds 'מאפים וקינוחים' (contains קינוחים / حلويات)", () => {
+    const res = run(live(), "desserts");
+    expect(ids(res.products)).toEqual(["croissant"]);
+    expect(res.message).toContain("מאפים");
+  });
+
+  it("'Salads' finds 'Our Salads' / 'הסלטים שלנו'", () => {
+    expect(ids(run(live(), "salads").products)).toEqual(["salad"]);
+  });
+
+  it("'All beverages' also picks up 'מילקשייקים ושייקי פירות' (contains שייקים)", () => {
+    expect(ids(run(live(), "beverages").products)).toEqual(["cola", "milkshake"]);
+  });
+
+  it("does not match unrelated categories (no false positives)", () => {
+    const c = ctx(
+      [cat("drinks", ["שתייה", "مشروبات", "Drinks"])],
+      [product("cola", "drinks", { isPopular: true })]
+    );
+    const res = run(c, "desserts");
+    expect(res.message).toBe("לא מצאתי מוצרים מתאימים. נסו לחפש שם מוצר, קטגוריה, או בחרו מהכפתורים למטה.");
+  });
+});

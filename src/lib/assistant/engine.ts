@@ -171,9 +171,12 @@ function withDescendants(ctx: AssistantContext, rootIds: Iterable<string>): Set<
 /**
  * Resolves a quick-action category id to the set of category ids whose products
  * should be shown. Always includes the id itself (previous behaviour), plus:
- * - categories whose name (he/ar/en) matches the seed names for that id, so a
- *   seed id like "desserts" still works when the real category has an
- *   auto-generated id;
+ * - categories whose name (he/ar/en) equals or contains a seed name for that id
+ *   (e.g. "מאפים וקינוחים" contains "קינוחים", "Our Salads" contains "Salads"),
+ *   so a seed id like "desserts" still works when the real category has an
+ *   auto-generated id and a longer name. Substring (not whole-word) matching is
+ *   intentional: Hebrew/Arabic attach prefixes (ו/ה/و). Seed names shorter than
+ *   4 characters only match exactly;
  * - all subcategories of every matched category.
  */
 export function resolveCategoryIds(ctx: AssistantContext, categoryId: string): Set<string> {
@@ -185,7 +188,10 @@ export function resolveCategoryIds(ctx: AssistantContext, categoryId: string): S
     );
     for (const c of ctx.categories) {
       const names = (c.names?.length ? c.names : [c.name]).map(normalizeText);
-      if (names.some((n) => wanted.has(n))) roots.add(c.id);
+      const matches = names.some((n) =>
+        [...wanted].some((w) => n === w || (w.length >= 4 && n.includes(w)))
+      );
+      if (matches) roots.add(c.id);
     }
   }
   return withDescendants(ctx, roots);
