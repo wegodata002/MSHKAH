@@ -18,19 +18,15 @@ import {
 } from "@/lib/assistant/types";
 import { subscribeToAssistantConfig } from "@/services/assistantService";
 import { subscribeToSettings, type AppSettings } from "@/services/settingsService";
-import { DEFAULT_OPENING_HOURS } from "@/lib/settings/opening-hours";
+import { DEFAULT_OPENING_HOURS, openingHoursText } from "@/lib/settings/opening-hours";
 import { DEFAULT_FULFILLMENT } from "@/lib/fulfillment/settings";
-import {
-  deliveryAnswer,
-  hoursAnswer,
-  pickupAnswer,
-  zoneMentioned,
-  type FulfillmentFacts,
-} from "@/lib/assistant/fulfillment-answers";
+import { buildAssistantContext } from "@/lib/assistant/build-context";
+import { cartReply, processMessage, processQuickAction } from "@/lib/assistant/engine";
+import type { AssistantChatRequest } from "@/lib/assistant/types";
+import type { Category, Product } from "@/types";
 import { useCart } from "@/features/cart/cart-context";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useAllProducts, useAllCategories } from "@/hooks/useProducts";
-import { getLocalizedName } from "@/lib/i18n/localized-content";
 import type { Locale } from "@/lib/i18n/types";
 
 const STORAGE_KEY = "mishkat-assistant-chat";
@@ -55,7 +51,6 @@ type AssistantContextValue = {
   config: AssistantConfig;
   settings: AppSettings | null;
   enabled: boolean;
-  cartOpen: boolean;
   selectedProduct: AssistantProduct | null;
   suggestions: string[];
   sendMessage: (text: string) => Promise<void>;
@@ -63,7 +58,8 @@ type AssistantContextValue = {
   viewProduct: (product: AssistantProduct) => Promise<void>;
   addProductToCart: (productId: string, quantity?: number) => void;
   clearHistory: () => void;
-  setCartOpen: (open: boolean) => void;
+  /** Header cart button: adds the cart (one live card) at the end of the conversation. */
+  showCartInChat: () => void;
   setSelectedProduct: (product: AssistantProduct | null) => void;
 };
 
@@ -79,119 +75,42 @@ function loadMessages(): AssistantMessage[] {
   }
 }
 
-function clientFallback(
-  actionId: string | undefined,
-  message: string,
+/** The same context the server builds, from the data the browser already has. */
+function clientContext(
   locale: Locale,
-  products: import("@/types").Product[],
-  categories: import("@/types").Category[],
+  products: Product[],
+  categories: Category[],
   config: AssistantConfig,
   settings: AppSettings | null
-): AssistantChatResponse {
-  const loc = locale;
-  const respond = (msg: string, prods: AssistantProduct[] = [], extra?: Partial<AssistantChatResponse>): AssistantChatResponse => ({
-    message: msg,
-    products: prods,
-    suggestions: [],
-    ...extra,
-  });
-
-  const toAssistantProduct = (p: import("@/types").Product): AssistantProduct => ({
-    id: p.id,
-    name: getLocalizedName(p, loc),
-    description: "",
-    price: p.price,
-    image: p.image,
-    categoryId: p.categoryId,
-    available: p.available,
-    isPopular: p.isPopular,
-    isNew: p.isNew,
-  });
-
-  const available = products.filter((p) => p.available && p.active !== false);
-
-  if (actionId) {
-    const action = config.quickActions.find((a) => a.id === actionId);
-    if (action) {
-      switch (action.action) {
-        case "category": {
-          const catProducts = available.filter((p) => p.categoryId === action.categoryId).slice(0, 8);
-          const cat = categories.find((c) => c.id === action.categoryId);
-          const catName = cat ? getLocalizedName(cat, loc) : action.label[loc];
-          return respond(catName, catProducts.map(toAssistantProduct));
-        }
-        case "categories": {
-          const catProducts = available.filter((p) => action.categoryIds?.includes(p.categoryId)).slice(0, 8);
-          return respond(action.label[loc], catProducts.map(toAssistantProduct));
-        }
-        case "popular": {
-          const pop = available.filter((p) => p.isPopular).slice(0, 8);
-          return respond(action.label[loc], pop.map(toAssistantProduct));
-        }
-        case "cart":
-          return respond(loc === "ar" ? "سلتك" : loc === "he" ? "העגלה שלך" : "Your cart", [], { showCart: true });
-        case "checkout":
-          return respond(loc === "ar" ? "انتقل إلى الدفع" : loc === "he" ? "מעבר לתשלום" : "Go to checkout", [], { clientAction: { type: "checkout" } });
-        case "contact": {
-          const phone = settings?.phone || config.links.phone || "";
-          const address = settings?.address || "";
-          const msg = loc === "ar"
-            ? `تواصل معنا${phone ? `\n📞 ${phone}` : ""}${address ? `\n📍 ${address}` : ""}`
-            : loc === "he"
-              ? `צרו קשר${phone ? `\n📞 ${phone}` : ""}${address ? `\n📍 ${address}` : ""}`
-              : `Contact us${phone ? `\n📞 ${phone}` : ""}${address ? `\n📍 ${address}` : ""}`;
-          return respond(msg, [], { showContact: true });
-        }
-        default:
-          return respond(action.label[loc]);
-      }
-    }
-  }
-
-  if (message) {
-    const lower = message.toLowerCase();
-    // Delivery / pickup / opening hours: the same answers as the server, from the live settings.
-    const facts: FulfillmentFacts = {
+) {
+  return buildAssistantContext({
+    locale,
+    products,
+    categories,
+    config,
+    banners: [],
+    store: {
+      phone: settings?.phone ?? "",
+      address: settings?.address ?? "",
+      hoursText: openingHoursText(settings, locale),
+      whatsapp: settings?.social?.whatsapp?.trim() ?? "",
+      mapsUrl: settings?.mapsUrl ?? "",
       fulfillment: settings?.fulfillment ?? DEFAULT_FULFILLMENT,
       openingHours: settings?.openingHours ?? DEFAULT_OPENING_HOURS,
-      now: new Date(),
-      phone: settings?.phone ?? "",
-    };
-    const zone = zoneMentioned(message, facts.fulfillment.delivery.zones);
-    const has = (words: string[]) => words.some((w) => lower.includes(w));
-    if (zone || has(["משלוח", "שליח", "delivery", "deliver", "توصيل", "دليفري", "ديليفري"])) {
-      const a = deliveryAnswer(facts, loc, zone);
-      return respond(a.text, [], { showContact: a.showContact });
-    }
-    if (has(["איסוף", "לאסוף", "pickup", "pick up", "collect", "استلام"])) {
-      const a = pickupAnswer(facts, loc);
-      return respond(a.text, [], { showContact: a.showContact });
-    }
-    if (has(["ساعات", "שעות", "hours", "وقت", "פתוח", "נפתח", "סגור", "open", "closed", "مفتوح", "تفتح", "مغلق"])) {
-      return respond(hoursAnswer(facts, loc).text);
-    }
-    if (lower.includes("عنوان") || lower.includes("כתובת") || lower.includes("address") || lower.includes("موقع")) {
-      const address = settings?.address || "";
-      return respond(address || (loc === "ar" ? "لا يوجد عنوان محدد حالياً." : loc === "he" ? "אין כתובת מוגדרת כרגע." : "No address available."));
-    }
-    if (lower.includes("هاتف") || lower.includes("טלפון") || lower.includes("phone") || lower.includes("اتصل")) {
-      const phone = settings?.phone || "";
-      return respond(phone ? `📞 ${phone}` : (loc === "ar" ? "لا يوجد رقم هاتف." : "No phone number."));
-    }
-    const matched = available.filter((p) => {
-      const name = getLocalizedName(p, loc).toLowerCase();
-      return name.includes(lower) || lower.includes(name);
-    }).slice(0, 6);
-    if (matched.length > 0) {
-      return respond(loc === "ar" ? "نتائج البحث:" : loc === "he" ? "תוצאות:" : "Results:", matched.map(toAssistantProduct));
-    }
-  }
+    },
+  });
+}
 
-  return respond(
-    loc === "ar" ? "لم أجد إجابة مناسبة. يمكنك اختيار أحد الخيارات أدناه أو التواصل معنا."
-      : loc === "he" ? "לא מצאתי תשובה מתאימה. אפשר לבחור מהאפשרויות למטה או ליצור קשר."
-      : "I couldn't find a matching answer. Please choose an option below or contact us."
-  );
+/**
+ * When the assistant server does not answer, the browser runs the same engine on the same kind of
+ * context, so the answers match the server (no separate fallback texts that can drift).
+ */
+function clientFallback(
+  actionId: string | undefined,
+  req: AssistantChatRequest,
+  ctx: ReturnType<typeof clientContext>
+): AssistantChatResponse {
+  return actionId ? processQuickAction(actionId, ctx, req) : processMessage(req, ctx);
 }
 
 export function AssistantProvider({ children }: { children: ReactNode }) {
@@ -203,10 +122,8 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   const { categories } = useAllCategories();
 
   const [isOpen, setIsOpen] = useState(false);
-  const [cartOpen, setCartOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<AssistantProduct | null>(null);
   const [messages, setMessages] = useState<AssistantMessage[]>([]);
-  const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [config, setConfig] = useState<AssistantConfig>(DEFAULT_ASSISTANT_CONFIG);
   const [settings, setSettings] = useState<AppSettings | null>(null);
@@ -224,11 +141,12 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
   useEffect(() => subscribeToAssistantConfig(setConfig, () => {}), []);
   useEffect(() => subscribeToSettings(setSettings, () => {}), []);
 
-  useEffect(() => {
-    if (isOpen && messages.length === 0) {
-      setSuggestions(config.suggestedQuestions.map((q) => q[locale]).slice(0, 6));
-    }
-  }, [isOpen, messages.length, config.suggestedQuestions, locale]);
+  // The suggested questions from the settings stay above the input at all times (after
+  // questions and after a refresh), not only before the first message.
+  const suggestions = useMemo(
+    () => config.suggestedQuestions.map((q) => q[locale]).filter(Boolean).slice(0, 6),
+    [config.suggestedQuestions, locale]
+  );
 
   const cartProductIds = useMemo(
     () => items.flatMap((i) => Array.from({ length: i.quantity }, () => i.product.id)),
@@ -242,15 +160,15 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
 
   const applyAction = useCallback(
     (response: AssistantChatResponse) => {
-      if (response.suggestions?.length) setSuggestions(response.suggestions);
-      if (response.showCart) setCartOpen(true);
       const action = response.clientAction;
       if (!action) return;
       switch (action.type) {
         case "show_cart":
-          setCartOpen(true);
+          // The cart card is part of the reply message (showCart); nothing else to open.
           break;
         case "checkout":
+          // "My order": close the chat and go to the checkout.
+          setIsOpen(false);
           router.push("/checkout");
           break;
         case "open_url":
@@ -337,7 +255,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         appendReply(response);
       } catch (err) {
         console.error("[MISHKAT_ASSISTANT]", err);
-        const fallback = clientFallback(undefined, trimmed, locale, products, categories, config, settings);
+        const fallback = clientFallback(
+          undefined,
+          { message: trimmed, locale, cartProductIds, cartItems },
+          clientContext(locale, products, categories, config, settings)
+        );
         appendReply(fallback);
       } finally {
         setIsLoading(false);
@@ -365,7 +287,11 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
         appendReply(response);
       } catch (err) {
         console.error("[MISHKAT_ASSISTANT]", err);
-        const fallback = clientFallback(actionId, "", locale, products, categories, config, settings);
+        const fallback = clientFallback(
+          actionId,
+          { message: "", locale, cartProductIds, cartItems, quickActionId: actionId },
+          clientContext(locale, products, categories, config, settings)
+        );
         appendReply(fallback);
       } finally {
         setIsLoading(false);
@@ -405,7 +331,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       const product = products.find((p) => p.id === productId);
       if (!product?.available) return;
       for (let i = 0; i < quantity; i++) addItem(product);
-      setCartOpen(true);
       const name =
         locale === "he"
           ? product.name_he || product.name_en
@@ -419,6 +344,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
           id: `a-${Date.now()}`,
           role: "assistant",
           content: addedMsg,
+          showCart: true,
           timestamp: Date.now(),
         },
       ]);
@@ -426,13 +352,25 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
     [products, addItem, locale, t]
   );
 
+  const showCartInChat = useCallback(() => {
+    setSelectedProduct(null);
+    const reply = cartReply(clientContext(locale, products, categories, config, settings), {
+      message: "",
+      locale,
+      cartProductIds,
+      cartItems,
+    });
+    setMessages((prev) => [
+      ...prev,
+      { id: `a-${Date.now()}`, role: "assistant", content: reply.message, showCart: reply.showCart, timestamp: Date.now() },
+    ]);
+  }, [locale, products, categories, config, settings, cartProductIds, cartItems]);
+
   const clearHistory = useCallback(() => {
     setMessages([]);
-    setCartOpen(false);
     setSelectedProduct(null);
-    setSuggestions(config.suggestedQuestions.map((q) => q[locale]).slice(0, 6));
     sessionStorage.removeItem(STORAGE_KEY);
-  }, [config.suggestedQuestions, locale]);
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -445,7 +383,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       config,
       settings,
       enabled: config.enabled,
-      cartOpen,
       selectedProduct,
       suggestions,
       sendMessage,
@@ -453,7 +390,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       viewProduct,
       addProductToCart,
       clearHistory,
-      setCartOpen,
+      showCartInChat,
       setSelectedProduct,
     }),
     [
@@ -462,7 +399,6 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       isLoading,
       config,
       settings,
-      cartOpen,
       selectedProduct,
       suggestions,
       sendMessage,
@@ -470,6 +406,7 @@ export function AssistantProvider({ children }: { children: ReactNode }) {
       viewProduct,
       addProductToCart,
       clearHistory,
+      showCartInChat,
     ]
   );
 

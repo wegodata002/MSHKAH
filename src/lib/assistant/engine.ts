@@ -30,7 +30,8 @@ const MSG: Record<
     searchIntro: (query: string) => string;
     priceIntro: (max: number) => string;
     cartEmpty: string;
-    cartSummary: (count: number, total: number) => string;
+    cartCount: (count: number) => string;
+    noOffers: string;
     checkoutHint: string;
     contactIntro: string;
     address: (a: string) => string;
@@ -49,7 +50,8 @@ const MSG: Record<
     searchIntro: (q) => `תוצאות עבור "${q}":`,
     priceIntro: (max) => `מוצרים עד ₪${max}:`,
     cartEmpty: "העגלה ריקה. בחרו מוצרים מהתפריט.",
-    cartSummary: (count, total) => `בעגלה ${count} פריטים — סה״כ ₪${total.toFixed(0)}`,
+    cartCount: (count) => (count === 1 ? "בעגלה פריט אחד:" : `בעגלה ${count} פריטים:`),
+    noOffers: "אין מבצעים כרגע. הנה המוצרים הפופולריים שלנו:",
     checkoutHint: "לחצו 'לתשלום' להשלמת ההזמנה.",
     contactIntro: "ניתן ליצור קשר:",
     address: (a) => (a ? `כתובת:\n${a}` : "פרטי כתובת בקופה."),
@@ -67,7 +69,8 @@ const MSG: Record<
     searchIntro: (q) => `نتائج "${q}":`,
     priceIntro: (max) => `منتجات حتى ₪${max}:`,
     cartEmpty: "السلة فارغة. اختر من القائمة.",
-    cartSummary: (count, total) => `${count} عناصر — ₪${total.toFixed(0)}`,
+    cartCount: (count) => (count === 1 ? "في السلة منتج واحد:" : `في السلة ${count} منتجات:`),
+    noOffers: "لا توجد عروض حاليًا. إليك منتجاتنا الأكثر شعبية:",
     checkoutHint: "اضغط 'الدفع' لإتمام الطلب.",
     contactIntro: "للتواصل:",
     address: (a) => (a ? `العنوان:\n${a}` : "تفاصيل العنوان عند الكاشير."),
@@ -85,7 +88,8 @@ const MSG: Record<
     searchIntro: (q) => `Results for "${q}":`,
     priceIntro: (max) => `Items up to ₪${max}:`,
     cartEmpty: "Your cart is empty. Browse the menu to add items.",
-    cartSummary: (count, total) => `${count} items — ₪${total.toFixed(0)} total`,
+    cartCount: (count) => (count === 1 ? "1 item in your cart:" : `${count} items in your cart:`),
+    noOffers: "No offers right now. Here are our most popular items:",
     checkoutHint: "Tap checkout to complete your order.",
     contactIntro: "Contact us:",
     address: (a) => (a ? `Address:\n${a}` : "Address at the counter."),
@@ -138,16 +142,6 @@ function searchByCategoryName(ctx: AssistantContext, query: string, limit = 8): 
 
 function findProduct(ctx: AssistantContext, productId: string): AssistantProduct | undefined {
   return available(ctx).find((p) => p.id === productId);
-}
-
-function cartTotals(ctx: AssistantContext, req: AssistantChatRequest) {
-  const ids = req.cartProductIds ?? [];
-  let total = 0;
-  for (const id of ids) {
-    const p = available(ctx).find((x) => x.id === id);
-    if (p) total += p.price;
-  }
-  return { count: ids.length, total };
 }
 
 /** Adds every descendant (via parentId, any depth) of the given category ids. Cycle-safe. */
@@ -305,18 +299,24 @@ function handleFaq(ctx: AssistantContext, text: string): AssistantChatResponse |
   return null;
 }
 
-function handleCart(ctx: AssistantContext, req: AssistantChatRequest): AssistantChatResponse | null {
+function cartCount(req: AssistantChatRequest): number {
+  if (req.cartItems?.length) return req.cartItems.reduce((sum, item) => sum + item.quantity, 0);
+  return req.cartProductIds?.length ?? 0;
+}
+
+/**
+ * The cart in the conversation: a count line, and the live cart card right under this message
+ * (showCart). An empty cart is just the text (no empty card).
+ */
+export function cartReply(ctx: AssistantContext, req: AssistantChatRequest): AssistantChatResponse {
   const t = m(ctx);
-  const { count, total } = cartTotals(ctx, req);
-  if (count === 0) {
-    return respond(ctx, t.cartEmpty, [], { showCart: true, clientAction: { type: "show_cart" } });
-  }
-  const uniqueIds = [...new Set(req.cartProductIds ?? [])];
-  const cartProducts = available(ctx).filter((p) => uniqueIds.includes(p.id));
-  return respond(ctx, `${t.cartSummary(count, total)}\n${t.checkoutHint}`, cartProducts, {
-    showCart: true,
-    clientAction: { type: "show_cart" },
-  });
+  const count = cartCount(req);
+  if (count === 0) return respond(ctx, t.cartEmpty);
+  return respond(ctx, t.cartCount(count), [], { showCart: true });
+}
+
+function handleCart(ctx: AssistantContext, req: AssistantChatRequest): AssistantChatResponse | null {
+  return cartReply(ctx, req);
 }
 
 function handleProductDetail(ctx: AssistantContext, productId: string): AssistantChatResponse | null {
@@ -346,11 +346,14 @@ function runQuickAction(action: AssistantQuickAction, ctx: AssistantContext, req
         ctx.banners.length > 0
           ? `${t.offersIntro}\n${ctx.banners.map((b) => `• ${b.title}`).join("\n")}`
           : t.offersIntro;
+      if (items.length === 0) return respond(ctx, t.noOffers, top(available(ctx), 8));
       return respond(ctx, intro, items);
     }
     case "cart":
-      return handleCart(ctx, req) ?? respond(ctx, t.cartEmpty, [], { showCart: true });
+      return cartReply(ctx, req);
     case "checkout":
+      // "My order": nothing to pay for in an empty cart → say so instead of opening an empty checkout.
+      if (cartCount(req) === 0) return respond(ctx, t.cartEmpty);
       return respond(ctx, t.checkoutHint, [], { clientAction: { type: "checkout" } });
     case "contact":
       return respond(ctx, `${t.contactIntro}\n${t.phone(ctx.settings.phone)}`, [], { showContact: true });
