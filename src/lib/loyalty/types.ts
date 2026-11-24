@@ -11,6 +11,8 @@
  * any member or balance.
  */
 
+import type { LoyaltyCouponView } from "@/lib/loyalty/coupons";
+
 export type LoyaltyRoundingMode = "down" | "nearest";
 
 export interface LoyaltySettings {
@@ -36,6 +38,11 @@ export interface LoyaltySettings {
   /** Rounding policy applied once per order; defaults to `"down"` so points can only
    *  be awarded, never fabricated. */
   roundingMode: LoyaltyRoundingMode;
+  /**
+   * New members get a personal 10% code for their first purchase (30 days).
+   * Off = no new codes; codes already given stay valid.
+   */
+  welcomeCouponEnabled: boolean;
   /** Hebrew/Arabic/English terms shown on the join card. */
   termsHe?: string;
   termsAr?: string;
@@ -58,6 +65,7 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
   redemptionMaxPoints: 0,
   roundingMode: "down",
   pointValueApproved: false,
+  welcomeCouponEnabled: true,
   termsHe: "",
   termsAr: "",
   termsEn: "",
@@ -104,6 +112,12 @@ export interface LoyaltyMember {
   consentTerms: boolean;
   consentMarketing: boolean;
   welcomeEmailStatus?: "sent" | "failed" | "pending";
+  /** Language the member last used on the site (club emails are sent in it). */
+  locale?: "he" | "ar" | "en";
+  /** Code of the member's welcome coupon (`loyaltyCoupons/{code}`), once given. */
+  welcomeCouponCode?: string;
+  /** Set when a member who joined before codes existed already had an order (no code given). */
+  welcomeCouponSkippedAt?: string;
   welcomeEmailAttemptAt?: string;
   linkedCustomerId?: string;
   createdAt: string;
@@ -175,7 +189,11 @@ export interface LoyaltyMeResponse {
     /** Spend (agorot) toward the next point. */
     pointsCarryMinor?: number;
     joinedAt?: string;
+    /** Signed card id for the member QR (`/club/card?c=…`); reveals nothing by itself. */
+    cardToken?: string;
   } | null;
+  /** The member's coupons (welcome code, later manager coupons). */
+  coupons?: LoyaltyCouponView[];
   // Mirrors the public bits of settings so the member card can render ratio etc.
   settings: {
     enrollmentEnabled: boolean;

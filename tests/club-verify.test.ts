@@ -147,7 +147,8 @@ describe("club code: send → verify → member → active (strict fake Firestor
     const res = await call(verify, { email: EMAIL, code, displayName: "דנה כהן" });
     expect(res.body).toMatchObject({ ok: true, member: { status: "active" } });
     expect(res.status).toBe(200);
-    expect(cookieJar).toHaveLength(1);
+    // The signed session, plus the light "logged in" marker for the header.
+    expect(cookieJar.map((c) => c.name).sort()).toEqual(["mkh_club", "mkh_club_in"]);
     const [member] = members();
     expect(member).toMatchObject({ displayName: "דנה כהן", email: "dana@example.com", status: "active", joinFeeSource: "free" });
     expect("phone" in member).toBe(false);

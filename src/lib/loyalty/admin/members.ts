@@ -221,7 +221,7 @@ export async function readMemberByEmail(
  */
 export async function upsertVerifiedMember(
   db: Firestore,
-  input: { email: string; displayName?: string; phone?: string }
+  input: { email: string; displayName?: string; phone?: string; locale?: "he" | "ar" | "en" }
 ): Promise<LoyaltyMember> {
   const emailHash = hashEmail(input.email);
   const email = normaliseEmail(input.email);
@@ -230,6 +230,8 @@ export async function upsertVerifiedMember(
     const update: Partial<LoyaltyMember> = {};
     if (input.displayName && !existing.displayName) update.displayName = input.displayName;
     if (input.phone && !existing.phone) update.phone = input.phone;
+    // Club emails go out in the language the member used last.
+    if (input.locale && existing.locale !== input.locale) update.locale = input.locale;
     if (Object.keys(update).length > 0) {
       update.updatedAt = new Date().toISOString();
       await db.collection(COLLECTIONS.loyaltyMembers).doc(existing.id).set(update, { merge: true });
@@ -247,6 +249,7 @@ export async function upsertVerifiedMember(
     emailHash,
     displayName: input.displayName || undefined,
     phone: input.phone || undefined,
+    locale: input.locale,
     status: "email_verified",
     balancePoints: 0,
     joinFeePaidMinor: 0,

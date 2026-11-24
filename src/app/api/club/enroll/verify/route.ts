@@ -13,6 +13,9 @@ import { sendClubWelcomeEmail } from "@/lib/loyalty/welcome";
 import { loyaltyLog } from "@/lib/loyalty/admin/log";
 import { consumeRateLimit, rateLimitKey } from "@/lib/loyalty/admin/rate-limit";
 import { hashEmail } from "@/lib/loyalty/tokens";
+import { ensureWelcomeCoupon } from "@/lib/loyalty/admin/coupons";
+import { clubEmailLocale } from "@/lib/email/loyalty-templates";
+import { clubHintCookie } from "@/lib/loyalty/club-hint";
 
 export const runtime = "nodejs";
 
@@ -34,6 +37,7 @@ export async function POST(request: NextRequest) {
     code?: string;
     displayName?: string;
     phone?: string;
+    locale?: string;
   } | null;
   const email = body?.email?.trim();
   const code = body?.code?.trim();
@@ -53,7 +57,7 @@ export async function POST(request: NextRequest) {
 async function verifyAndOpenSession(
   email: string,
   code: string,
-  body: { displayName?: string; phone?: string } | null
+  body: { displayName?: string; phone?: string; locale?: string } | null
 ): Promise<Response> {
   const db = getAdminDb();
   const settings = await readLoyaltySettings(db);
@@ -85,7 +89,8 @@ async function verifyAndOpenSession(
   }
   // Creates the member, or fills in a missing name on an existing one.
   const phone = body?.phone?.trim().slice(0, 40) || undefined;
-  let member = await upsertVerifiedMember(db, { email, displayName, phone });
+  const locale = clubEmailLocale(body?.locale);
+  let member = await upsertVerifiedMember(db, { email, displayName, phone, locale });
 
   // Sign-up is free: a verified email becomes an active member right away (also members who
   // started the old paid flow and never paid). Paid and suspended members are left as they are.
@@ -98,6 +103,13 @@ async function verifyAndOpenSession(
       consentTerms: true,
       consentMarketing: false,
     });
+    // The personal 10% code for the first purchase, before the welcome email that spells it out.
+    // A failure here never blocks joining (the member page gives the code later).
+    if (settings.welcomeCouponEnabled) {
+      await ensureWelcomeCoupon(db, member.id, { now: new Date(), requireNoPurchase: false }).catch((error) =>
+        console.error("[loyalty] welcome coupon failed", { message: error instanceof Error ? error.message : String(error) })
+      );
+    }
     void sendClubWelcomeEmail(db, member.id);
   }
 
@@ -112,6 +124,8 @@ async function verifyAndOpenSession(
     path: "/",
     maxAge: session.maxAgeSeconds,
   });
+  // Lets the header show "My card" (no data in it; the real session above stays httpOnly).
+  jar.set(clubHintCookie(session.maxAgeSeconds));
   loyaltyLog("enroll.verify.ok", { email, memberId: member.id });
   return Response.json({
     ok: true,

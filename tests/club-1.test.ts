@@ -32,9 +32,12 @@ describe("free sign-up", () => {
   });
 
   it("with sign-up closed, existing members can still log in (start + verify)", () => {
-    for (const path of ["src/app/api/club/enroll/start/route.ts", "src/app/api/club/enroll/verify/route.ts"]) {
-      expect(read(path), path).toMatch(/!settings\.enrollmentEnabled && !\(await readMemberByEmail\(db, email\)\)/);
-    }
+    expect(read("src/app/api/club/enroll/verify/route.ts")).toMatch(
+      /!settings\.enrollmentEnabled && !\(await readMemberByEmail\(db, email\)\)/
+    );
+    const start = read("src/app/api/club/enroll/start/route.ts");
+    expect(start).toMatch(/const existing = await readMemberByEmail\(db, email\);/);
+    expect(start).toMatch(/!settings\.enrollmentEnabled && !existing/);
   });
 
   it("the verify page goes to the member page, not to a payment", () => {

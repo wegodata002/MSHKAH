@@ -1,13 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { checkCoupon } from "@/lib/orders/coupons";
+import { checkCoupon, couponMessageKey } from "@/lib/orders/coupons";
 
 /** Pure — no Firebase, no network. */
 describe("coupon check (cart + checkout)", () => {
   it("known codes are ok, in any case and with spaces", () => {
     expect(checkCoupon("MISHKAT10", 76)).toBe("ok");
-    expect(checkCoupon(" welcome15 ", 76)).toBe("ok");
+    expect(checkCoupon(" mishkat10 ", 76)).toBe("ok");
+    // WELCOME15 was removed in Club 2 (replaced by the personal welcome code).
+    expect(checkCoupon("WELCOME15", 76)).toBe("invalid");
   });
 
   it("unknown or empty codes are invalid", () => {
@@ -19,12 +21,20 @@ describe("coupon check (cart + checkout)", () => {
   it("the shown messages are the clear ones, not the generic error", () => {
     for (const file of ["src/features/cart/cart-panel.tsx", "src/app/checkout/page.tsx"]) {
       const source = readFileSync(resolve(process.cwd(), file), "utf8");
-      expect(source, file).toMatch(/cart\.couponInvalid/);
-      expect(source, file).toMatch(/cart\.couponTooLarge/);
+      // One shared mapping from the check result to the message key.
+      expect(source, file).toMatch(/t\(couponMessageKey\(check\)\)/);
       expect(source, file).not.toMatch(/error\.generic", "Invalid coupon code"/);
       // Typing in the field hides the old message.
       expect(source, file).toMatch(/setCouponInput\(value\);\s*\/\/[^\n]*\n\s*setCouponError\(null\);/);
     }
+  });
+
+  it("the message keys", () => {
+    expect(couponMessageKey("invalid")).toBe("cart.couponInvalid");
+    expect(couponMessageKey("too_large")).toBe("cart.couponTooLarge");
+    expect(couponMessageKey("login_required")).toBe("cart.couponLogin");
+    expect(couponMessageKey("used")).toBe("cart.couponUsed");
+    expect(couponMessageKey("expired")).toBe("cart.couponExpired");
   });
 
   it("the three languages have both messages", () => {

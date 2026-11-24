@@ -28,6 +28,8 @@ import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
 import { getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
 import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
+import { couponMessageKey } from "@/lib/orders/coupons";
+import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
 import { formatPrice, cn } from "@/lib/utils";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
@@ -86,10 +88,10 @@ export default function CheckoutPage() {
   const [couponError, setCouponError] = useState<string | null>(null);
 
   // Same logic as the cart panel (shared coupon table in cart-context).
-  const handleCoupon = () => {
+  const handleCoupon = async () => {
     if (!couponInput.trim()) return;
-    const check = applyCoupon(couponInput);
-    setCouponError(check === "ok" ? null : t(check === "too_large" ? "cart.couponTooLarge" : "cart.couponInvalid"));
+    const check = await applyCoupon(couponInput);
+    setCouponError(check === "ok" ? null : t(couponMessageKey(check)));
   };
 
   // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
@@ -221,6 +223,12 @@ export default function CheckoutPage() {
         : t(result.code === "PICKUP_CLOSED" ? "checkout.pickupUnavailable" : "checkout.deliveryUnavailable");
     }
     if (result.code === "UNKNOWN_ZONE") return t("checkout.unknownZone");
+    if (result.code === "COUPON_INVALID") {
+      const reason = result.reason;
+      return t(
+        couponMessageKey(reason === "login_required" || reason === "used" || reason === "expired" ? reason : "invalid")
+      );
+    }
     if (result.code === "BELOW_MINIMUM" && result.minOrder) {
       return t("checkout.minimumError").replace("{min}", formatPrice(result.minOrder));
     }
@@ -502,7 +510,7 @@ export default function CheckoutPage() {
                         onKeyDown={(e) => {
                           if (e.key === "Enter") {
                             e.preventDefault();
-                            handleCoupon();
+                            void handleCoupon();
                           }
                         }}
                         placeholder={t("cart.coupon", "Coupon code")}
@@ -513,7 +521,7 @@ export default function CheckoutPage() {
                         type="button"
                         variant="outline"
                         size="sm"
-                        onClick={handleCoupon}
+                        onClick={() => void handleCoupon()}
                         className="shrink-0"
                         aria-label={t("cart.coupon", "Coupon code")}
                       >
@@ -521,6 +529,7 @@ export default function CheckoutPage() {
                       </Button>
                     </div>
                     {couponError && <p className="mt-2 text-xs text-red-600">{couponError}</p>}
+                    <ClubCouponOffer className="mt-2" />
                     <div className="mt-4 space-y-1.5 border-t border-beige-dark/20 pt-4 text-sm">
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                       {discount > 0 && (

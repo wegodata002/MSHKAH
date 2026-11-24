@@ -67,6 +67,8 @@ export const COLLECTIONS = {
   loyaltyPointsLedger: "loyaltyPointsLedger",
   loyaltyEnrollmentTokens: "loyaltyEnrollmentTokens",
   loyaltyRateLimit: "loyaltyRateLimit",
+  /** Personal club coupons, one document per code (server only). */
+  loyaltyCoupons: "loyaltyCoupons",
 } as const;
 
 export const DEFAULT_STORE_ID = "mishkah";

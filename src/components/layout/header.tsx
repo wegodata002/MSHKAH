@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingBag, Sparkles, User } from "lucide-react";
+import { CreditCard, ShoppingBag, Sparkles, User } from "lucide-react";
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useHideCustomerChrome } from "@/hooks/useAdminPath";
 import { Logo } from "@/components/brand/logo";
@@ -11,6 +11,7 @@ import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { useCart } from "@/features/cart/cart-context";
 import { useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
+import { hasClubHint } from "@/lib/loyalty/club-hint";
 
 const NAV_LINKS = [
   { href: "/", labelKey: "nav.home", exact: true },
@@ -27,6 +28,12 @@ export function SiteHeader() {
   const hideChrome = useHideCustomerChrome();
   const { scrollY } = useScroll();
   const [scrolled, setScrolled] = useState(false);
+  // Logged in to the club on this device → "My card" instead of "Join the club".
+  // Read after mount (cookie), again on every page change (login / logout navigate).
+  const [clubMember, setClubMember] = useState(false);
+  useEffect(() => {
+    setClubMember(hasClubHint());
+  }, [pathname]);
 
   useMotionValueEvent(scrollY, "change", (y) => setScrolled(y > 4));
 
@@ -83,17 +90,22 @@ export function SiteHeader() {
         {/* Actions — end (left in RTL) */}
         <div className="ms-auto flex min-w-0 items-center gap-2 md:gap-3">
           <Link
-            href="/club"
-            aria-label={t("nav.joinClub")}
+            href={clubMember ? "/club/me" : "/club"}
+            aria-label={t(clubMember ? "nav.myCard" : "nav.joinClub")}
+            data-club-nav={clubMember ? "card" : "join"}
             className={cn(
               "inline-flex h-10 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-turquoise px-3 text-xs font-semibold text-warm-white transition-colors hover:bg-turquoise/90 md:px-4 md:text-sm",
               pathname.startsWith("/club") && "ring-2 ring-turquoise/30"
             )}
           >
-            <Sparkles className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            {clubMember ? (
+              <CreditCard className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+            )}
             {/* Icon-only below 400px so the header always fits narrow phones */}
-            <span className="hidden min-[400px]:inline sm:hidden">{t("nav.joinClubShort")}</span>
-            <span className="hidden sm:inline">{t("nav.joinClub")}</span>
+            <span className="hidden min-[400px]:inline sm:hidden">{t(clubMember ? "nav.myCard" : "nav.joinClubShort")}</span>
+            <span className="hidden sm:inline">{t(clubMember ? "nav.myCard" : "nav.joinClub")}</span>
           </Link>
           <LanguageSwitcher variant="dropdown" className="min-w-0 sm:hidden" />
           <LanguageSwitcher compact className="hidden sm:inline-flex" />

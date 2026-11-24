@@ -353,5 +353,11 @@ service cloud.firestore {
     match /loyaltyRateLimit/{id} {
       allow read, write: if false;
     }
+
+    // Personal club coupons: server only (codes are personal; never readable from the browser).
+    match /loyaltyCoupons/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }

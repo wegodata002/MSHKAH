@@ -5,7 +5,6 @@
  */
 export const COUPON_RATES: Readonly<Record<string, number>> = {
   MISHKAT10: 0.1,
-  WELCOME15: 0.15,
 };
 
 export function normalizeCouponCode(code: unknown): string {
@@ -21,7 +20,24 @@ export function couponRate(code: unknown): number {
     : 0;
 }
 
-export type CouponCheck = "ok" | "invalid" | "too_large";
+/** "login_required" / "used" / "expired": personal club codes (checked on the server). */
+export type CouponCheck = "ok" | "invalid" | "too_large" | "login_required" | "used" | "expired";
+
+/** Message key for a coupon that cannot be applied. */
+export function couponMessageKey(check: Exclude<CouponCheck, "ok">): string {
+  switch (check) {
+    case "too_large":
+      return "cart.couponTooLarge";
+    case "login_required":
+      return "cart.couponLogin";
+    case "used":
+      return "cart.couponUsed";
+    case "expired":
+      return "cart.couponExpired";
+    default:
+      return "cart.couponInvalid";
+  }
+}
 
 /**
  * Why a coupon can or cannot be applied: unknown code → "invalid"; a discount that would

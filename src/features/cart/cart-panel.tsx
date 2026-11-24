@@ -18,6 +18,8 @@ import { calculateLineTotal } from "@/lib/product-builder/engine";
 import type { CartItem } from "@/types";
 import type { ProductBuilderConfig } from "@/types/modifiers";
 import { FulfillmentNote } from "@/features/checkout/fulfillment-note";
+import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
+import { couponMessageKey } from "@/lib/orders/coupons";
 
 function CartLineItem({
   item,
@@ -153,10 +155,10 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
     config: ProductBuilderConfig;
   } | null>(null);
 
-  const handleCoupon = () => {
+  const handleCoupon = async () => {
     if (!couponInput.trim()) return;
-    const check = applyCoupon(couponInput);
-    setCouponError(check === "ok" ? null : t(check === "too_large" ? "cart.couponTooLarge" : "cart.couponInvalid"));
+    const check = await applyCoupon(couponInput);
+    setCouponError(check === "ok" ? null : t(couponMessageKey(check)));
   };
 
   // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
@@ -225,7 +227,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
-                  handleCoupon();
+                  void handleCoupon();
                 }
               }}
               placeholder={t("cart.coupon", "Coupon code")}
@@ -235,7 +237,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
             <Button
               variant="outline"
               size="sm"
-              onClick={handleCoupon}
+              onClick={() => void handleCoupon()}
               className="shrink-0"
               aria-label={t("cart.coupon", "Coupon code")}
             >
@@ -243,6 +245,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
             </Button>
           </div>
           {couponError && <p className="mb-2 text-xs text-red-600">{couponError}</p>}
+          <ClubCouponOffer className="mb-2" />
           {couponCode && <p className="mb-2 text-xs text-turquoise">{couponCode}</p>}
 
           <div className="space-y-1.5 text-sm">

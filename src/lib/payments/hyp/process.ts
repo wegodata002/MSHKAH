@@ -17,6 +17,8 @@ import { HYP_CURRENCY, HYP_PROVIDER } from "@/lib/payments/hyp/types";
 import type { FirestoreOrder } from "@/types/firestore";
 import { loadFulfillmentContext } from "@/lib/orders/server-context";
 import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
+import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
+import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
 
 export class HypPaymentError extends Error {
   constructor(
@@ -34,7 +36,8 @@ function pageLangFromLocale(locale?: string): "HEB" | "ENG" {
 }
 
 async function trustedChargeAmount(
-  order: FirestoreOrder
+  order: FirestoreOrder,
+  orderId: string
 ): Promise<{ amount: number; discount: number; subtotal: number; delivery: number }> {
   const items = order.items ?? [];
   if (items.length === 0) {
@@ -68,7 +71,14 @@ async function trustedChargeAmount(
   // Delivery fee comes from the settings for the order's area — never order.delivery,
   // which the browser could still write directly until the rules are locked.
   const deliveryFee = await trustedDeliveryFee(order);
-  return { ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }), delivery: deliveryFee };
+  // A personal club code counts only if it is recorded as used by this very order.
+  const personalRate = isPersonalCouponCode(order.couponCode)
+    ? await personalCouponRateForOrder(db, orderId, order.couponCode)
+    : undefined;
+  return {
+    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate),
+    delivery: deliveryFee,
+  };
 }
 
 async function trustedDeliveryFee(order: FirestoreOrder): Promise<number> {
@@ -131,7 +141,7 @@ export async function createHypPaymentAttempt(
     order = { ...order, ...customerPatch };
   }
 
-  const { amount, discount, subtotal, delivery } = await trustedChargeAmount(order);
+  const { amount, discount, subtotal, delivery } = await trustedChargeAmount(order, id);
   if (amount <= 0) {
     throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
   }
