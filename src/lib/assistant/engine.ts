@@ -1,5 +1,5 @@
 import type { Locale } from "@/lib/i18n/types";
-import { fuzzyScore, matchesAny, normalizeText } from "@/lib/assistant/fuzzy";
+import { fuzzyScore, isRelevantMatch, matchesAny, normalizeText } from "@/lib/assistant/fuzzy";
 import {
   deliveryAnswer,
   hoursAnswer,
@@ -23,6 +23,8 @@ const MSG: Record<
   Locale,
   {
     noResults: string;
+    /** Free text the assistant does not understand: polite, points to the buttons and the phone. */
+    notUnderstood: (phone: string) => string;
     popularIntro: string;
     offersIntro: string;
     categoryIntro: (name: string) => string;
@@ -43,6 +45,10 @@ const MSG: Record<
 > = {
   he: {
     noResults: "לא מצאתי מוצרים מתאימים. נסו לחפש שם מוצר, קטגוריה, או בחרו מהכפתורים למטה.",
+    notUnderstood: (phone) =>
+      `סליחה, לא הבנתי את השאלה 🙏\nאפשר לבחור נושא מהכפתורים, או לכתוב שם של מוצר או קטגוריה (למשל: קפה, קינוחים).${
+        phone ? `\nלכל שאלה אחרת נשמח לעזור בטלפון: ${phone}` : ""
+      }`,
     popularIntro: "הנה המוצרים הכי פופולריים:",
     offersIntro: "הנה המבצעים שלנו:",
     categoryIntro: (name) => `הנה ${name}:`,
@@ -62,6 +68,10 @@ const MSG: Record<
   },
   ar: {
     noResults: "لم أجد منتجات مطابقة. جرّب اسم منتج أو اختر من الأزرار أدناه.",
+    notUnderstood: (phone) =>
+      `عذرًا، لم أفهم السؤال 🙏\nيمكنكم اختيار موضوع من الأزرار، أو كتابة اسم منتج أو فئة (مثلًا: قهوة، حلويات).${
+        phone ? `\nلأي سؤال آخر يسعدنا مساعدتكم عبر الهاتف: ${phone}` : ""
+      }`,
     popularIntro: "إليك المنتجات الأكثر شعبية:",
     offersIntro: "إليك عروضنا:",
     categoryIntro: (name) => `إليك ${name}:`,
@@ -81,6 +91,10 @@ const MSG: Record<
   },
   en: {
     noResults: "No matching products. Try a product name or use the buttons below.",
+    notUnderstood: (phone) =>
+      `Sorry, I didn't understand that 🙏\nPick a topic from the buttons, or type a product or category name (for example: coffee, desserts).${
+        phone ? `\nFor anything else, we're happy to help by phone: ${phone}` : ""
+      }`,
     popularIntro: "Our most popular items:",
     offersIntro: "Current offers:",
     categoryIntro: (name) => `${name}:`,
@@ -114,13 +128,30 @@ function top(products: AssistantProduct[], limit = 8): AssistantProduct[] {
     .slice(0, limit);
 }
 
+/**
+ * Names customers type for products that the menu calls differently. The menu's name is searched
+ * instead (product search covers he / ar / en names, so it works in every language).
+ */
+const PRODUCT_SYNONYMS: Array<{ pattern: RegExp; menuName: string }> = [
+  {
+    // קפוצינו / קפוצ'ינו / קפוצ׳ינו / كابتشينو / كابوتشينو / cappuccino (and common misspellings)
+    pattern: /קפו?צ['׳"`’]?ינו|كاب(?:و)?ت?شينو|كابتشينو|ca+pp?u+c+h?ino/giu,
+    menuName: "הפוך",
+  },
+];
+
+export function withProductSynonyms(message: string): string {
+  return PRODUCT_SYNONYMS.reduce((text, { pattern, menuName }) => text.replace(pattern, menuName), message);
+}
+
 function search(ctx: AssistantContext, query: string, limit = 8): AssistantProduct[] {
   return available(ctx)
-    .map((p) => ({
-      p,
-      score: fuzzyScore(query, p.searchText ?? `${p.name} ${p.description}`),
-    }))
-    .filter(({ score }) => score >= 0.35)
+    .map((p) => {
+      const target = p.searchText ?? `${p.name} ${p.description}`;
+      return { p, target, score: fuzzyScore(query, target) };
+    })
+    // A sentence sharing one small word with a product is not a match ("מה מזג האוויר מחר?").
+    .filter(({ score, target }) => score >= 0.35 && isRelevantMatch(query, target))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(({ p }) => p);
@@ -128,8 +159,8 @@ function search(ctx: AssistantContext, query: string, limit = 8): AssistantProdu
 
 function searchByCategoryName(ctx: AssistantContext, query: string, limit = 8): AssistantProduct[] {
   const matched = ctx.categories
-    .map((c) => ({ c, score: fuzzyScore(query, c.searchText || c.name) }))
-    .filter(({ score }) => score >= 0.4)
+    .map((c) => ({ c, target: c.searchText || c.name, score: fuzzyScore(query, c.searchText || c.name) }))
+    .filter(({ score, target }) => score >= 0.4 && isRelevantMatch(query, target))
     .sort((a, b) => b.score - a.score);
 
   if (matched.length === 0) return [];
@@ -452,15 +483,19 @@ export function processMessage(req: AssistantChatRequest, ctx: AssistantContext)
     return processQuickAction("offers", ctx, req);
   }
 
-  const results = search(ctx, req.message, 8);
+  // Other names customers use for a product ("קפוצ'ינו" is "הפוך" on the menu).
+  const query = withProductSynonyms(req.message);
+  const results = search(ctx, query, 8);
   if (results.length > 0) {
     return respond(ctx, m(ctx).searchIntro(req.message.trim()), results);
   }
 
-  const categoryResults = searchByCategoryName(ctx, req.message, 8);
+  const categoryResults = searchByCategoryName(ctx, query, 8);
   if (categoryResults.length > 0) {
     return respond(ctx, m(ctx).searchIntro(req.message.trim()), categoryResults);
   }
 
-  return respond(ctx, m(ctx).noResults, top(available(ctx), 4), { showContact: true });
+  // Not understood: only a polite answer with the topic buttons and the shop's phone (call /
+  // WhatsApp buttons below the message) — no products.
+  return respond(ctx, m(ctx).notUnderstood(ctx.settings.phone?.trim() ?? ""), [], { showContact: true });
 }

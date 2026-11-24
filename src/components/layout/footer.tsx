@@ -22,12 +22,15 @@ export function SiteFooter() {
   const mapsUrl = settings?.mapsUrl ?? "";
 
   return (
-    <footer className="mt-auto border-t border-beige-dark/15 bg-warm-white">
-      <div className="mx-auto max-w-[1400px] px-4 py-10 md:px-8 lg:px-10">
-        <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+    // Compact; reaches the very bottom of the page (it takes over the space kept under the page for
+    // the phone's bottom bar, see globals.css "data-site-footer").
+    <footer className="mt-auto border-t border-beige-dark/15 bg-warm-white" data-site-footer>
+      <div className="mx-auto max-w-[1400px] px-4 pb-3 pt-6 md:px-8 lg:px-10 lg:pt-8">
+        {/* Phone: hours | links side by side, then contact, then the logo line. */}
+        <div className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4 lg:gap-8">
           {/* Hours */}
           <div>
-            <h3 className="text-caption mb-3 uppercase tracking-wider">{t("footer.hours")}</h3>
+            <h3 className="text-caption mb-2 uppercase tracking-wider">{t("footer.hours")}</h3>
             {hours ? (
               <p className="text-body whitespace-pre-line">{hours}</p>
             ) : (
@@ -36,9 +39,9 @@ export function SiteFooter() {
           </div>
 
           {/* Contact */}
-          <div>
-            <h3 className="text-caption mb-3 uppercase tracking-wider">{t("footer.contact")}</h3>
-            <ul className="space-y-2">
+          <div className="order-3 col-span-2 lg:order-none lg:col-span-1">
+            <h3 className="text-caption mb-2 uppercase tracking-wider">{t("footer.contact")}</h3>
+            <ul className="space-y-1.5">
               {phone && (
                 <li>
                   <a
@@ -87,9 +90,9 @@ export function SiteFooter() {
           </div>
 
           {/* Info */}
-          <div>
-            <h3 className="text-caption mb-3 uppercase tracking-wider">{t("footer.moreInfo")}</h3>
-            <ul className="space-y-2">
+          <div className="order-2 lg:order-none">
+            <h3 className="text-caption mb-2 uppercase tracking-wider">{t("footer.moreInfo")}</h3>
+            <ul className="space-y-1.5">
               {[
                 { href: "/account", label: t("footer.faq") },
                 { href: "#a11y-panel", label: t("footer.accessibility") },
@@ -106,13 +109,13 @@ export function SiteFooter() {
           </div>
 
           {/* Logo */}
-          <div className="flex flex-col items-start sm:items-start">
-            <Logo size="md" href="/" priority className="h-12 w-auto" />
-            <p className="text-caption mt-4 max-w-xs leading-relaxed">{t("footer.about")}</p>
+          <div className="order-4 col-span-2 flex items-center gap-3 lg:order-none lg:col-span-1 lg:flex-col lg:items-start lg:gap-3">
+            <Logo size="md" href="/" priority className="h-9 w-auto shrink-0 lg:h-11" />
+            <p className="text-caption max-w-xs text-xs leading-relaxed">{t("footer.about")}</p>
           </div>
         </div>
 
-        <div className="mt-8 border-t border-beige-dark/12 pt-6 text-center sm:text-start">
+        <div className="mt-5 text-center sm:text-start">
           <p className="text-caption">
             © {new Date().getFullYear()} {settings?.storeName ?? BRAND.name}. {t("footer.rights")}
           </p>

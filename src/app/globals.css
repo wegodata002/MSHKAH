@@ -342,3 +342,19 @@ html.dark .mobile-bottom-nav {
   .tone-watch { color: #b45309; }
   .tone-critical { color: #b91c1c; }
 }
+
+/*
+ * The site footer is as tall as its content and reaches the very bottom of the page. The body keeps
+ * space at the bottom for the phone's bottom bar (and the floating cart button); on pages with the
+ * footer that space is dropped. On phones the bottom bar's height plus a small gap moves inside the
+ * footer, so neither the bar nor the floating buttons cover the links; desktop: no extra space.
+ * (Unlayered on purpose: it must beat the body's padding utilities.)
+ */
+body:has([data-site-footer]) {
+  padding-bottom: 0;
+}
+@media (max-width: 1023.98px) {
+  [data-site-footer] {
+    padding-bottom: calc(var(--mobile-bottom-nav-height) + env(safe-area-inset-bottom, 0px) + 1.75rem);
+  }
+}
