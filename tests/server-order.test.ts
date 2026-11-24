@@ -16,6 +16,11 @@ import { chargeFromCatalogSum } from "@/lib/payments/hyp/amounts";
 
 const TUESDAY_NOON = localToDate({ year: 2026, month: 11, day: 24 }, 12 * 60);
 const FRIDAY_NOON = localToDate({ year: 2026, month: 11, day: 27 }, 12 * 60);
+/** November 2026, Israel time: at(24, "12:00") is Tuesday noon. */
+const at = (day: number, hhmm: string) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  return localToDate({ year: 2026, month: 11, day }, h! * 60 + m!);
+};
 
 const PRODUCTS = new Map<string, CatalogProduct | undefined>([
   ["latte", { price: 16, nameHe: "לאטה", nameAr: "لاتيه", nameEn: "Latte", available: true, active: true }],
@@ -111,6 +116,8 @@ describe("server order: same document as today's checkout", () => {
       // New, optional fields:
       paymentCollection: "counter",
       pricedBy: "server",
+      // No time sent (an older cached checkout): the earliest time today, noon + 15 minutes.
+      pickupTime: "12:15",
     });
   });
 
@@ -199,13 +206,50 @@ describe("server order: order types and payment", () => {
     expect(build(delivery, WITH_DELIVERY)).toEqual({ ok: false, error: { code: "PAYMENT_NOT_ALLOWED" } });
   });
 
-  it("pickup is not blocked by opening hours yet (that comes with pickup times)", () => {
-    expect(build(request(), DEFAULT_FULFILLMENT, FRIDAY_NOON).ok).toBe(true);
+  it("pickup is blocked when closed (Friday), with the next opening", () => {
+    expect(build(request(), DEFAULT_FULFILLMENT, FRIDAY_NOON)).toEqual({
+      ok: false,
+      error: { code: "PICKUP_CLOSED", reason: "closed", nextAt: at(29, "07:00").toISOString() },
+    });
+    expect(build(request({ fulfillment: { type: "pickup", pickupTime: "12:30" } }), DEFAULT_FULFILLMENT, FRIDAY_NOON)).toMatchObject({
+      ok: false,
+      error: { code: "PICKUP_CLOSED" },
+    });
   });
 
-  it("pickup time is stored when sent", () => {
+  it("pickup switched off in the settings → closed (disabled)", () => {
+    const off = { ...DEFAULT_FULFILLMENT, pickup: { ...DEFAULT_FULFILLMENT.pickup, enabled: false } };
+    expect(build(request(), off)).toEqual({ ok: false, error: { code: "PICKUP_CLOSED", reason: "disabled", nextAt: null } });
+  });
+
+  it("after the last pickup time of the day → closed until tomorrow 07:00", () => {
+    expect(build(request(), DEFAULT_FULFILLMENT, at(24, "21:50"))).toEqual({
+      ok: false,
+      error: { code: "PICKUP_CLOSED", reason: "closed", nextAt: at(25, "07:00").toISOString() },
+    });
+  });
+
+  it("before opening the same day: the earliest time is opening + preparation", () => {
+    const result = build(request(), DEFAULT_FULFILLMENT, at(24, "06:30"));
+    expect(result.ok && result.order.pickupTime).toBe("07:15");
+  });
+
+  it("a chosen pickup time on the list is stored", () => {
     const result = build(request({ fulfillment: { type: "pickup", pickupTime: "12:30" } }));
     expect(result.ok && result.order.pickupTime).toBe("12:30");
+  });
+
+  it("a time picked a minute or two earlier is still accepted (10-minute grace)", () => {
+    // At 12:00 the list starts at 12:15; the customer presses the button at 12:02 (list now starts 12:30).
+    const result = build(request({ fulfillment: { type: "pickup", pickupTime: "12:15" } }), DEFAULT_FULFILLMENT, at(24, "12:02"));
+    expect(result.ok && result.order.pickupTime).toBe("12:15");
+  });
+
+  it("a time that passed, is off the grid, or is outside the hours → PICKUP_TIME_UNAVAILABLE", () => {
+    for (const [time, now] of [["12:15", "12:16"], ["12:20", "12:00"], ["23:00", "12:00"], ["06:45", "06:30"]] as const) {
+      const result = build(request({ fulfillment: { type: "pickup", pickupTime: time } }), DEFAULT_FULFILLMENT, at(24, now));
+      expect(result, `${time} at ${now}`).toEqual({ ok: false, error: { code: "PICKUP_TIME_UNAVAILABLE" } });
+    }
   });
 
   it("delivery is rejected while switched off (as it is live now)", () => {

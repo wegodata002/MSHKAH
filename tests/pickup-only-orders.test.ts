@@ -35,15 +35,18 @@ describe("new order fulfillment", () => {
     expect(result.delivery).toBe(0);
   });
 
-  it("checkout is pickup only (delivery returns with areas in the next step)", () => {
+  it("checkout offers pickup (with a time) and delivery (by area) from the settings", () => {
     const checkout = readFileSync(
       resolve(process.cwd(), "src/app/checkout/page.tsx"),
       "utf8"
     );
-    expect(checkout).not.toMatch(/setOrderType/);
-    expect(checkout).not.toMatch(/\["pickup", "delivery"\]/);
-    expect(checkout).not.toMatch(/checkout\.address/);
-    expect(checkout).toMatch(/fulfillment: \{ type: orderType \}/);
+    expect(checkout).toMatch(/useFulfillmentAvailability\(\)/);
+    expect(checkout).toMatch(/<OrderTypePicker/);
+    expect(checkout).toMatch(/type: "delivery", zoneId: deliveryZone\.id, address: address\.trim\(\)/);
+    expect(checkout).toMatch(/type: "pickup", pickupTime/);
+    // The old fixed "pickup only" note is gone from the cart.
+    const cart = readFileSync(resolve(process.cwd(), "src/features/cart/cart-panel.tsx"), "utf8");
+    expect(cart).not.toMatch(/cart\.pickupOnly/);
   });
 
   it("createOrder still normalizes fulfillment fields", () => {

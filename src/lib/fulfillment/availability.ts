@@ -196,6 +196,43 @@ export function pickupSlots(
   return slots;
 }
 
+export type PickupAvailability =
+  | { available: true; slots: Date[] }
+  | { available: false; reason: "disabled" | "closed"; nextAt: Date | null };
+
+/** Whether a pickup order can be placed at `at`, with today's pickup times. */
+export function pickupAvailability(
+  hours: OpeningHours,
+  pickup: FulfillmentSettings["pickup"],
+  at: Date,
+  timeZone = BUSINESS_TIMEZONE
+): PickupAvailability {
+  if (!pickup.enabled) return { available: false, reason: "disabled", nextAt: null };
+  const slots = pickupSlots(hours, pickup, at, timeZone);
+  if (slots.length > 0) return { available: true, slots };
+  return { available: false, reason: "closed", nextAt: nextOpeningAfter(hours, at, { timeZone }) };
+}
+
+/** Minutes a chosen pickup time stays acceptable after the list it came from was shown. */
+export const PICKUP_GRACE_MINUTES = 10;
+
+/**
+ * The chosen "HH:MM" pickup time as a date, when it is still acceptable at `at`: it was on the
+ * list up to PICKUP_GRACE_MINUTES ago and has not passed yet. Otherwise null.
+ */
+export function acceptedPickupTime(
+  hours: OpeningHours,
+  pickup: FulfillmentSettings["pickup"],
+  at: Date,
+  chosen: string,
+  timeZone = BUSINESS_TIMEZONE
+): Date | null {
+  if (!pickup.enabled) return null;
+  const earlier = new Date(at.getTime() - PICKUP_GRACE_MINUTES * MINUTE);
+  const match = pickupSlots(hours, pickup, earlier, timeZone).find((slot) => formatLocalTime(slot, timeZone) === chosen);
+  return match && match.getTime() >= at.getTime() ? match : null;
+}
+
 /** Weekly schedule deliveries follow (before the "close before" cut). */
 export function deliveryHours(settings: FulfillmentSettings, openingHours: OpeningHours): OpeningHours {
   return settings.delivery.hoursMode === "custom" ? settings.delivery.customHours : openingHours;

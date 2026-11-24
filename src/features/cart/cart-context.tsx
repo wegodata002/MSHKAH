@@ -17,7 +17,7 @@ import {
   selectionsFingerprint,
 } from "@/lib/product-builder/engine";
 import { NEW_ORDER_FULFILLMENT } from "@/lib/orders/fulfillment";
-import { couponRate, normalizeCouponCode } from "@/lib/orders/coupons";
+import { checkCoupon, couponRate, normalizeCouponCode, type CouponCheck } from "@/lib/orders/coupons";
 import { isViewOnlyMenuSurface } from "@/lib/domains/host-routing";
 
 interface CartState {
@@ -83,7 +83,8 @@ interface CartContextValue {
     options: Required<Pick<AddItemOptions, "selections" | "unitPrice" | "quantity">> &
       Pick<AddItemOptions, "notes">
   ) => void;
-  applyCoupon: (code: string) => boolean;
+  /** Applies the coupon only when it is valid; returns why not otherwise. */
+  applyCoupon: (code: string) => CouponCheck;
   removeCoupon: () => void;
   clearCart: () => void;
   openCart: () => void;
@@ -306,15 +307,16 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const closeCart = useCallback(() => dispatch({ type: "CLOSE_CART" }), []);
   const toggleCart = useCallback(() => dispatch({ type: "TOGGLE_CART" }), []);
 
-  const applyCoupon = useCallback((code: string) => {
-    const normalized = normalizeCouponCode(code);
-    const rate = couponRate(normalized);
-    if (rate > 0) {
-      dispatch({ type: "SET_COUPON", code: normalized, discount: rate });
-      return true;
-    }
-    return false;
-  }, []);
+  const applyCoupon = useCallback(
+    (code: string): CouponCheck => {
+      const normalized = normalizeCouponCode(code);
+      const currentSubtotal = state.items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
+      const check = checkCoupon(normalized, currentSubtotal);
+      if (check === "ok") dispatch({ type: "SET_COUPON", code: normalized, discount: couponRate(normalized) });
+      return check;
+    },
+    [state.items]
+  );
 
   const removeCoupon = useCallback(() => dispatch({ type: "REMOVE_COUPON" }), []);
 

@@ -183,6 +183,19 @@ export function OrderCard({
           <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-coffee/60">
             <span className="truncate font-medium text-coffee/80">{order.customerName}</span>
             {isClubMember ? <ClubMemberBadge compact /> : null}
+            {/* What the kitchen needs at a glance: pickup time, or the delivery area. */}
+            {order.orderType !== "delivery" && order.pickupTime ? (
+              <span className="rounded-full bg-turquoise/10 px-1.5 py-0.5 text-[11px] font-semibold text-turquoise">
+                {t("admin.orders.pickupAt").replace("{time}", order.pickupTime)}
+              </span>
+            ) : null}
+            {order.orderType === "delivery" ? (
+              <span className="rounded-full bg-turquoise/10 px-1.5 py-0.5 text-[11px] font-semibold text-turquoise">
+                {order.deliveryZoneName
+                  ? t("admin.orders.deliveryTo").replace("{zone}", order.deliveryZoneName)
+                  : t("admin.orders.type.delivery")}
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-1" title={formatJerusalemDateTime(order.createdAt)}>
               <Clock className="h-3 w-3" />
               {ageIsAtLeastOneDay(ageMs)
@@ -240,6 +253,7 @@ export function OrderCard({
               <p>{order.customerFullName || order.customerName}</p>
               {order.customerPhone && <p dir="ltr" className="text-start">{order.customerPhone}</p>}
               {order.customerEmail && <p dir="ltr" className="text-start">{order.customerEmail}</p>}
+              {order.deliveryZoneName && <p className="font-semibold">{order.deliveryZoneName}</p>}
               {order.deliveryAddress && <p>{order.deliveryAddress}</p>}
             </div>
             <div className="space-y-1">
