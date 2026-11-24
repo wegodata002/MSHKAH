@@ -17,6 +17,7 @@ import { useProductBuilderConfig } from "@/hooks/useModifiers";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
 import type { CartItem } from "@/types";
 import type { ProductBuilderConfig } from "@/types/modifiers";
+import { FulfillmentNote } from "@/features/checkout/fulfillment-note";
 
 function CartLineItem({
   item,
@@ -154,17 +155,16 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
 
   const handleCoupon = () => {
     if (!couponInput.trim()) return;
-    const ok = applyCoupon(couponInput);
-    setCouponError(ok ? null : t("error.generic", "Invalid coupon code"));
+    const check = applyCoupon(couponInput);
+    setCouponError(check === "ok" ? null : t(check === "too_large" ? "cart.couponTooLarge" : "cart.couponInvalid"));
   };
 
   // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
   const handleCouponInputChange = (value: string) => {
     setCouponInput(value);
-    if (!value.trim() && couponCode) {
-      removeCoupon();
-      setCouponError(null);
-    }
+    // Any change to the code hides the old coupon message.
+    setCouponError(null);
+    if (!value.trim() && couponCode) removeCoupon();
   };
 
   // Keep an applied coupon visible in the field (e.g. applied elsewhere or after reload).
@@ -270,9 +270,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
                 <span>-{formatPrice(discount)}</span>
               </div>
             )}
-            <p className="text-xs text-coffee/50">
-              {t("cart.pickupOnly", "איסוף עצמי בלבד")}
-            </p>
+            <FulfillmentNote />
             <div className="flex justify-between border-t border-beige-dark/15 pt-2">
               <span className="font-semibold text-dark-brown">{t("cart.total")}</span>
               <span className="text-price text-xl">{formatPrice(total)}</span>

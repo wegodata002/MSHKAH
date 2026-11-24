@@ -162,6 +162,8 @@ export function mapOrder(doc: FirestoreDoc<FirestoreOrder>): Order {
         : undefined,
     orderType: doc.orderType,
     deliveryAddress: doc.deliveryAddress,
+    pickupTime: doc.pickupTime,
+    deliveryZoneName: doc.deliveryZoneName,
     notes: doc.notes,
     isTestOrder: doc.isTestOrder === true,
     locale: doc.locale,

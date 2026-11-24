@@ -165,6 +165,9 @@ type OrderLike = {
   createdAt: string;
   orderType?: "pickup" | "delivery";
   deliveryAddress?: string;
+  /** "HH:MM" chosen pickup time. */
+  pickupTime?: string;
+  deliveryZoneName?: string;
 };
 
 export function buildReceiptModelFromOrder(
@@ -177,6 +180,9 @@ export function buildReceiptModelFromOrder(
   const discount = order.discount && order.discount > 0 ? order.discount : undefined;
   const subtotal = discount && order.subtotal && order.subtotal > 0 ? order.subtotal : undefined;
   const isDelivery = order.orderType === "delivery";
+  const pickupTime = !isDelivery ? order.pickupTime?.trim() : undefined;
+  const address = isDelivery ? order.deliveryAddress?.trim() || undefined : undefined;
+  const zone = isDelivery ? order.deliveryZoneName?.trim() || undefined : undefined;
 
   return {
     locale,
@@ -194,9 +200,12 @@ export function buildReceiptModelFromOrder(
     discount,
     total: order.total,
     paymentLabel: paymentMethodLabel(order.paymentMethod, locale),
-    pickupLabel: fulfillmentLabel(locale, order.orderType),
+    // Time and area ride on fields the printer agent already prints (no agent update needed).
+    pickupLabel: pickupTime
+      ? `${fulfillmentLabel(locale, order.orderType)} · ${pickupTime}`
+      : fulfillmentLabel(locale, order.orderType),
     orderType: isDelivery ? "delivery" : "pickup",
-    deliveryAddress: isDelivery ? order.deliveryAddress?.trim() || undefined : undefined,
+    deliveryAddress: address && zone ? `${zone} — ${address}` : address ?? zone,
     createdTime: time,
   };
 }
@@ -221,6 +230,8 @@ export function buildReceiptModelFromFirestoreOrder(
       createdAt: createdAtIso,
       orderType: data.orderType,
       deliveryAddress: data.deliveryAddress,
+      pickupTime: data.pickupTime,
+      deliveryZoneName: data.deliveryZoneName,
     },
     localeOverride
   );

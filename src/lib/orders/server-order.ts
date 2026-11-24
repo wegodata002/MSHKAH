@@ -2,7 +2,13 @@ import { z } from "zod";
 import { couponRate, normalizeCouponCode } from "@/lib/orders/coupons";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import { collectKitchenNotes } from "@/lib/product-builder/engine";
-import { deliveryAvailability, quoteDelivery } from "@/lib/fulfillment/availability";
+import {
+  acceptedPickupTime,
+  deliveryAvailability,
+  formatLocalTime,
+  pickupAvailability,
+  quoteDelivery,
+} from "@/lib/fulfillment/availability";
 import { zoneName, type FulfillmentSettings } from "@/lib/fulfillment/settings";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import type { SelectedModifier } from "@/types/modifiers";
@@ -98,6 +104,8 @@ export type OrderBuildError =
   | { code: "PRODUCT_UNAVAILABLE"; productNames: string[] }
   | { code: "INVALID_PRICE" }
   | { code: "PAYMENT_NOT_ALLOWED" }
+  | { code: "PICKUP_CLOSED"; reason: "disabled" | "closed"; nextAt: string | null }
+  | { code: "PICKUP_TIME_UNAVAILABLE" }
   | { code: "DELIVERY_UNAVAILABLE"; reason: "disabled" | "no_zones" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_ZONE" }
   | { code: "BELOW_MINIMUM"; minOrder: number }
@@ -255,7 +263,23 @@ export function buildServerOrder(
   let delivery = 0;
   const typeFields: Partial<ServerOrderDraft> = {};
   if (fulfillment.type === "pickup") {
-    if (fulfillment.pickupTime) typeFields.pickupTime = fulfillment.pickupTime;
+    // A chosen time is accepted if it was on the list a few minutes ago and has not passed.
+    // Without a time (an older cached checkout), the earliest time today is used.
+    if (fulfillment.pickupTime) {
+      if (!acceptedPickupTime(ctx.openingHours, ctx.fulfillment.pickup, ctx.now, fulfillment.pickupTime)) {
+        const pickup = pickupAvailability(ctx.openingHours, ctx.fulfillment.pickup, ctx.now);
+        return pickup.available
+          ? { ok: false, error: { code: "PICKUP_TIME_UNAVAILABLE" } }
+          : { ok: false, error: { code: "PICKUP_CLOSED", reason: pickup.reason, nextAt: pickup.nextAt?.toISOString() ?? null } };
+      }
+      typeFields.pickupTime = fulfillment.pickupTime;
+    } else {
+      const pickup = pickupAvailability(ctx.openingHours, ctx.fulfillment.pickup, ctx.now);
+      if (!pickup.available) {
+        return { ok: false, error: { code: "PICKUP_CLOSED", reason: pickup.reason, nextAt: pickup.nextAt?.toISOString() ?? null } };
+      }
+      typeFields.pickupTime = formatLocalTime(pickup.slots[0]!);
+    }
   } else if (fulfillment.type === "delivery") {
     const availability = deliveryAvailability(ctx.fulfillment, ctx.openingHours, ctx.now);
     if (!availability.available) {

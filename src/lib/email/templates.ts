@@ -143,6 +143,9 @@ export type OrderEmailBase = {
   paymentMethod?: string;
   paymentStatus?: string;
   orderType?: "pickup" | "delivery";
+  pickupTime?: string;
+  deliveryZoneName?: string;
+  deliveryAddress?: string;
   status?: string;
   notes?: string;
   viewUrl: string;
@@ -234,6 +237,9 @@ function customerBlock(payload: OrderEmailBase, extraRows?: string): string {
         <div><strong>תאריך:</strong> ${escapeHtml(date)}</div>
         ${time ? `<div><strong>שעה:</strong> ${escapeHtml(time)}</div>` : ""}
         <div><strong>סוג:</strong> ${escapeHtml(fulfillmentLabel(payload.orderType))}</div>
+        ${payload.orderType !== "delivery" && payload.pickupTime ? `<div><strong>שעת איסוף:</strong> ${escapeHtml(payload.pickupTime)}</div>` : ""}
+        ${payload.orderType === "delivery" && payload.deliveryZoneName ? `<div><strong>אזור:</strong> ${escapeHtml(payload.deliveryZoneName)}</div>` : ""}
+        ${payload.orderType === "delivery" && payload.deliveryAddress ? `<div><strong>כתובת:</strong> ${escapeHtml(payload.deliveryAddress)}</div>` : ""}
         <div><strong>תשלום:</strong> ${escapeHtml(paymentLabel(payload.paymentMethod))}</div>
         <div><strong>סטטוס:</strong> ${escapeHtml(statusLabel(payload.status))}</div>
         ${extraRows ?? ""}

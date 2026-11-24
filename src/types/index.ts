@@ -114,6 +114,9 @@ export interface Order {
   customerConfirmationStatus?: "SENDING" | "SENT" | "FAILED";
   orderType?: "pickup" | "delivery";
   deliveryAddress?: string;
+  /** "HH:MM" chosen pickup time (orders from the server checkout). */
+  pickupTime?: string;
+  deliveryZoneName?: string;
   notes?: string;
   /** True when the cart contained a marked test product (HYP ₪2 verification). */
   isTestOrder?: boolean;

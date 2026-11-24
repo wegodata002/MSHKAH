@@ -9,7 +9,6 @@ import {
   Phone,
   User,
   MessageSquare,
-  Store,
   CheckCircle2,
   Banknote,
   CreditCard,
@@ -33,6 +32,17 @@ import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
 import { formatPrice, cn } from "@/lib/utils";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
+import { formatLocalTime } from "@/lib/fulfillment/availability";
+import { zoneName } from "@/lib/fulfillment/settings";
+import { useFulfillmentAvailability, describeNext } from "@/features/checkout/use-fulfillment-availability";
+import {
+  DeliveryZonePicker,
+  OrderTypePicker,
+  PickupTimeSelect,
+  StoreContact,
+  type CheckoutOrderType,
+  type ZoneChoice,
+} from "@/features/checkout/checkout-fulfillment";
 
 function OrderLineItem({ item }: { item: import("@/types").CartItem }) {
   const localized = useLocalizedProduct(item.product);
@@ -67,17 +77,16 @@ export default function CheckoutPage() {
   // Same logic as the cart panel (shared coupon table in cart-context).
   const handleCoupon = () => {
     if (!couponInput.trim()) return;
-    const ok = applyCoupon(couponInput);
-    setCouponError(ok ? null : t("error.generic", "Invalid coupon code"));
+    const check = applyCoupon(couponInput);
+    setCouponError(check === "ok" ? null : t(check === "too_large" ? "cart.couponTooLarge" : "cart.couponInvalid"));
   };
 
   // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
   const handleCouponInputChange = (value: string) => {
     setCouponInput(value);
-    if (!value.trim() && couponCode) {
-      removeCoupon();
-      setCouponError(null);
-    }
+    // Any change to the code hides the old coupon message.
+    setCouponError(null);
+    if (!value.trim() && couponCode) removeCoupon();
   };
 
   // Keep an applied coupon visible in the field (e.g. applied in the cart or after reload).
@@ -88,8 +97,31 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
-  // Pickup only until PR 4 (delivery areas + pickup times). The server prices the order.
-  const orderType = "pickup" as const;
+  // What can be ordered now (opening hours, delivery hours and areas from the settings).
+  // The browser only shows it; the server checks it again and prices the order.
+  const availability = useFulfillmentAvailability();
+  const [orderTypeChoice, setOrderType] = useState<CheckoutOrderType>("pickup");
+  const [pickupTimeChoice, setPickupTime] = useState("");
+  const [zoneChoice, setZoneChoice] = useState<ZoneChoice>("");
+  const [address, setAddress] = useState("");
+  const pickupOk = availability.pickup.available;
+  const deliveryOk = availability.delivery?.available === true;
+  // A type that is not available falls back to the one that is.
+  const orderType: CheckoutOrderType =
+    orderTypeChoice === "delivery"
+      ? deliveryOk ? "delivery" : "pickup"
+      : !pickupOk && deliveryOk ? "delivery" : "pickup";
+  const slotTimes = availability.pickup.available ? availability.pickup.slots.map((s) => formatLocalTime(s)) : [];
+  // A chosen time that has passed falls back to the earliest one.
+  const pickupTime = slotTimes.includes(pickupTimeChoice) ? pickupTimeChoice : slotTimes[0] ?? "";
+  const deliveryZone = availability.zones.find((z) => z.id === zoneChoice);
+  const deliveryFee = orderType === "delivery" && deliveryZone ? deliveryZone.fee : 0;
+  const belowMinimum = Boolean(deliveryZone && deliveryZone.minOrder > 0 && subtotal < deliveryZone.minOrder);
+  const nothingAvailable = !availability.loading && !pickupOk && !deliveryOk;
+  const canOrder =
+    !availability.loading &&
+    (orderType === "pickup" ? pickupOk && Boolean(pickupTime) : deliveryOk && Boolean(deliveryZone) && !belowMinimum);
+  const displayTotal = total + deliveryFee;
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [hypAvailability, setHypAvailability] = useState<"unknown" | "enabled" | "disabled">("unknown");
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
@@ -155,12 +187,25 @@ export default function CheckoutPage() {
       return t("checkout.productMissing");
     }
     if (result.code === "RATE_LIMITED") return t("checkout.tooManyOrders");
+    if (result.code === "PICKUP_TIME_UNAVAILABLE") return t("checkout.pickupTimeGone");
+    if (result.code === "PICKUP_CLOSED" || result.code === "DELIVERY_UNAVAILABLE") {
+      const next = result.nextAt ? new Date(result.nextAt) : null;
+      return next && !Number.isNaN(next.getTime())
+        ? t("checkout.closedNow").replace("{when}", describeNext(t, locale, next, new Date(), "at"))
+        : t(result.code === "PICKUP_CLOSED" ? "checkout.pickupUnavailable" : "checkout.deliveryUnavailable");
+    }
+    if (result.code === "UNKNOWN_ZONE") return t("checkout.unknownZone");
+    if (result.code === "BELOW_MINIMUM" && result.minOrder) {
+      return t("checkout.minimumError").replace("{min}", formatPrice(result.minOrder));
+    }
     return t("checkout.orderSaveError");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone) { setError(t("validation.required")); return; }
+    if (!canOrder) return;
+    if (orderType === "delivery" && !address.trim()) { setError(t("validation.required")); return; }
     const normalizedEmail = normalizeCustomerEmail(email);
     if (payment === "card" && !normalizedEmail) {
       setError(t("validation.email"));
@@ -189,7 +234,8 @@ export default function CheckoutPage() {
       const orderNotes = [
         notes.trim(),
         phone.trim() ? `${t("checkout.phone")}: ${phone.trim()}` : "",
-        t("checkout.pickupFromStore", "איסוף עצמי מהעסק"),
+        orderType === "delivery" ? t("checkout.delivery") : t("checkout.pickupFromStore", "איסוף עצמי מהעסק"),
+        orderType === "delivery" ? `${t("checkout.address")}: ${address.trim()}` : "",
       ]
         .filter(Boolean)
         .join("\n");
@@ -207,8 +253,11 @@ export default function CheckoutPage() {
           notes: orderNotes || undefined,
           locale,
           couponCode: couponCode || undefined,
-          payment: payment === "card" ? "online" : "counter",
-          fulfillment: { type: orderType },
+          payment: payment === "card" ? "online" : orderType === "delivery" ? "courier" : "counter",
+          fulfillment:
+            orderType === "delivery" && deliveryZone
+              ? { type: "delivery", zoneId: deliveryZone.id, address: address.trim() }
+              : { type: "pickup", pickupTime: pickupTime || undefined },
         });
         if (!result.ok) {
           console.error("[checkout] order failed:", result.code, result.status);
@@ -298,20 +347,40 @@ export default function CheckoutPage() {
 
               <form onSubmit={handleSubmit} className="mt-8 grid gap-8 lg:grid-cols-5">
                 <div className="space-y-6 lg:col-span-3">
-                  <div className="rounded-2xl bg-warm-white p-5 shadow-soft">
-                    <h2 className="text-sm font-semibold">{t("checkout.orderType")}</h2>
-                    {/* Pickup only for now; delivery (areas, fee) returns in the next step. */}
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      <div
-                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border-2 border-turquoise bg-turquoise/5 px-4 py-4 text-start"
-                        data-order-type="pickup"
-                      >
-                        <Store className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                        <span className="font-semibold">{t("checkout.pickup")}</span>
-                        <CheckCircle2 className="ms-auto h-5 w-5 shrink-0 text-turquoise" strokeWidth={1.75} />
-                      </div>
+                  {availability.loading ? (
+                    <div className="flex justify-center rounded-2xl bg-warm-white p-5 shadow-soft">
+                      <Loader2 className="h-5 w-5 animate-spin text-turquoise" aria-label={t("common.loading", "Loading")} />
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <OrderTypePicker value={orderType} onChange={setOrderType} availability={availability} />
+                      {nothingAvailable ? (
+                        <StoreContact
+                          message={
+                            availability.pickup.available === false && availability.pickup.nextAt
+                              ? t("checkout.closedNow").replace(
+                                  "{when}",
+                                  describeNext(t, locale, availability.pickup.nextAt, availability.now, "at")
+                                )
+                              : t("checkout.pickupUnavailable")
+                          }
+                          phone={availability.storePhone}
+                        />
+                      ) : orderType === "pickup" ? (
+                        <PickupTimeSelect slots={availability.pickup.available ? availability.pickup.slots : []} value={pickupTime} onChange={setPickupTime} />
+                      ) : (
+                        <DeliveryZonePicker
+                          zones={availability.zones}
+                          value={zoneChoice}
+                          onChange={setZoneChoice}
+                          address={address}
+                          onAddressChange={setAddress}
+                          subtotal={subtotal}
+                          storePhone={availability.storePhone}
+                        />
+                      )}
+                    </>
+                  )}
 
                   <div className="rounded-2xl bg-warm-white p-5 shadow-soft">
                     <h2 className="text-sm font-semibold">{t("checkout.details")}</h2>
@@ -367,13 +436,17 @@ export default function CheckoutPage() {
                         <div className="flex w-full items-center justify-between gap-2">
                           <span className="inline-flex items-center gap-2">
                             <Banknote className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                            <span className="font-semibold">{t("checkout.paymentCash")}</span>
+                            <span className="font-semibold">
+                              {orderType === "delivery" ? t("checkout.payCourier") : t("checkout.paymentCash")}
+                            </span>
                           </span>
                           {payment === "cash" && (
                             <CheckCircle2 className="h-5 w-5 shrink-0 text-turquoise" strokeWidth={1.75} />
                           )}
                         </div>
-                        <span className="ps-7 text-xs text-coffee/55">{t("checkout.paymentCashHint")}</span>
+                        <span className="ps-7 text-xs text-coffee/55">
+                          {orderType === "delivery" ? t("checkout.payCourierHint") : t("checkout.paymentCashHint")}
+                        </span>
                       </button>
                       <button
                         type="button"
@@ -468,16 +541,29 @@ export default function CheckoutPage() {
                           <span>-{formatPrice(discount)}</span>
                         </div>
                       )}
-                      <p className="text-xs text-coffee/50">
-                        {t("checkout.pickupFromStore")}
-                      </p>
+                      {orderType === "delivery" && deliveryZone ? (
+                        <div className="flex justify-between" data-summary="delivery-fee">
+                          <span>
+                            {t("checkout.deliveryFeeLabel")} · {zoneName(deliveryZone, locale)}
+                          </span>
+                          <span>{formatPrice(deliveryFee)}</span>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-coffee/50">
+                          {orderType === "delivery"
+                            ? t("checkout.delivery")
+                            : pickupTime
+                              ? `${t("checkout.pickupFromStore")} · ${pickupTime}`
+                              : t("checkout.pickupFromStore")}
+                        </p>
+                      )}
                       <div className="flex justify-between pt-2 text-lg font-bold">
                         <span>{t("cart.total")}</span>
-                        <span className="text-turquoise">{formatPrice(total)}</span>
+                        <span className="text-turquoise" data-summary="total">{formatPrice(displayTotal)}</span>
                       </div>
                     </div>
                     {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-                    <Button type="submit" variant="turquoise" size="lg" className="mt-4 w-full" disabled={loading || (payment === "card" && cardDisabled)}>
+                    <Button type="submit" variant="turquoise" size="lg" className="mt-4 w-full" disabled={loading || !canOrder || (payment === "card" && cardDisabled)}>
                       {loading ? (
                         <span className="inline-flex items-center gap-2">
                           <Loader2 className="h-4 w-4 animate-spin" />

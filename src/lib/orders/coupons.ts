@@ -20,3 +20,16 @@ export function couponRate(code: unknown): number {
     ? COUPON_RATES[normalized]!
     : 0;
 }
+
+export type CouponCheck = "ok" | "invalid" | "too_large";
+
+/**
+ * Why a coupon can or cannot be applied: unknown code → "invalid"; a discount that would
+ * cover the whole order (or more) → "too_large".
+ */
+export function checkCoupon(code: unknown, subtotal: number): CouponCheck {
+  const rate = couponRate(code);
+  if (rate <= 0) return "invalid";
+  if (rate >= 1 || (subtotal > 0 && subtotal * rate >= subtotal)) return "too_large";
+  return "ok";
+}
