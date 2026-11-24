@@ -106,7 +106,8 @@ export function AdminLoginForm() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@mishkat.cafe"
+                placeholder="name@example.com"
+                autoComplete="email"
                 className="mt-1.5"
                 required
               />
@@ -120,7 +121,6 @@ export function AdminLoginForm() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
                   autoComplete="current-password"
                   // Room for the show/hide icon on the end side (right in English, left in he/ar).
                   className="pe-11"
