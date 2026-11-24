@@ -481,7 +481,8 @@ describe("member QR = signed link; header button", () => {
     expect(page).toMatch(/fetch\("\/api\/club\/me"\)/);
     expect(page).toMatch(/router\.replace\("\/club\/me"\)/);
     const mePage = readFileSync(resolve(process.cwd(), "src/app/club/me/page.tsx"), "utf8");
-    expect(mePage).toMatch(/\/club\/card\?c=\$\{encodeURIComponent\(member\.cardToken\)\}/);
+    expect(mePage).toMatch(/const cardToken = member\?\.cardToken \?\? null;/);
+    expect(mePage).toMatch(/\/club\/card\?c=\$\{encodeURIComponent\(cardToken\)\}/);
     expect(mePage).not.toMatch(/MISHKAH:MEMBER/);
   });
 
