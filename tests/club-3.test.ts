@@ -320,7 +320,7 @@ describe("wiring", () => {
 
   it("the join page shows '6 = 🎁' only while the coffee card is on", () => {
     expect(read("src/app/club/page.tsx")).toMatch(/settings\?\.coffeeCardEnabled \? \(\s*<ClubPerk title="6 = 🎁"/);
-    expect(read("src/app/club/me/page.tsx")).toMatch(/settings\?\.coffeeCardEnabled \? <ClubCoffeeCard cups=\{member\.coffeeCups \?\? 0\} \/> : null/);
+    expect(read("src/app/club/me/page.tsx")).toMatch(/settings\?\.coffeeCardEnabled \? <ClubCoffeeCard cups=\{member\.coffeeCups \?\? 0\} glowFrom=\{glowFrom\} \/> : null/);
   });
 
   it("the coffee card switch is on by default", async () => {
