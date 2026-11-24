@@ -31,6 +31,16 @@ export default function ClubJoinPage() {
   const [sending, setSending] = useState(false);
   // Until we know whether this device is logged in to the club, show nothing (no form flash).
   const [checked, setChecked] = useState(false);
+  // Join tab with an email that is already in the club: no code is sent; offer the login tab.
+  const [alreadyMember, setAlreadyMember] = useState(false);
+
+  // /club?tab=login&email=… (from the verify page's "already a member" link).
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") === "login") setMode("login");
+    const preset = params.get("email");
+    if (preset) setEmail(preset);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -65,12 +75,19 @@ export default function ClubJoinPage() {
   async function requestCode() {
     if (!canSend) return;
     setSending(true);
-    await fetch("/api/club/enroll/start", {
+    setAlreadyMember(false);
+    const answer = (await fetch("/api/club/enroll/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), locale }),
-    }).catch(() => undefined);
+      body: JSON.stringify({ email: email.trim(), locale, mode: effectiveMode }),
+    })
+      .then((res) => res.json())
+      .catch(() => null)) as { ok?: boolean; reason?: string } | null;
     setSending(false);
+    if (answer?.reason === "already_member") {
+      setAlreadyMember(true);
+      return;
+    }
     const target = new URLSearchParams({ email: email.trim() });
     if (effectiveMode === "join" && name.trim()) target.set("name", name.trim());
     router.push(`/club/verify?${target.toString()}`);
@@ -97,7 +114,12 @@ export default function ClubJoinPage() {
           <div className="mt-5 grid gap-2.5 sm:grid-cols-3">
             <ClubPerk title={t("club2.perk.free.title")} body={t("club2.perk.free.body")} />
             <ClubPerk title={`${ratio} = ⭐`} body={t("club2.perk.points.body")} />
-            <ClubPerk title={t("club2.perk.card.title")} body={t("club2.perk.card.body")} />
+            {/* "6 = 🎁" only while the coffee card is on; the digital-card perk otherwise. */}
+            {settings?.coffeeCardEnabled ? (
+              <ClubPerk title="6 = 🎁" body={t("club3.perk.coffee.body")} />
+            ) : (
+              <ClubPerk title={t("club2.perk.card.title")} body={t("club2.perk.card.body")} />
+            )}
           </div>
         </ClubHero>
 
@@ -111,7 +133,10 @@ export default function ClubJoinPage() {
                   role="tab"
                   aria-selected={effectiveMode === m}
                   data-club-tab={m}
-                  onClick={() => setMode(m)}
+                  onClick={() => {
+                    setMode(m);
+                    setAlreadyMember(false);
+                  }}
                   className={cn(
                     "min-h-11 rounded-xl text-sm font-semibold transition-colors",
                     effectiveMode === m ? "bg-warm-white text-dark-brown shadow-sm" : "text-coffee/60 hover:text-coffee"
@@ -163,7 +188,10 @@ export default function ClubJoinPage() {
                 autoComplete="email"
                 dir="ltr"
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setAlreadyMember(false);
+                }}
                 placeholder="name@example.com"
                 className="mt-1 h-12"
                 required
@@ -179,6 +207,22 @@ export default function ClubJoinPage() {
                 t("club2.form.send")
               )}
             </Button>
+            {alreadyMember && effectiveMode === "join" ? (
+              <div className="rounded-2xl border border-turquoise/30 bg-turquoise/5 p-3 text-sm" role="status" data-club-already>
+                <p className="font-semibold text-dark-brown">{t("club3.join.alreadyMember")}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode("login");
+                    setAlreadyMember(false);
+                  }}
+                  className="mt-2 min-h-10 rounded-xl bg-turquoise px-4 font-semibold text-warm-white"
+                  data-club-go-login
+                >
+                  {t("club3.join.goLogin")}
+                </button>
+              </div>
+            ) : null}
             {effectiveMode === "join" ? <p className="text-center text-xs text-coffee/55">{t("club2.form.terms")}</p> : null}
           </form>
 

@@ -124,7 +124,7 @@ export function ClubAdmin() {
       )}
 
       <AdminCard title={t("admin.club.capabilities.title")}>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <ToggleRow
             label={t("admin.club.capabilities.enrollment")}
             description={t("admin.club.capabilities.enrollmentHint")}
@@ -149,6 +149,12 @@ export function ClubAdmin() {
             description={t("admin.club.capabilities.welcomeCouponHint")}
             checked={draft.welcomeCouponEnabled}
             onChange={(value) => patch({ welcomeCouponEnabled: value })}
+          />
+          <ToggleRow
+            label={t("admin.club.capabilities.coffeeCard")}
+            description={t("admin.club.capabilities.coffeeCardHint")}
+            checked={draft.coffeeCardEnabled}
+            onChange={(value) => patch({ coffeeCardEnabled: value })}
           />
         </div>
         {(!draft.pointValueApproved || draft.pointValueMinor <= 0) ? (

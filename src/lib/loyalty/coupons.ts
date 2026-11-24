@@ -32,6 +32,8 @@ export interface LoyaltyCoupon {
   redeemedAt?: string | null;
   channel?: LoyaltyCouponChannel | null;
   restoredAt?: string;
+  /** Counter use: the staff member who marked it used. */
+  redeemedBy?: string | null;
   updatedAt?: string;
 }
 

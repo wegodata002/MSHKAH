@@ -88,6 +88,11 @@ export function canRedeem(
  * Produce the short, human-readable member number embedded on the card.
  * Deterministic in `createdAt + id` so a retry does not produce a new number.
  */
+/** Already in the club (joined): joining again with this email is refused. */
+export function isJoinedMember(member: { status?: string } | null | undefined): boolean {
+  return member?.status === "active" || member?.status === "suspended";
+}
+
 export function deriveMemberNumber(input: { id: string; createdAtMs: number }): string {
   // 4-digit prefix from createdAt (so numbers roughly monotonically increase)
   // and the last 4 of the id. Zero-padded to keep width stable.

@@ -188,7 +188,8 @@ describe("club code: send → verify → member → active (strict fake Firestor
   it("a used code cannot be used again", async () => {
     const code = await requestCode();
     expect((await call(verify, { email: EMAIL, code, displayName: "דנה" })).body.ok).toBe(true);
-    const again = await call(verify, { email: EMAIL, code, displayName: "דנה" });
+    // Trying the same code again (as a login — a join request for a member is refused earlier).
+    const again = await call(verify, { email: EMAIL, code });
     expect(again.body.ok).toBe(false);
     expect(["no_token", "used"]).toContain(again.body.reason);
   });

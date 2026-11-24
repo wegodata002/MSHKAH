@@ -43,6 +43,8 @@ export interface LoyaltySettings {
    * Off = no new codes; codes already given stay valid.
    */
   welcomeCouponEnabled: boolean;
+  /** Digital coffee card: 5 cups (added by staff) → the 6th cup is free. */
+  coffeeCardEnabled: boolean;
   /** Hebrew/Arabic/English terms shown on the join card. */
   termsHe?: string;
   termsAr?: string;
@@ -66,6 +68,7 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
   roundingMode: "down",
   pointValueApproved: false,
   welcomeCouponEnabled: true,
+  coffeeCardEnabled: true,
   termsHe: "",
   termsAr: "",
   termsEn: "",
@@ -118,6 +121,11 @@ export interface LoyaltyMember {
   welcomeCouponCode?: string;
   /** Set when a member who joined before codes existed already had an order (no code given). */
   welcomeCouponSkippedAt?: string;
+  /** Coffee card: cups toward the free one (extra cups carry over after a free cup). */
+  coffeeCups?: number;
+  coffeeRewardsRedeemed?: number;
+  /** Last time staff added cups (double-scan guard). */
+  coffeeLastAddAt?: string;
   welcomeEmailAttemptAt?: string;
   linkedCustomerId?: string;
   createdAt: string;
@@ -191,6 +199,8 @@ export interface LoyaltyMeResponse {
     joinedAt?: string;
     /** Signed card id for the member QR (`/club/card?c=…`); reveals nothing by itself. */
     cardToken?: string;
+    /** Coffee card cups (0 when none yet). */
+    coffeeCups?: number;
   } | null;
   /** The member's coupons (welcome code, later manager coupons). */
   coupons?: LoyaltyCouponView[];
@@ -205,6 +215,7 @@ export interface LoyaltyMeResponse {
     redemptionMinPoints: number;
     redemptionMaxPoints: number;
     pointValueApproved: boolean;
+    coffeeCardEnabled?: boolean;
     termsHe?: string;
     termsAr?: string;
     termsEn?: string;
