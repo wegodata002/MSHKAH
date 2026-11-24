@@ -6,6 +6,7 @@ import {
   useReducer,
   useCallback,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -18,6 +19,7 @@ import {
 } from "@/lib/product-builder/engine";
 import { NEW_ORDER_FULFILLMENT } from "@/lib/orders/fulfillment";
 import { checkCoupon, couponRate, normalizeCouponCode, type CouponCheck } from "@/lib/orders/coupons";
+import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { isViewOnlyMenuSurface } from "@/lib/domains/host-routing";
 
 interface CartState {
@@ -83,8 +85,11 @@ interface CartContextValue {
     options: Required<Pick<AddItemOptions, "selections" | "unitPrice" | "quantity">> &
       Pick<AddItemOptions, "notes">
   ) => void;
-  /** Applies the coupon only when it is valid; returns why not otherwise. */
-  applyCoupon: (code: string) => CouponCheck;
+  /**
+   * Applies the coupon only when it is valid; returns why not otherwise. Personal club codes
+   * (MK-XXXX-XXXX) are checked with the server; the order route checks them again.
+   */
+  applyCoupon: (code: string) => Promise<CouponCheck>;
   removeCoupon: () => void;
   clearCart: () => void;
   openCart: () => void;
@@ -104,6 +109,27 @@ function newLineId(
     return crypto.randomUUID();
   }
   return selectionsFingerprint(product.id, selections, notes) + Date.now();
+}
+
+/** Display rate of a personal club code saved in the browser: 0 < rate ≤ 50%, else dropped. */
+function personalDisplayRate(value: unknown): number {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 && n <= 0.5 ? n : 0;
+}
+
+type PersonalCouponAnswer = { ok: true; code: string; percent: number } | { ok: false; reason?: CouponCheck };
+
+async function checkPersonalCoupon(code: string): Promise<PersonalCouponAnswer | null> {
+  try {
+    const res = await fetch("/api/club/coupon", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code }),
+    });
+    return (await res.json()) as PersonalCouponAnswer;
+  } catch {
+    return null;
+  }
 }
 
 /** A coupon applies to one order only: drop it once the cart is empty. */
@@ -189,7 +215,9 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       // Never trust a stored rate: recompute it from the coupon table.
       // Unknown codes are dropped; an empty cart never restores a coupon.
       const code = normalizeCouponCode(action.state.couponCode ?? state.couponCode);
-      const rate = couponRate(code);
+      // A personal club code keeps its saved rate for display (capped); it is re-checked with the
+      // server right after loading, and the server prices the order on its own anyway.
+      const rate = isPersonalCouponCode(code) ? personalDisplayRate(action.state.couponDiscount) : couponRate(code);
       return resetCouponIfEmpty({
         ...state,
         items: Array.isArray(action.state.items) ? action.state.items : state.items,
@@ -307,9 +335,31 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const closeCart = useCallback(() => dispatch({ type: "CLOSE_CART" }), []);
   const toggleCart = useCallback(() => dispatch({ type: "TOGGLE_CART" }), []);
 
+  // A personal club code restored from this browser is checked again (used elsewhere, expired,
+  // logged out…); an invalid one is removed, a valid one gets the server's rate.
+  const recheckedCode = useRef("");
+  useEffect(() => {
+    if (!hydrated || !isPersonalCouponCode(state.couponCode) || recheckedCode.current === state.couponCode) return;
+    const code = state.couponCode;
+    recheckedCode.current = code;
+    void checkPersonalCoupon(code).then((answer) => {
+      if (!answer) return;
+      if (answer.ok) dispatch({ type: "SET_COUPON", code, discount: answer.percent / 100 });
+      else dispatch({ type: "REMOVE_COUPON" });
+    });
+  }, [hydrated, state.couponCode]);
+
   const applyCoupon = useCallback(
-    (code: string): CouponCheck => {
+    async (code: string): Promise<CouponCheck> => {
       const normalized = normalizeCouponCode(code);
+      if (isPersonalCouponCode(normalized)) {
+        const answer = await checkPersonalCoupon(normalized);
+        if (!answer) return "invalid";
+        if (!answer.ok) return answer.reason && answer.reason !== "ok" ? answer.reason : "invalid";
+        recheckedCode.current = normalized;
+        dispatch({ type: "SET_COUPON", code: normalized, discount: answer.percent / 100 });
+        return "ok";
+      }
       const currentSubtotal = state.items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
       const check = checkCoupon(normalized, currentSubtotal);
       if (check === "ok") dispatch({ type: "SET_COUPON", code: normalized, discount: couponRate(normalized) });

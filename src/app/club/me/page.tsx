@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { ClubCard, ClubHero, formatIlsShort } from "@/features/club/club-ui";
+import { ClubCoupons } from "@/features/club/club-coupons";
 import type { LoyaltyMeResponse } from "@/lib/loyalty/types";
 import { spendToNextPoint } from "@/lib/loyalty/points-math";
 
@@ -17,7 +18,8 @@ const DATE_LOCALES = { he: "he-IL", ar: "ar", en: "en-GB" } as const;
 
 /**
  * Member page: hello + points (hero), the member card with its QR to show at the counter, and
- * recent activity. The QR encodes only the member number (no email, points or discount).
+ * recent activity. The QR is a signed link (/club/card?c=…) that shows nothing by itself: whoever
+ * scans it lands on their own card. The staff screen reads the same link (Club 3).
  */
 function ClubMemberContent() {
   const t = useT();
@@ -57,7 +59,11 @@ function ClubMemberContent() {
       setQrDataUrl(null);
       return;
     }
-    void QRCode.toDataURL(`MISHKAH:MEMBER:${member.memberNumber}`, {
+    if (!member.cardToken) {
+      setQrDataUrl(null);
+      return;
+    }
+    void QRCode.toDataURL(`${window.location.origin}/club/card?c=${encodeURIComponent(member.cardToken)}`, {
       width: 320,
       margin: 1,
       errorCorrectionLevel: "M",
@@ -156,7 +162,8 @@ function ClubMemberContent() {
         </ClubHero>
       </div>
 
-      <div className="lg:col-start-1 lg:row-start-2">
+      <div className="space-y-5 lg:col-start-1 lg:row-start-2">
+        {me!.coupons && me!.coupons.length > 0 ? <ClubCoupons coupons={me!.coupons} /> : null}
         <ClubCard>
           <h2 className="font-display text-lg font-bold text-dark-brown">{t("club.me.historyTitle")}</h2>
           {me!.history.length === 0 ? (

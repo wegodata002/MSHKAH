@@ -10,6 +10,7 @@ import {
   type OrderBuildError,
   type ServerOrderDraft,
 } from "@/lib/orders/server-order";
+import { CouponUnavailableError, isPersonalCouponCode } from "@/lib/loyalty/coupons";
 
 /**
  * POST /api/orders/create, without the HTTP and Firebase wiring (injected), so it can be tested
@@ -27,7 +28,19 @@ export type CreateOrderDeps = {
    * The club member logged in on this device (from the signed club session), or null.
    * Never trusted from the request body. A failure here must not block the order.
    */
-  findClubMember?: () => Promise<{ id: string; email?: string | null } | null>;
+  findClubMember?: () => Promise<{ id: string; email?: string | null; status?: string } | null>;
+  /** Personal club code (MK-XXXX-XXXX): can the logged-in member use it now? */
+  checkClubCoupon?: (
+    code: string,
+    member: { id: string; status?: string }
+  ) => Promise<
+    { ok: true; percent: number; heldBy: string | null } | { ok: false; reason: "invalid" | "used" | "expired" }
+  >;
+  /** Saves the order and marks the personal code used by it, in one transaction. */
+  saveOrderWithCoupon?: (
+    draft: ServerOrderDraft,
+    coupon: { code: string; memberId: string; heldBy: string | null }
+  ) => Promise<string>;
 };
 
 export type CreateOrderResponse =
@@ -41,6 +54,10 @@ export const ORDER_RATE_LIMITS = {
   perPhone: { windowSeconds: 60 * 60, limit: 30 },
   perIp: { windowSeconds: 60 * 60, limit: 100 },
 } as const;
+
+function couponRefused(reason: "login_required" | "invalid" | "used" | "expired"): CreateOrderResponse {
+  return { status: 409, body: { ok: false, code: "COUPON_INVALID", reason } };
+}
 
 export async function handleCreateOrder(
   rawBody: unknown,
@@ -64,18 +81,32 @@ export async function handleCreateOrder(
       deps.loadContext(),
     ]);
     const now = deps.now();
+    // Club member from the signed session (never from the request body).
+    const member = deps.findClubMember ? await deps.findClubMember().catch(() => null) : null;
+
+    // A personal club code works only for its owner, logged in to the club on this device.
+    const personalCode = isPersonalCouponCode(request.couponCode) ? request.couponCode!.trim().toUpperCase() : null;
+    let personal: { percent: number; heldBy: string | null } | null = null;
+    if (personalCode) {
+      if (!member) return couponRefused("login_required");
+      if (!deps.checkClubCoupon || !deps.saveOrderWithCoupon) return couponRefused("invalid");
+      const check = await deps.checkClubCoupon(personalCode, member);
+      if (!check.ok) return couponRefused(check.reason);
+      personal = { percent: check.percent, heldBy: check.heldBy };
+    }
+
     const built = buildServerOrder(request, {
       products,
       fulfillment: context.fulfillment,
       openingHours: context.openingHours,
       now,
       orderNumber: generateOrderNumber(now),
+      personalCouponRate: personal ? personal.percent / 100 : undefined,
     });
     if (!built.ok) return { status: 409, body: { ok: false, ...built.error } };
 
     // Club member: points by member id (not by email); their saved email, if any, for the
     // payment confirmation. The checkout no longer asks for an email.
-    const member = deps.findClubMember ? await deps.findClubMember().catch(() => null) : null;
     const order: ServerOrderDraft = { ...built.order };
     if (member?.id) {
       order.loyalty = { memberId: member.id };
@@ -83,9 +114,14 @@ export async function handleCreateOrder(
       if (memberEmail && !order.customerEmail) order.customerEmail = memberEmail;
     }
 
-    const id = await deps.saveOrder(order);
+    const id =
+      personal && personalCode && member && deps.saveOrderWithCoupon
+        ? await deps.saveOrderWithCoupon(order, { code: personalCode, memberId: member.id, heldBy: personal.heldBy })
+        : await deps.saveOrder(order);
     return { status: 200, body: { ok: true, id, orderNumber: built.order.orderNumber, total: built.order.total } };
   } catch (error) {
+    // The code was taken by another order a moment ago: nothing was saved.
+    if (error instanceof CouponUnavailableError) return couponRefused(error.reason);
     console.error("[orders/create] failed:", error instanceof Error ? error.message : error);
     return { status: 500, body: { ok: false, code: "ORDER_SAVE_FAILED" } };
   }

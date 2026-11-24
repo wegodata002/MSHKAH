@@ -68,7 +68,7 @@ export default function ClubJoinPage() {
     await fetch("/api/club/enroll/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), locale }),
     }).catch(() => undefined);
     setSending(false);
     const target = new URLSearchParams({ email: email.trim() });

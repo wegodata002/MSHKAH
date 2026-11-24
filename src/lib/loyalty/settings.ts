@@ -60,6 +60,7 @@ export function parseLoyaltySettings(
     redemptionMaxPoints: toNonNegativeInt(d.redemptionMaxPoints, DEFAULT_LOYALTY_SETTINGS.redemptionMaxPoints),
     roundingMode: toRoundingMode(d.roundingMode, DEFAULT_LOYALTY_SETTINGS.roundingMode),
     pointValueApproved,
+    welcomeCouponEnabled: toBool(d.welcomeCouponEnabled, DEFAULT_LOYALTY_SETTINGS.welcomeCouponEnabled),
     termsHe: typeof d.termsHe === "string" ? d.termsHe : "",
     termsAr: typeof d.termsAr === "string" ? d.termsAr : "",
     termsEn: typeof d.termsEn === "string" ? d.termsEn : "",

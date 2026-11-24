@@ -10,6 +10,7 @@ import { sendOrderCancelledNotificationEmail } from "@/lib/email/send";
 import type { NotifyResult } from "@/lib/email/notifications/new-order";
 import type { FirestoreOrder } from "@/types/firestore";
 import { refundOrderPoints } from "@/lib/loyalty/admin/members";
+import { restoreCouponForCancelledOrder } from "@/lib/loyalty/admin/coupons";
 import { toMinor } from "@/lib/loyalty/points-math";
 
 const FIELD = "orderCancelledEmail";
@@ -24,6 +25,21 @@ export async function notifyOrderCancelled(orderId: string): Promise<NotifyResul
     const snap = await ref.get();
     if (!snap.exists) return { status: "skipped", reason: "order_not_found" };
     data = snap.data() as FirestoreOrder;
+    // This endpoint is public: act only on an order that really is cancelled (no email,
+    // no points reversed, no code given back for an order that is still going).
+    if (data.status !== "cancelled") return { status: "skipped", reason: "not_cancelled" };
+
+    // The manager cancelled: the personal club code used on it goes back to the member
+    // (at least 3 more days). Idempotent, and independent of the email below.
+    if (data.couponCode) {
+      await restoreCouponForCancelledOrder(getAdminDb(), { orderId, code: data.couponCode, now: new Date() }).catch(
+        (error) =>
+          console.error("[loyalty] coupon restore failed on cancel", {
+            orderId,
+            message: error instanceof Error ? error.message : "unknown",
+          })
+      );
+    }
 
     const claim = await claimNotification(ref, FIELD);
     if (!claim.ok) {

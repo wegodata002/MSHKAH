@@ -89,15 +89,15 @@ describe("HYP server-side coupon discount", () => {
     });
   });
 
-  it("applies exactly 15% for WELCOME15", () => {
+  it("WELCOME15 was removed (Club 2): no discount", () => {
     expect(chargeFromCatalogSum(100, { couponCode: "WELCOME15" })).toEqual({
-      amount: 85,
-      discount: 15,
+      amount: 100,
+      discount: 0,
       subtotal: 100,
     });
     expect(chargeFromCatalogSum(33, { couponCode: "welcome15" })).toEqual({
-      amount: 28.05,
-      discount: 4.95,
+      amount: 33,
+      discount: 0,
       subtotal: 33,
     });
   });

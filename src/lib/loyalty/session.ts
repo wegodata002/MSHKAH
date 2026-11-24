@@ -13,6 +13,11 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 const COOKIE_NAME = "mkh_club";
 const DEFAULT_TTL_SECONDS = 60 * 60 * 24 * 182; // about 6 months
 
+/** Also signs the member card link (card-link.ts). */
+export function clubSecret(): string {
+  return secret();
+}
+
 function secret(): string {
   return process.env.LOYALTY_SESSION_SECRET || process.env.LOYALTY_TOKEN_PEPPER || "mishkah-dev-session";
 }

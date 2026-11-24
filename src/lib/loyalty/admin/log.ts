@@ -8,6 +8,9 @@
 
 export type LoyaltyLogEvent =
   | "enroll.start"
+  | "coupon.welcome.issued"
+  | "coupon.redeemed"
+  | "coupon.restored"
   | "enroll.verify.ok"
   | "enroll.verify.fail"
   | "enroll.verify.throttled"

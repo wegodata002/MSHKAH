@@ -5,7 +5,16 @@ import type { CreateOrderRequest } from "@/lib/orders/server-order";
 
 export type SubmitOrderResult =
   | { ok: true; id: string; orderNumber: string; total: number }
-  | { ok: false; status: number; code: string; productNames?: string[]; minOrder?: number; nextAt?: string | null };
+  | {
+      ok: false;
+      status: number;
+      code: string;
+      productNames?: string[];
+      minOrder?: number;
+      nextAt?: string | null;
+      /** COUPON_INVALID: login_required / invalid / used / expired. */
+      reason?: string;
+    };
 
 export function cartToOrderItems(items: CartItem[]): CreateOrderRequest["items"] {
   return items.map((item) => {
@@ -51,6 +60,7 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
         productNames?: string[];
         minOrder?: number;
         nextAt?: string | null;
+        reason?: string;
       }
     | null;
   if (res.ok && data?.ok && data.id) {
@@ -63,5 +73,6 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
     productNames: Array.isArray(data?.productNames) ? data.productNames : undefined,
     minOrder: typeof data?.minOrder === "number" ? data.minOrder : undefined,
     nextAt: typeof data?.nextAt === "string" ? data.nextAt : null,
+    reason: typeof data?.reason === "string" ? data.reason : undefined,
   };
 }

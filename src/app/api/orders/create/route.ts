@@ -5,7 +5,10 @@ import { COLLECTIONS } from "@/lib/firebase/collections";
 import { consumeRateLimit, rateLimitKey } from "@/lib/loyalty/admin/rate-limit";
 import { handleCreateOrder } from "@/lib/orders/create-order-handler";
 import { loadCatalogProducts, loadFulfillmentContext } from "@/lib/orders/server-context";
-import { CLUB_COOKIE_NAME, readClubSession } from "@/lib/loyalty/session";
+import { CLUB_COOKIE_NAME } from "@/lib/loyalty/session";
+import { readSessionMember } from "@/lib/loyalty/admin/session-member";
+import { checkCouponForMember, saveOrderWithCoupon } from "@/lib/loyalty/admin/coupons";
+import type { LoyaltyMember } from "@/lib/loyalty/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,17 +34,21 @@ export async function POST(request: NextRequest) {
     rateLimit: async (key, windowSeconds, limit) =>
       (await consumeRateLimit(db, { key: rateLimitKey([key]), windowSeconds, limit })).ok,
     findClubMember: async () => {
-      const session = readClubSession(request.cookies.get(CLUB_COOKIE_NAME)?.value);
-      if (!session) return null;
-      const snap = await db
-        .collection(COLLECTIONS.loyaltyMembers)
-        .where("emailHash", "==", session.emailHash)
-        .limit(1)
-        .get();
-      const doc = snap.docs[0];
-      if (!doc) return null;
-      const email = (doc.data() as { email?: unknown }).email;
-      return { id: doc.id, email: typeof email === "string" ? email : null };
+      const member = await readSessionMember(db, request.cookies.get(CLUB_COOKIE_NAME)?.value);
+      if (!member) return null;
+      return { id: member.id, email: typeof member.email === "string" ? member.email : null, status: member.status };
+    },
+    checkClubCoupon: async (code, member) => {
+      const result = await checkCouponForMember(db, {
+        code,
+        member: { id: member.id, status: (member.status ?? "suspended") as LoyaltyMember["status"] },
+        now: new Date(),
+      });
+      return result.ok ? { ok: true, percent: result.percent, heldBy: result.heldBy } : result;
+    },
+    saveOrderWithCoupon: async (draft, coupon) => {
+      const now = Timestamp.now();
+      return saveOrderWithCoupon(db, { order: { ...draft, createdAt: now, receivedAt: now }, coupon, now: new Date() });
     },
     saveOrder: async (draft) => {
       const now = Timestamp.now();

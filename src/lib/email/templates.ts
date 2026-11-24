@@ -39,7 +39,12 @@ export function emailShell(opts: {
   preheader?: string;
   badge?: EmailBadgeKind;
   bodyHtml: string;
+  /** Language of the email: Hebrew/Arabic right-to-left, English left-to-right. Default Hebrew. */
+  locale?: "he" | "ar" | "en";
 }): string {
+  const lang = opts.locale ?? "he";
+  const dir = lang === "en" ? "ltr" : "rtl";
+  const align = dir === "rtl" ? "right" : "left";
   const siteUrl = getPublicSiteUrl();
   const logoUrl = `${siteUrl}/logo-transparent.png`;
   const badge = opts.badge ? BADGE[opts.badge] : null;
@@ -48,13 +53,13 @@ export function emailShell(opts: {
     : "";
 
   return `<!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="${lang}" dir="${dir}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>${escapeHtml(opts.title)}</title>
 </head>
-<body style="margin:0;padding:0;background:${COLORS.cream};font-family:Arial,Helvetica,sans-serif;color:${COLORS.primary};">
+<body dir="${dir}" style="margin:0;padding:0;background:${COLORS.cream};font-family:Arial,Helvetica,sans-serif;color:${COLORS.primary};">
   ${preheader}
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:${COLORS.cream};padding:24px 12px;">
     <tr>
@@ -72,7 +77,7 @@ export function emailShell(opts: {
             </td>
           </tr>
           <tr>
-            <td style="padding:28px 24px;">
+            <td dir="${dir}" style="padding:28px 24px;text-align:${align};">
               ${opts.bodyHtml}
             </td>
           </tr>

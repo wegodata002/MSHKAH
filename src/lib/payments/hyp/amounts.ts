@@ -54,10 +54,13 @@ export function amountFromOrderItems(order: {
  */
 export function chargeFromCatalogSum(
   catalogSum: number,
-  order: { couponCode?: unknown; delivery?: unknown }
+  order: { couponCode?: unknown; delivery?: unknown },
+  /** Rate of a personal club code, checked on the server against this order (see process.ts). */
+  personalCouponRate?: number
 ): { amount: number; discount: number; subtotal: number } {
   const subtotal = money(catalogSum);
-  const discount = money(subtotal * couponRate(order.couponCode));
+  const rate = personalCouponRate !== undefined ? personalCouponRate : couponRate(order.couponCode);
+  const discount = money(subtotal * rate);
   const delivery = Math.max(0, money(order.delivery));
   const amount = Math.max(money(subtotal - discount + delivery), 0);
   return { amount, discount, subtotal };

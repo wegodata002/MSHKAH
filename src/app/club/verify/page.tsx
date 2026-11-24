@@ -7,7 +7,7 @@ import { Loader2, MailCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useT } from "@/components/providers/locale-provider";
+import { useLocale, useT } from "@/components/providers/locale-provider";
 import { ClubCard } from "@/features/club/club-ui";
 
 type VerifyError =
@@ -26,6 +26,7 @@ type VerifyError =
  */
 function ClubVerifyContent() {
   const t = useT();
+  const { locale } = useLocale();
   const router = useRouter();
   const params = useSearchParams();
   const email = params?.get("email") ?? "";
@@ -42,7 +43,7 @@ function ClubVerifyContent() {
     const response = await fetch("/api/club/enroll/verify", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), code: code.trim(), displayName: name || undefined }),
+      body: JSON.stringify({ email: email.trim(), code: code.trim(), displayName: name || undefined, locale }),
     }).catch(() => null);
     const data = (await response?.json().catch(() => null)) as
       | { ok: true; member?: { status?: string } }
@@ -63,7 +64,7 @@ function ClubVerifyContent() {
     await fetch("/api/club/enroll/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), locale }),
     }).catch(() => undefined);
     setBusy(false);
     setResent(true);

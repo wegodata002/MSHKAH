@@ -1,6 +1,7 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { COLLECTIONS } from "@/lib/firebase/collections";
-import { renderClubWelcomeEmail } from "@/lib/email/loyalty-templates";
+import { clubEmailLocale, renderClubWelcomeEmail } from "@/lib/email/loyalty-templates";
+import { readCoupon } from "@/lib/loyalty/admin/coupons";
 import { sendMishkahEmail } from "@/lib/email/send";
 import { getPublicSiteUrl } from "@/lib/email/config";
 import { readLoyaltySettings, setWelcomeEmailStatus } from "@/lib/loyalty/admin/members";
@@ -19,7 +20,11 @@ export async function sendClubWelcomeEmail(db: Firestore, memberId: string): Pro
     const member = { id: memberId, ...(memberSnap.data() as Omit<LoyaltyMember, "id">) };
     if (member.welcomeEmailStatus === "sent") return;
     const settings = await readLoyaltySettings(db);
+    // The welcome code (when one was given) is spelled out in the email.
+    const coupon = member.welcomeCouponCode ? await readCoupon(db, member.welcomeCouponCode) : null;
     const content = renderClubWelcomeEmail({
+      locale: clubEmailLocale(member.locale),
+      coupon: coupon && coupon.status === "active" ? { code: coupon.code, percent: coupon.percent, expiresAt: coupon.expiresAt } : undefined,
       memberNumber: member.memberNumber,
       displayName: member.displayName,
       spendPerPointIls: fromMinor(settings.spendPerPointMinor),

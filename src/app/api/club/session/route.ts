@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { CLUB_COOKIE_NAME } from "@/lib/loyalty/session";
+import { clubHintCookie } from "@/lib/loyalty/club-hint";
 
 export const runtime = "nodejs";
 
@@ -14,5 +15,6 @@ export async function POST() {
     path: "/",
     maxAge: 0,
   });
+  jar.set(clubHintCookie(0));
   return Response.json({ ok: true });
 }

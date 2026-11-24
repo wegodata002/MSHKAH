@@ -109,7 +109,8 @@ export type OrderBuildError =
   | { code: "DELIVERY_UNAVAILABLE"; reason: "disabled" | "no_zones" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_ZONE" }
   | { code: "BELOW_MINIMUM"; minOrder: number }
-  | { code: "DINE_IN_UNAVAILABLE" };
+  | { code: "DINE_IN_UNAVAILABLE" }
+  | { code: "COUPON_INVALID"; reason: "login_required" | "invalid" | "used" | "expired" };
 
 /** The order document without timestamps (the route adds createdAt / receivedAt). */
 export type ServerOrderDraft = {
@@ -192,6 +193,8 @@ export function buildServerOrder(
     openingHours: OpeningHours;
     now: Date;
     orderNumber: string;
+    /** Rate (0–1) of a personal club code the server already checked; codes from the fixed table otherwise. */
+    personalCouponRate?: number;
   }
 ): { ok: true; order: ServerOrderDraft } | { ok: false; error: OrderBuildError } {
   const locale = request.locale;
@@ -258,7 +261,7 @@ export function buildServerOrder(
   subtotal = money(subtotal);
 
   const couponCode = normalizeCouponCode(request.couponCode);
-  const rate = couponRate(couponCode);
+  const rate = ctx.personalCouponRate !== undefined ? ctx.personalCouponRate : couponRate(couponCode);
   const discount = money(subtotal * rate);
 
   // Order type.

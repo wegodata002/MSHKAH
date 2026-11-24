@@ -1,7 +1,8 @@
 import { NextRequest } from "next/server";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { sendMishkahEmail } from "@/lib/email/send";
-import { renderClubVerificationCodeEmail } from "@/lib/email/loyalty-templates";
+import { clubEmailLocale, renderClubVerificationCodeEmail } from "@/lib/email/loyalty-templates";
+import { WELCOME_COUPON_PERCENT } from "@/lib/loyalty/coupons";
 import {
   CODE_TTL_MINUTES,
   SEND_RATE_LIMIT_PER_HOUR,
@@ -29,8 +30,9 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *     only `codeHash`, with TTL and single-use flag.
  */
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as { email?: string } | null;
+  const body = (await request.json().catch(() => null)) as { email?: string; locale?: string } | null;
   const email = body?.email?.trim();
+  const locale = clubEmailLocale(body?.locale);
   const uniformResponse = () =>
     Response.json({ ok: true, minutesValid: CODE_TTL_MINUTES });
 
@@ -41,8 +43,9 @@ export async function POST(request: NextRequest) {
 
   const db = getAdminDb();
   const settings = await readLoyaltySettings(db);
+  const existing = await readMemberByEmail(db, email);
   // Sign-up paused: existing members can still log in; new emails are dropped silently (no leak).
-  if (!settings.enrollmentEnabled && !(await readMemberByEmail(db, email))) {
+  if (!settings.enrollmentEnabled && !existing) {
     return uniformResponse();
   }
 
@@ -69,7 +72,14 @@ export async function POST(request: NextRequest) {
 
   const code = generateCode();
   await createEnrollmentToken(db, { email, codePlain: code });
-  const content = renderClubVerificationCodeEmail({ code, minutesValid: CODE_TTL_MINUTES });
+  // Someone joining is told a 10% code follows; a member logging in is not.
+  const joining = !existing || existing.status === "email_verified" || existing.status === "awaiting_payment";
+  const content = renderClubVerificationCodeEmail({
+    code,
+    minutesValid: CODE_TTL_MINUTES,
+    locale,
+    welcomeCouponPercent: joining && settings.welcomeCouponEnabled ? WELCOME_COUPON_PERCENT : undefined,
+  });
   // Fire the email in the background; a Brevo hiccup must never block the
   // response and never leak into a different HTTP status code (which would
   // tell an attacker the address is valid).
