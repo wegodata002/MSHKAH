@@ -18,7 +18,8 @@ type VerifyError =
   | "no_token"
   | "enrollment_disabled"
   | "name_required"
-  | "server_error";
+  | "server_error"
+  | "already_member";
 
 /**
  * Enter the emailed code. Joining is free, so a correct code goes straight to the member page
@@ -43,7 +44,13 @@ function ClubVerifyContent() {
     const response = await fetch("/api/club/enroll/verify", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), code: code.trim(), displayName: name || undefined, locale }),
+      body: JSON.stringify({
+        email: email.trim(),
+        code: code.trim(),
+        displayName: name || undefined,
+        locale,
+        mode: name ? "join" : "login",
+      }),
     }).catch(() => null);
     const data = (await response?.json().catch(() => null)) as
       | { ok: true; member?: { status?: string } }
@@ -64,7 +71,7 @@ function ClubVerifyContent() {
     await fetch("/api/club/enroll/start", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), locale }),
+      body: JSON.stringify({ email: email.trim(), locale, mode: name ? "join" : "login" }),
     }).catch(() => undefined);
     setBusy(false);
     setResent(true);
@@ -110,7 +117,17 @@ function ClubVerifyContent() {
             )}
           </Button>
         </form>
-        {error ? (
+        {error === "already_member" ? (
+          <div className="mt-3 rounded-2xl border border-turquoise/30 bg-turquoise/5 p-3 text-sm" role="alert" data-club-already>
+            <p className="font-semibold text-dark-brown">{t("club3.join.alreadyMember")}</p>
+            <Link
+              href={`/club?${new URLSearchParams({ tab: "login", email: email.trim() }).toString()}`}
+              className="mt-2 inline-flex min-h-10 items-center rounded-xl bg-turquoise px-4 font-semibold text-warm-white"
+            >
+              {t("club3.join.goLogin")}
+            </Link>
+          </div>
+        ) : error ? (
           <p className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
             {t(
               error === "name_required" || error === "server_error"

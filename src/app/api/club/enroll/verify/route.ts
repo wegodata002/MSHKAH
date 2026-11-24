@@ -16,6 +16,7 @@ import { hashEmail } from "@/lib/loyalty/tokens";
 import { ensureWelcomeCoupon } from "@/lib/loyalty/admin/coupons";
 import { clubEmailLocale } from "@/lib/email/loyalty-templates";
 import { clubHintCookie } from "@/lib/loyalty/club-hint";
+import { isJoinedMember } from "@/lib/loyalty/state";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
     displayName?: string;
     phone?: string;
     locale?: string;
+    mode?: string;
   } | null;
   const email = body?.email?.trim();
   const code = body?.code?.trim();
@@ -57,13 +59,18 @@ export async function POST(request: NextRequest) {
 async function verifyAndOpenSession(
   email: string,
   code: string,
-  body: { displayName?: string; phone?: string; locale?: string } | null
+  body: { displayName?: string; phone?: string; locale?: string; mode?: string } | null
 ): Promise<Response> {
   const db = getAdminDb();
   const settings = await readLoyaltySettings(db);
   // Sign-up paused: only existing members (logging in) get through.
   if (!settings.enrollmentEnabled && !(await readMemberByEmail(db, email))) {
     return Response.json({ ok: false, reason: "enrollment_disabled" }, { status: 409 });
+  }
+  // Joining once per email: a join request for someone already in the club is refused (the name
+  // is not changed, no second code), before the one-time code is even used.
+  if ((body?.mode === "join" || body?.displayName) && isJoinedMember(await readMemberByEmail(db, email))) {
+    return Response.json({ ok: false, reason: "already_member" }, { status: 409 });
   }
   const emailHash = hashEmail(email);
   const bucket = await consumeRateLimit(db, {

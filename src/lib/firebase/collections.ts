@@ -69,6 +69,10 @@ export const COLLECTIONS = {
   loyaltyRateLimit: "loyaltyRateLimit",
   /** Personal club coupons, one document per code (server only). */
   loyaltyCoupons: "loyaltyCoupons",
+  /** One document per email hash → member id; guarantees one member per email (server only). */
+  loyaltyEmailIndex: "loyaltyEmailIndex",
+  /** Coffee card actions at the counter (cups, free cup, 10% used, undo) — server only. */
+  loyaltyCoffeeLedger: "loyaltyCoffeeLedger",
 } as const;
 
 export const DEFAULT_STORE_ID = "mishkah";

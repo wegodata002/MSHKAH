@@ -134,7 +134,9 @@ export async function memberCouponViews(db: Firestore, memberId: string, now: Da
   const views = await Promise.all(
     list.map(async (coupon) => {
       const holdReleased =
-        coupon.status === "redeemed" ? holdIsReleased(await readHoldingOrder(db, coupon.orderId), now) : false;
+        coupon.status === "redeemed" && coupon.channel !== "pos"
+          ? holdIsReleased(await readHoldingOrder(db, coupon.orderId), now)
+          : false;
       return couponView(coupon, couponState(coupon, { now, completedOrderIds: completed, holdReleased }));
     })
   );
@@ -158,6 +160,8 @@ export async function checkCouponForMember(
   if (input.member.status !== "active") return { ok: false, reason: "invalid" };
   let heldBy: string | null = null;
   if (coupon.status === "redeemed") {
+    // Used at the counter (no order): stays used.
+    if (coupon.channel === "pos") return { ok: false, reason: "used" };
     if (!holdIsReleased(await readHoldingOrder(db, coupon.orderId), input.now)) return { ok: false, reason: "used" };
     heldBy = coupon.orderId ?? null;
   }

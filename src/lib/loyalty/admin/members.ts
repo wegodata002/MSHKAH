@@ -227,6 +227,12 @@ export async function upsertVerifiedMember(
   const email = normaliseEmail(input.email);
   const existing = await readMemberByEmailHash(db, emailHash);
   if (existing) {
+    // Members created before the email index existed get their index entry now.
+    await db
+      .collection(COLLECTIONS.loyaltyEmailIndex)
+      .doc(emailHash)
+      .set({ memberId: existing.id, createdAt: new Date().toISOString() }, { merge: true })
+      .catch(() => undefined);
     const update: Partial<LoyaltyMember> = {};
     if (input.displayName && !existing.displayName) update.displayName = input.displayName;
     if (input.phone && !existing.phone) update.phone = input.phone;
@@ -241,6 +247,7 @@ export async function upsertVerifiedMember(
   }
   const now = new Date();
   const id = randomUUID();
+  const indexRef = db.collection(COLLECTIONS.loyaltyEmailIndex).doc(emailHash);
   // Name and phone are optional: left out when empty (Firestore rejects `undefined`).
   const member: LoyaltyMember = withoutUndefined({
     id,
@@ -258,8 +265,21 @@ export async function upsertVerifiedMember(
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
   } satisfies LoyaltyMember);
-  await db.collection(COLLECTIONS.loyaltyMembers).doc(id).set(member);
-  return member;
+  // Two verifications for the same new email at the same moment create ONE member: whoever claims
+  // the email index first creates it; the other transaction retries, sees the claim, and returns it.
+  const memberRef = db.collection(COLLECTIONS.loyaltyMembers).doc(id);
+  const claimed = await db.runTransaction(async (tx) => {
+    const index = await tx.get(indexRef);
+    const ownerId = index.exists ? (index.data() as { memberId?: string }).memberId : undefined;
+    if (ownerId) {
+      const owner = await tx.get(db.collection(COLLECTIONS.loyaltyMembers).doc(ownerId));
+      if (owner.exists) return { id: owner.id, ...(owner.data() as Omit<LoyaltyMember, "id">) } as LoyaltyMember;
+    }
+    tx.set(indexRef, { memberId: id, createdAt: now.toISOString() });
+    tx.set(memberRef, member);
+    return member;
+  });
+  return claimed;
 }
 
 export async function markAwaitingPayment(

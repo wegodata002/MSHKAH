@@ -11,6 +11,7 @@ import { useT, useLocale } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { ClubCard, ClubHero, formatIlsShort } from "@/features/club/club-ui";
 import { ClubCoupons } from "@/features/club/club-coupons";
+import { ClubCoffeeCard } from "@/features/club/club-coffee-card";
 import type { LoyaltyMeResponse } from "@/lib/loyalty/types";
 import { spendToNextPoint } from "@/lib/loyalty/points-math";
 
@@ -162,7 +163,7 @@ function ClubMemberContent() {
         </ClubHero>
       </div>
 
-      <div className="space-y-5 lg:col-start-1 lg:row-start-2">
+      <div className="space-y-5 lg:col-start-1 lg:row-span-2 lg:row-start-2">
         {me!.coupons && me!.coupons.length > 0 ? <ClubCoupons coupons={me!.coupons} /> : null}
         <ClubCard>
           <h2 className="font-display text-lg font-bold text-dark-brown">{t("club.me.historyTitle")}</h2>
@@ -200,7 +201,8 @@ function ClubMemberContent() {
         </ClubCard>
       </div>
 
-      <div className="max-lg:row-start-2 lg:col-start-2 lg:row-start-1">
+      {/* Desktop: member card + coffee card span two rows, so the history sits right under the hero. */}
+      <div className="space-y-5 max-lg:row-start-2 lg:col-start-2 lg:row-span-2 lg:row-start-1">
         <ClubCard className="bg-[linear-gradient(160deg,#fffaf2,#f6ecdf)]">
           <h2 className="flex items-center gap-2 font-display text-lg font-bold text-dark-brown">
             <QrCode className="h-5 w-5 text-turquoise" strokeWidth={1.75} />
@@ -221,10 +223,12 @@ function ClubMemberContent() {
             </div>
           </div>
         </ClubCard>
+        {/* Coffee card right after the member card (phone) / under it (desktop), when switched on. */}
+        {settings?.coffeeCardEnabled ? <ClubCoffeeCard cups={member.coffeeCups ?? 0} /> : null}
       </div>
 
       {/* Last on phones; under the member card on desktop. */}
-      <div className="lg:col-start-2 lg:row-start-2 lg:self-start">
+      <div className="lg:col-start-2 lg:row-start-3 lg:self-start">
         <div className="flex flex-col gap-2 sm:flex-row lg:flex-col">
           <Link href="/" className="flex-1">
             <Button variant="outline" className="h-11 w-full">

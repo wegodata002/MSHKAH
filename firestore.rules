@@ -359,5 +359,16 @@ service cloud.firestore {
       allow read: if isAdmin();
       allow write: if false;
     }
+
+    // One member per email (server only).
+    match /loyaltyEmailIndex/{id} {
+      allow read, write: if false;
+    }
+
+    // Coffee card actions at the counter: written only by the staff routes (Admin SDK).
+    match /loyaltyCoffeeLedger/{id} {
+      allow read: if isAdmin();
+      allow write: if false;
+    }
   }
 }

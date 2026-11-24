@@ -61,6 +61,7 @@ export function parseLoyaltySettings(
     roundingMode: toRoundingMode(d.roundingMode, DEFAULT_LOYALTY_SETTINGS.roundingMode),
     pointValueApproved,
     welcomeCouponEnabled: toBool(d.welcomeCouponEnabled, DEFAULT_LOYALTY_SETTINGS.welcomeCouponEnabled),
+    coffeeCardEnabled: toBool(d.coffeeCardEnabled, DEFAULT_LOYALTY_SETTINGS.coffeeCardEnabled),
     termsHe: typeof d.termsHe === "string" ? d.termsHe : "",
     termsAr: typeof d.termsAr === "string" ? d.termsAr : "",
     termsEn: typeof d.termsEn === "string" ? d.termsEn : "",

@@ -31,6 +31,7 @@ export async function GET(_request: NextRequest) {
     redemptionMinPoints: settings.redemptionMinPoints,
     redemptionMaxPoints: settings.redemptionMaxPoints,
     pointValueApproved: settings.pointValueApproved,
+    coffeeCardEnabled: settings.coffeeCardEnabled,
     termsHe: settings.termsHe,
     termsAr: settings.termsAr,
     termsEn: settings.termsEn,
@@ -91,6 +92,7 @@ export async function GET(_request: NextRequest) {
       pointsCarryMinor: member.pointsCarryMinor ?? 0,
       joinedAt: member.activatedAt,
       cardToken: isMember ? signMemberCard(member.id) : undefined,
+      coffeeCups: Math.max(0, Math.floor(member.coffeeCups ?? 0)),
     },
     settings: publicSettings,
     history: history.map((entry) => ({

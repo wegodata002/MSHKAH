@@ -3,6 +3,7 @@ import { getAdminDb } from "@/lib/firebase/admin";
 import { sendMishkahEmail } from "@/lib/email/send";
 import { clubEmailLocale, renderClubVerificationCodeEmail } from "@/lib/email/loyalty-templates";
 import { WELCOME_COUPON_PERCENT } from "@/lib/loyalty/coupons";
+import { isJoinedMember } from "@/lib/loyalty/state";
 import {
   CODE_TTL_MINUTES,
   SEND_RATE_LIMIT_PER_HOUR,
@@ -30,8 +31,10 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
  *     only `codeHash`, with TTL and single-use flag.
  */
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as { email?: string; locale?: string } | null;
+  const body = (await request.json().catch(() => null)) as { email?: string; locale?: string; mode?: string } | null;
   const email = body?.email?.trim();
+  // "join" (the join tab) or "login"; older pages send nothing → treated as login.
+  const mode = body?.mode === "join" ? "join" : "login";
   const locale = clubEmailLocale(body?.locale);
   const uniformResponse = () =>
     Response.json({ ok: true, minutesValid: CODE_TTL_MINUTES });
@@ -68,6 +71,12 @@ export async function POST(request: NextRequest) {
     loyaltyLog("enroll.verify.throttled", { email, ip });
     // Deliberately keep the uniform response: never confirm throttling.
     return uniformResponse();
+  }
+
+  // Joining happens once per email: a member who already joined gets no join code, and the page
+  // sends them to the login tab. (Checked after the rate limits, so it cannot be used to sweep emails.)
+  if (mode === "join" && isJoinedMember(existing)) {
+    return Response.json({ ok: false, reason: "already_member" });
   }
 
   const code = generateCode();

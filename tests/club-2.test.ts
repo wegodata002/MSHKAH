@@ -429,9 +429,11 @@ describe("the code on a site order", () => {
 describe("cancelled by the manager", () => {
   async function orderWithCode() {
     oldMember("m1", "m1@example.com");
-    welcomeCoupon("m1", { expiresAt: iso(Date.now() + DAY) });
-    const deps = orderDeps("m1", new Date());
+    welcomeCoupon("m1", { expiresAt: iso(Math.max(Date.now(), NOW.getTime()) + DAY) });
+    // Fixed time (Tuesday noon) so pickup is open whatever the real clock says.
+    const deps = orderDeps("m1", NOW);
     const res = await handleCreateOrder(orderRequest(), "", deps as never);
+    expect(res.status).toBe(200);
     return (res.body as { id: string }).id;
   }
 
