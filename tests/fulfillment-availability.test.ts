@@ -13,8 +13,14 @@ import {
 } from "@/lib/fulfillment/availability";
 import {
   DEFAULT_FULFILLMENT,
+  MAX_TABLE_NUMBER,
+  defaultCafeTables,
   fulfillmentIssues,
+  makeTable,
+  nextTableNumber,
   normalizeFulfillmentSettings,
+  tableId,
+  tableLabel,
   type FulfillmentSettings,
 } from "@/lib/fulfillment/settings";
 
@@ -256,7 +262,19 @@ describe("stored settings", () => {
           "junk",
         ],
       },
-      dineIn: { enabled: "yes", tables: [{ id: "t1", label: " 1 " }, null] },
+      dineIn: {
+        enabled: "yes",
+        tables: [
+          { id: "ignored", area: "inside", number: "2" },
+          { area: "outside", number: 1 },
+          { id: "t1", label: " 1 " }, // old free-label shape: dropped
+          { area: "roof", number: 1 },
+          { area: "inside", number: 0 },
+          { area: "inside", number: 100 },
+          { area: "inside", number: 2.5 },
+          null,
+        ],
+      },
     });
     expect(result.pickup).toEqual({ enabled: false, leadMinutes: 0, slotMinutes: 20 });
     expect(result.delivery.hoursMode).toBe("opening");
@@ -264,19 +282,67 @@ describe("stored settings", () => {
     expect(result.delivery.zones).toEqual([
       { id: "a", name: { he: "צפון", ar: "الشمال", en: "North" }, fee: 12.35, minOrder: 0 },
     ]);
-    expect(result.dineIn).toEqual({ enabled: false, tables: [{ id: "t1", label: "1" }] });
+    // id is always rebuilt from area + number; invalid tables are dropped.
+    expect(result.dineIn).toEqual({
+      enabled: false,
+      tables: [
+        { id: "inside-2", area: "inside", number: 2 },
+        { id: "outside-1", area: "outside", number: 1 },
+      ],
+    });
   });
 
-  it("blocks saving a zone without all three names, or empty/duplicate table names", () => {
+  it("blocks saving a zone without all three names, or the same table number twice in one area", () => {
     const s = withDelivery({
       zones: [{ id: "z2", name: { he: "דרום", ar: "", en: "South" }, fee: 10, minOrder: 0 }],
     });
-    s.dineIn = { enabled: false, tables: [{ id: "t1", label: "1" }, { id: "t2", label: " 1" }, { id: "t3", label: "" }] };
+    s.dineIn = {
+      enabled: false,
+      tables: [makeTable("inside", 1), makeTable("outside", 1), makeTable("inside", 1)],
+    };
     expect(fulfillmentIssues(s)).toEqual([
       { code: "zone_name_missing", zoneId: "z2" },
-      { code: "table_label_duplicate", tableId: "t2" },
-      { code: "table_label_missing", tableId: "t3" },
+      { code: "table_number_duplicate", tableId: "inside-1" },
     ]);
     expect(fulfillmentIssues(DEFAULT_FULFILLMENT)).toEqual([]);
+  });
+});
+
+describe("cafe tables", () => {
+  it("the cafe's tables: Outside 1–3 and Inside 1–5, with stable ids for QR links", () => {
+    const tables = defaultCafeTables();
+    expect(tables.map((t) => t.id)).toEqual([
+      "outside-1", "outside-2", "outside-3",
+      "inside-1", "inside-2", "inside-3", "inside-4", "inside-5",
+    ]);
+    expect(fulfillmentIssues({ ...DEFAULT_FULFILLMENT, dineIn: { enabled: true, tables } })).toEqual([]);
+  });
+
+  it("table names in three languages", () => {
+    expect(tableLabel(makeTable("outside", 1), "he")).toBe("חוץ 1");
+    expect(tableLabel(makeTable("inside", 3), "he")).toBe("פנים 3");
+    expect(tableLabel(makeTable("outside", 2), "ar")).toBe("خارج 2");
+    expect(tableLabel(makeTable("inside", 5), "ar")).toBe("داخل 5");
+    expect(tableLabel(makeTable("outside", 3), "en")).toBe("Outside 3");
+    expect(tableLabel(makeTable("inside", 4), "en")).toBe("Inside 4");
+  });
+
+  it("adding a table picks the smallest free number in that area only", () => {
+    const tables = defaultCafeTables();
+    expect(nextTableNumber(tables, "outside")).toBe(4);
+    expect(nextTableNumber(tables, "inside")).toBe(6);
+    const gap = tables.filter((t) => t.id !== "inside-2");
+    expect(nextTableNumber(gap, "inside")).toBe(2);
+    expect(nextTableNumber(gap, "outside")).toBe(4);
+    expect(nextTableNumber([], "outside")).toBe(1);
+    const full = Array.from({ length: MAX_TABLE_NUMBER }, (_, i) => makeTable("inside", i + 1));
+    expect(nextTableNumber(full, "inside")).toBeNull();
+    expect(nextTableNumber(full, "outside")).toBe(1);
+  });
+
+  it("the same number in different areas is fine", () => {
+    const tables = [makeTable("outside", 1), makeTable("inside", 1)];
+    expect(fulfillmentIssues({ ...DEFAULT_FULFILLMENT, dineIn: { enabled: true, tables } })).toEqual([]);
+    expect(tableId("inside", 1)).not.toBe(tableId("outside", 1));
   });
 });

@@ -79,7 +79,7 @@ export function SettingsAdmin() {
     if (saving) return;
     if (issues.length > 0) {
       setShowFulfillmentIssues(true);
-      setSaveError(t("admin.fulfillment.fixBeforeSave"));
+      setSaveError(null);
       return;
     }
     setShowFulfillmentIssues(false);
@@ -133,8 +133,11 @@ export function SettingsAdmin() {
         }
       />
 
-      {saveError ? (
-        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{saveError}</p>
+      {/* The "fix the marked fields" message follows the fields live: it goes away as soon as nothing is left to fix. */}
+      {saveError || (showFulfillmentIssues && issues.length > 0) ? (
+        <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">
+          {saveError ?? t("admin.fulfillment.fixBeforeSave")}
+        </p>
       ) : null}
 
       {/* items-start: each card is as tall as its own content (no stretched empty space). */}
@@ -265,6 +268,7 @@ export function SettingsAdmin() {
           onChange={(fulfillment) => setSettings({ ...settings, fulfillment })}
           issues={issues}
           showIssues={showFulfillmentIssues}
+          storePhone={settings.phone}
         />
 
         <MeasureUnitsSettings />

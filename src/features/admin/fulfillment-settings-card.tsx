@@ -1,24 +1,32 @@
 "use client";
 
 import { useEffect, useId, useState, type ReactNode } from "react";
-import { Plus, Store, Trash2, Truck, Utensils } from "lucide-react";
+import { Plus, Store, Trash2, Truck, Utensils, Wand2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useT } from "@/components/providers/locale-provider";
+import { useLocale, useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { OpeningHoursEditor } from "@/features/admin/opening-hours-editor";
 import {
   MAX_CLOSE_BEFORE_MINUTES,
   MAX_LEAD_MINUTES,
   MAX_MONEY,
+  MAX_TABLE_NUMBER,
   PICKUP_SLOT_CHOICES,
+  TABLE_AREAS,
+  defaultCafeTables,
+  makeTable,
   newFulfillmentId,
+  nextTableNumber,
+  tableAreaName,
+  tableLabel,
   type DeliveryZone,
   type DineInTable,
   type FulfillmentIssue,
   type FulfillmentSettings,
   type LocalizedName,
+  type TableArea,
 } from "@/lib/fulfillment/settings";
 import { AdminCard } from "./components/admin-card";
 import { adminInput } from "./components/admin-styles";
@@ -209,30 +217,32 @@ function ZoneRow({
 
 function TableRow({
   table,
-  issue,
+  duplicate,
   showIssues,
-  onChange,
+  onNumberChange,
   onRemove,
 }: {
   table: DineInTable;
-  issue: FulfillmentIssue | undefined;
+  duplicate: boolean;
   showIssues: boolean;
-  onChange: (next: DineInTable) => void;
+  onNumberChange: (number: number) => void;
   onRemove: () => void;
 }) {
   const t = useT();
-  const invalid = showIssues && Boolean(issue);
+  const { locale } = useLocale();
+  const invalid = showIssues && duplicate;
+  const areaName = tableAreaName(table.area, locale);
   return (
     <li className="space-y-1">
       <div className="flex items-center gap-2">
-        <Input
-          value={table.label}
-          maxLength={40}
-          aria-label={t("admin.fulfillment.dineIn.tableLabel")}
-          aria-invalid={invalid || undefined}
-          placeholder={t("admin.fulfillment.dineIn.tableLabel")}
-          onChange={(e) => onChange({ ...table, label: e.target.value })}
-          className={cn(adminInput, invalid && invalidInput)}
+        <span className="min-w-[3.5rem] text-sm font-medium text-dark-brown dark:text-warm-white">{areaName}</span>
+        <NumberField
+          value={table.number}
+          min={1}
+          max={MAX_TABLE_NUMBER}
+          ariaLabel={`${t("admin.fulfillment.dineIn.tableNumber")} – ${areaName}`}
+          onChange={(n) => onNumberChange(Math.round(n))}
+          className={cn("w-24", invalid && invalidInput)}
         />
         <Button
           type="button"
@@ -240,19 +250,69 @@ function TableRow({
           size="sm"
           onClick={onRemove}
           className="h-10 min-w-10 shrink-0 rounded-xl text-red-700 hover:bg-red-50 dark:text-red-400"
-          aria-label={`${t("admin.fulfillment.dineIn.removeTable")} – ${table.label || "…"}`}
+          aria-label={`${t("admin.fulfillment.dineIn.removeTable")} – ${tableLabel(table, locale)}`}
         >
           <Trash2 className="h-4 w-4" />
         </Button>
       </div>
-      {invalid ? (
-        <FieldError>
-          {issue?.code === "table_label_duplicate"
-            ? t("admin.fulfillment.dineIn.labelDuplicate")
-            : t("admin.fulfillment.dineIn.labelMissing")}
-        </FieldError>
-      ) : null}
+      {invalid ? <FieldError>{t("admin.fulfillment.dineIn.numberDuplicate")}</FieldError> : null}
     </li>
+  );
+}
+
+/** One area's tables (outside or inside) with an "Add table" button that picks the next free number. */
+function TableGroup({
+  area,
+  tables,
+  duplicateIds,
+  showIssues,
+  onTablesChange,
+}: {
+  area: TableArea;
+  /** All tables (both areas); this group edits only its own area's tables. */
+  tables: DineInTable[];
+  duplicateIds: Set<string>;
+  showIssues: boolean;
+  onTablesChange: (next: DineInTable[]) => void;
+}) {
+  const t = useT();
+  const own = tables.map((table, index) => ({ table, index })).filter(({ table }) => table.area === area);
+  const next = nextTableNumber(tables, area);
+  const title = t(area === "outside" ? "admin.fulfillment.dineIn.outside" : "admin.fulfillment.dineIn.inside");
+
+  return (
+    <div className="space-y-2 rounded-xl bg-beige/20 p-3 dark:bg-white/5">
+      <p className="text-sm font-semibold text-dark-brown dark:text-warm-white">
+        {title} <span className="font-normal text-coffee/55 dark:text-warm-white/50">({own.length})</span>
+      </p>
+      {own.length > 0 ? (
+        <ul className="space-y-2">
+          {own.map(({ table, index }, position) => (
+            <TableRow
+              // Position within the area keeps the row (and its typed text) while the number changes.
+              key={`${area}-${position}`}
+              table={table}
+              duplicate={duplicateIds.has(table.id)}
+              showIssues={showIssues}
+              onNumberChange={(number) =>
+                onTablesChange(tables.map((x, i) => (i === index ? makeTable(area, number) : x)))
+              }
+              onRemove={() => onTablesChange(tables.filter((_, i) => i !== index))}
+            />
+          ))}
+        </ul>
+      ) : null}
+      <Button
+        type="button"
+        variant="outline"
+        disabled={next === null}
+        onClick={() => next !== null && onTablesChange([...tables, makeTable(area, next)])}
+        className="h-11 rounded-xl"
+      >
+        <Plus className="h-4 w-4" />
+        {t("admin.fulfillment.dineIn.addTable")}
+      </Button>
+    </div>
   );
 }
 
@@ -262,10 +322,13 @@ export function FulfillmentSettingsCard({
   onChange,
   issues,
   showIssues,
+  storePhone,
 }: {
   value: FulfillmentSettings;
   onChange: (next: FulfillmentSettings) => void;
   issues: FulfillmentIssue[];
+  /** The store phone from the settings draft: the only contact button for "Other area" customers. */
+  storePhone: string;
   /** Mark invalid fields (after a save attempt). */
   showIssues: boolean;
 }) {
@@ -283,8 +346,10 @@ export function FulfillmentSettingsCard({
     onChange({ ...value, dineIn: { ...dineIn, ...patch } });
 
   const zoneIssue = (id: string) => issues.some((i) => i.code === "zone_name_missing" && i.zoneId === id);
-  const tableIssue = (id: string) =>
-    issues.find((i) => (i.code === "table_label_missing" || i.code === "table_label_duplicate") && i.tableId === id);
+  /** Every row with a repeated area + number is marked, including the first one. */
+  const duplicateTableIds = new Set(
+    issues.flatMap((i) => (i.code === "table_number_duplicate" ? [i.tableId] : []))
+  );
 
   const slotChoices: number[] = PICKUP_SLOT_CHOICES.includes(pickup.slotMinutes as (typeof PICKUP_SLOT_CHOICES)[number])
     ? [...PICKUP_SLOT_CHOICES]
@@ -349,36 +414,31 @@ export function FulfillmentSettingsCard({
             <div className="space-y-2">
               <p className="text-sm font-medium text-dark-brown dark:text-warm-white">{t("admin.fulfillment.dineIn.tables")}</p>
               {dineIn.tables.length === 0 ? (
-                <p className="text-sm text-coffee/55 dark:text-warm-white/50">{t("admin.fulfillment.dineIn.noTables")}</p>
-              ) : (
-                <ul className="grid gap-2 sm:grid-cols-2">
-                  {dineIn.tables.map((table) => (
-                    <TableRow
-                      key={table.id}
-                      table={table}
-                      issue={tableIssue(table.id)}
-                      showIssues={showIssues}
-                      onChange={(next) =>
-                        setDineIn({ tables: dineIn.tables.map((x) => (x.id === table.id ? next : x)) })
-                      }
-                      onRemove={() => setDineIn({ tables: dineIn.tables.filter((x) => x.id !== table.id) })}
-                    />
-                  ))}
-                </ul>
-              )}
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() =>
-                  setDineIn({
-                    tables: [...dineIn.tables, { id: newFulfillmentId("table"), label: String(dineIn.tables.length + 1) }],
-                  })
-                }
-                className="h-11 rounded-xl"
-              >
-                <Plus className="h-4 w-4" />
-                {t("admin.fulfillment.dineIn.addTable")}
-              </Button>
+                <div className="space-y-2">
+                  <p className="text-sm text-coffee/55 dark:text-warm-white/50">{t("admin.fulfillment.dineIn.noTables")}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setDineIn({ tables: defaultCafeTables() })}
+                    className="h-11 rounded-xl"
+                  >
+                    <Wand2 className="h-4 w-4" />
+                    {t("admin.fulfillment.dineIn.fillCafeTables")}
+                  </Button>
+                </div>
+              ) : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {TABLE_AREAS.map((area) => (
+                  <TableGroup
+                    key={area}
+                    area={area}
+                    tables={dineIn.tables}
+                    duplicateIds={duplicateTableIds}
+                    showIssues={showIssues}
+                    onTablesChange={(tables) => setDineIn({ tables })}
+                  />
+                ))}
+              </div>
             </div>
             {dineIn.enabled && dineIn.tables.length === 0 ? (
               <Warning>{t("admin.fulfillment.dineIn.noTablesWarning")}</Warning>
@@ -395,6 +455,7 @@ export function FulfillmentSettingsCard({
           {delivery.enabled && delivery.zones.length === 0 ? (
             <Warning>{t("admin.fulfillment.delivery.noZonesWarning")}</Warning>
           ) : null}
+          {!storePhone.trim() ? <Warning>{t("admin.fulfillment.delivery.noPhoneWarning")}</Warning> : null}
 
           <div className="space-y-2">
             <p className="text-sm font-medium text-dark-brown dark:text-warm-white">{t("admin.fulfillment.delivery.zones")}</p>

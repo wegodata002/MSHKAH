@@ -20,7 +20,50 @@ export type DeliveryZone = {
   minOrder: number;
 };
 
-export type DineInTable = { id: string; label: string };
+export const TABLE_AREAS = ["outside", "inside"] as const;
+export type TableArea = (typeof TABLE_AREAS)[number];
+export const MAX_TABLE_NUMBER = 99;
+
+/** A table in the cafe. `id` is always `${area}-${number}` (e.g. "inside-3"), used in table QR links. */
+export type DineInTable = { id: string; area: TableArea; number: number };
+
+const TABLE_AREA_NAMES: Record<keyof LocalizedName, Record<TableArea, string>> = {
+  he: { outside: "חוץ", inside: "פנים" },
+  ar: { outside: "خارج", inside: "داخل" },
+  en: { outside: "Outside", inside: "Inside" },
+};
+
+export function tableId(area: TableArea, number: number): string {
+  return `${area}-${number}`;
+}
+
+export function makeTable(area: TableArea, number: number): DineInTable {
+  return { id: tableId(area, number), area, number };
+}
+
+/** "חוץ 1" / "خارج 1" / "Outside 1". */
+export function tableLabel(table: Pick<DineInTable, "area" | "number">, locale: keyof LocalizedName): string {
+  return `${(TABLE_AREA_NAMES[locale] ?? TABLE_AREA_NAMES.en)[table.area]} ${table.number}`;
+}
+
+export function tableAreaName(area: TableArea, locale: keyof LocalizedName): string {
+  return (TABLE_AREA_NAMES[locale] ?? TABLE_AREA_NAMES.en)[area];
+}
+
+/** Smallest table number not yet used in that area (1, 2, … up to MAX_TABLE_NUMBER), or null when full. */
+export function nextTableNumber(tables: DineInTable[], area: TableArea): number | null {
+  const used = new Set(tables.filter((t) => t.area === area).map((t) => t.number));
+  for (let n = 1; n <= MAX_TABLE_NUMBER; n += 1) if (!used.has(n)) return n;
+  return null;
+}
+
+/** The cafe's tables: Outside 1–3 and Inside 1–5. */
+export function defaultCafeTables(): DineInTable[] {
+  return [
+    ...[1, 2, 3].map((n) => makeTable("outside", n)),
+    ...[1, 2, 3, 4, 5].map((n) => makeTable("inside", n)),
+  ];
+}
 
 export type DeliveryHoursMode = "opening" | "custom";
 
@@ -97,9 +140,13 @@ function normalizeZone(raw: unknown, index: number): DeliveryZone | null {
   return zone;
 }
 
-function normalizeTable(raw: unknown, index: number): DineInTable | null {
+/** Only tables with a known area and a whole number 1–99 are kept (anything else is dropped). */
+function normalizeTable(raw: unknown): DineInTable | null {
   if (!isRecord(raw)) return null;
-  return { id: text(raw.id, 64) || `table-${index + 1}`, label: text(raw.label, 40) };
+  const area = TABLE_AREAS.find((a) => a === raw.area);
+  const n = typeof raw.number === "number" ? raw.number : typeof raw.number === "string" ? Number(raw.number) : NaN;
+  if (!area || !Number.isInteger(n) || n < 1 || n > MAX_TABLE_NUMBER) return null;
+  return makeTable(area, n);
 }
 
 function uniqueById<T extends { id: string }>(items: T[]): T[] {
@@ -152,8 +199,8 @@ export function normalizeFulfillmentSettings(raw: unknown): FulfillmentSettings 
 
 export type FulfillmentIssue =
   | { code: "zone_name_missing"; zoneId: string }
-  | { code: "table_label_missing"; tableId: string }
-  | { code: "table_label_duplicate"; tableId: string };
+  /** Same area and number more than once; every copy after the first is reported. */
+  | { code: "table_number_duplicate"; tableId: string };
 
 /** Problems that block saving. Delivery/dine-in switched on with an empty list is allowed (warning only). */
 export function fulfillmentIssues(settings: FulfillmentSettings): FulfillmentIssue[] {
@@ -163,16 +210,11 @@ export function fulfillmentIssues(settings: FulfillmentSettings): FulfillmentIss
       issues.push({ code: "zone_name_missing", zoneId: zone.id });
     }
   }
-  const labels = new Set<string>();
+  const seen = new Set<string>();
   for (const table of settings.dineIn.tables) {
-    const label = table.label.trim().toLowerCase();
-    if (!label) {
-      issues.push({ code: "table_label_missing", tableId: table.id });
-    } else if (labels.has(label)) {
-      issues.push({ code: "table_label_duplicate", tableId: table.id });
-    } else {
-      labels.add(label);
-    }
+    const id = tableId(table.area, table.number);
+    if (seen.has(id)) issues.push({ code: "table_number_duplicate", tableId: id });
+    else seen.add(id);
   }
   return issues;
 }
@@ -182,6 +224,6 @@ export function zoneName(zone: DeliveryZone, locale: keyof LocalizedName): strin
   return zone.name[locale] || zone.name.he || zone.name.ar || zone.name.en;
 }
 
-export function newFulfillmentId(prefix: "zone" | "table"): string {
+export function newFulfillmentId(prefix: "zone"): string {
   return `${prefix}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 }
