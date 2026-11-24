@@ -203,6 +203,8 @@ export function AccessibilityCenter() {
           "text-turquoise transition-transform hover:scale-105 active:scale-95",
           // Bottom row, right next to the assistant on the end side (checkout button: start corner).
           "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.75rem)] end-20 lg:bottom-6 lg:end-24",
+          // Pages without the bottom nav (e.g. admin login): no space to reserve for it.
+          "max-lg:[body:not(:has(.mobile-bottom-nav))_&]:bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-turquoise focus-visible:ring-offset-2",
           panelOpen && "scale-0 opacity-0 pointer-events-none"
         )}
