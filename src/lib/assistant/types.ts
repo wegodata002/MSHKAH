@@ -1,4 +1,6 @@
 import type { Locale } from "@/lib/i18n/types";
+import type { FulfillmentSettings } from "@/lib/fulfillment/settings";
+import type { OpeningHours } from "@/lib/settings/opening-hours";
 
 export type LocalizedText = Record<Locale, string>;
 
@@ -232,6 +234,10 @@ export interface AssistantContext {
     mapsUrl: string;
   };
   banners: { title: string; subtitle: string }[];
+  /** Order options and weekly hours for delivery / pickup / hours answers (defaults when missing). */
+  fulfillment?: { settings: FulfillmentSettings; openingHours: OpeningHours };
+  /** The time answers are computed for (defaults to now). */
+  now?: Date;
 }
 
 export const ASSISTANT_DOC_ID = "config";

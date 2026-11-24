@@ -1,5 +1,15 @@
 import type { Locale } from "@/lib/i18n/types";
 import { fuzzyScore, matchesAny, normalizeText } from "@/lib/assistant/fuzzy";
+import {
+  deliveryAnswer,
+  hoursAnswer,
+  pickupAnswer,
+  whatsappUrl,
+  zoneMentioned,
+  type FulfillmentFacts,
+} from "@/lib/assistant/fulfillment-answers";
+import { DEFAULT_FULFILLMENT } from "@/lib/fulfillment/settings";
+import { DEFAULT_OPENING_HOURS } from "@/lib/settings/opening-hours";
 import { getCategoryMeta } from "@/lib/menu/category-meta";
 import type {
   AssistantChatRequest,
@@ -23,11 +33,8 @@ const MSG: Record<
     cartSummary: (count: number, total: number) => string;
     checkoutHint: string;
     contactIntro: string;
-    hours: (h: string) => string;
     address: (a: string) => string;
     phone: (p: string) => string;
-    delivery: string;
-    pickup: string;
     addedToCart: (name: string) => string;
     productDetail: (name: string, price: number) => string;
     mapsLink: string;
@@ -45,11 +52,8 @@ const MSG: Record<
     cartSummary: (count, total) => `בעגלה ${count} פריטים — סה״כ ₪${total.toFixed(0)}`,
     checkoutHint: "לחצו 'לתשלום' להשלמת ההזמנה.",
     contactIntro: "ניתן ליצור קשר:",
-    hours: (h) => `שעות פתיחה:\n${h}`,
     address: (a) => (a ? `כתובת:\n${a}` : "פרטי כתובת בקופה."),
     phone: (p) => (p ? `טלפון:\n${p}` : "טלפון לא הוגדר."),
-    delivery: "אין משלוחים — הזמנות לאיסוף עצמי מהעסק בלבד.",
-    pickup: "איסוף עצמי מהעסק — כל הזמנה היא לאיסוף עצמי.",
     addedToCart: (name) => `✓ ${name} נוסף לעגלה`,
     productDetail: (name, price) => `${name}\nמחיר: ₪${price.toFixed(0)}`,
     mapsLink: "פתחו במפות",
@@ -66,11 +70,8 @@ const MSG: Record<
     cartSummary: (count, total) => `${count} عناصر — ₪${total.toFixed(0)}`,
     checkoutHint: "اضغط 'الدفع' لإتمام الطلب.",
     contactIntro: "للتواصل:",
-    hours: (h) => `ساعات العمل:\n${h}`,
     address: (a) => (a ? `العنوان:\n${a}` : "تفاصيل العنوان عند الكاشير."),
     phone: (p) => (p ? `الهاتف:\n${p}` : "لم يُحدد رقم."),
-    delivery: "لا يوجد توصيل — الطلبات للاستلام الذاتي من المحل فقط.",
-    pickup: "استلام ذاتي من المحل — كل طلب هو للاستلام الذاتي.",
     addedToCart: (name) => `✓ تمت إضافة ${name} إلى السلة`,
     productDetail: (name, price) => `${name}\nالسعر: ₪${price.toFixed(0)}`,
     mapsLink: "افتح في الخرائط",
@@ -87,11 +88,8 @@ const MSG: Record<
     cartSummary: (count, total) => `${count} items — ₪${total.toFixed(0)} total`,
     checkoutHint: "Tap checkout to complete your order.",
     contactIntro: "Contact us:",
-    hours: (h) => `Opening hours:\n${h}`,
     address: (a) => (a ? `Address:\n${a}` : "Address at the counter."),
     phone: (p) => (p ? `Phone:\n${p}` : "No phone configured."),
-    delivery: "No delivery — orders are pickup from the store only.",
-    pickup: "Pickup from the store — every order is pickup only.",
     addedToCart: (name) => `✓ ${name} added to cart`,
     productDetail: (name, price) => `${name}\nPrice: ₪${price.toFixed(0)}`,
     mapsLink: "Open in Maps",
@@ -251,10 +249,44 @@ function respond(
   };
 }
 
+/** Plain substring match on normalized text (no fuzzy), for the added keywords. */
+function containsAny(text: string, keywords: string[]): boolean {
+  const norm = normalizeText(text);
+  return keywords.some((kw) => norm.includes(normalizeText(kw)));
+}
+
+const DELIVERY_WORDS = ["משלוח", "delivery", "توصيل"];
+const DELIVERY_EXTRA = ["משלוחים", "שליח", "דליברי", "מגיעים", "deliver", "ديليفري", "دليفري", "توصل"];
+const PICKUP_WORDS = ["איסוף", "pickup", "استلام"];
+const PICKUP_EXTRA = ["לאסוף", "אסוף", "pick up", "collect", "takeaway", "استلم"];
+const HOURS_WORDS = ["שעות", "hours", "פתוח", "open", "ساعات"];
+const HOURS_EXTRA = ["פתוחים", "נפתח", "פותחים", "סגור", "סגורים", "مفتوح", "تفتح", "تفتحون", "مغلق", "closed", "close"];
+
+function fulfillmentFacts(ctx: AssistantContext): FulfillmentFacts {
+  return {
+    fulfillment: ctx.fulfillment?.settings ?? DEFAULT_FULFILLMENT,
+    openingHours: ctx.fulfillment?.openingHours ?? DEFAULT_OPENING_HOURS,
+    now: ctx.now ?? new Date(),
+    phone: ctx.settings.phone,
+  };
+}
+
 function handleFaq(ctx: AssistantContext, text: string): AssistantChatResponse | null {
   const t = m(ctx);
-  if (matchesAny(text, ["שעות", "hours", "פתוח", "open", "ساعات"])) {
-    return respond(ctx, t.hours(ctx.settings.hours));
+  const facts = fulfillmentFacts(ctx);
+  // Delivery first, so "שעות משלוח" is about delivery, not opening hours.
+  const zone = zoneMentioned(text, facts.fulfillment.delivery.zones);
+  if (zone || matchesAny(text, DELIVERY_WORDS) || containsAny(text, DELIVERY_EXTRA)) {
+    const answer = deliveryAnswer(facts, ctx.locale, zone);
+    return respond(ctx, answer.text, [], { showContact: answer.showContact });
+  }
+  if (matchesAny(text, PICKUP_WORDS) || containsAny(text, PICKUP_EXTRA)) {
+    const answer = pickupAnswer(facts, ctx.locale);
+    return respond(ctx, answer.text, [], { showContact: answer.showContact });
+  }
+  if (matchesAny(text, HOURS_WORDS) || containsAny(text, HOURS_EXTRA)) {
+    const answer = hoursAnswer(facts, ctx.locale);
+    return respond(ctx, answer.text, [], { showContact: answer.showContact });
   }
   if (matchesAny(text, ["כתובת", "address", "איפה", "where", "عنوان", "מפה", "maps"])) {
     const addr = t.address(ctx.settings.address);
@@ -264,12 +296,6 @@ function handleFaq(ctx: AssistantContext, text: string): AssistantChatResponse |
   }
   if (matchesAny(text, ["טלפון", "phone", "התקשר", "call", "هاتف", "צור קשר", "contact"])) {
     return respond(ctx, t.phone(ctx.settings.phone), [], { showContact: true });
-  }
-  if (matchesAny(text, ["משלוח", "delivery", "توصيل"])) {
-    return respond(ctx, t.delivery);
-  }
-  if (matchesAny(text, ["איסוף", "pickup", "استلام"])) {
-    return respond(ctx, t.pickup);
   }
   for (const item of ctx.config.faq.filter((f) => f.enabled)) {
     if (matchesAny(text, item.keywords) || matchesAny(text, [item.question[ctx.locale]])) {
@@ -340,13 +366,12 @@ function runQuickAction(action: AssistantQuickAction, ctx: AssistantContext, req
         });
       }
       break;
-    case "whatsapp":
-      return respond(ctx, action.label[ctx.locale], [], {
-        clientAction: {
-          type: "open_url",
-          url: action.url || ctx.settings.whatsapp || `https://wa.me/${ctx.settings.phone}`,
-        },
-      });
+    case "whatsapp": {
+      // Only a WhatsApp number from the settings (or the action's own link); never the phone.
+      const url = action.url || whatsappUrl(ctx.settings.whatsapp);
+      if (!url) return respond(ctx, `${t.contactIntro}\n${t.phone(ctx.settings.phone)}`, [], { showContact: true });
+      return respond(ctx, action.label[ctx.locale], [], { clientAction: { type: "open_url", url } });
+    }
     case "question":
       if (action.question?.[ctx.locale]) {
         return processMessage({ ...req, message: action.question[ctx.locale] }, ctx);

@@ -18,7 +18,15 @@ import {
 } from "@/lib/assistant/types";
 import { subscribeToAssistantConfig } from "@/services/assistantService";
 import { subscribeToSettings, type AppSettings } from "@/services/settingsService";
-import { openingHoursText } from "@/lib/settings/opening-hours";
+import { DEFAULT_OPENING_HOURS } from "@/lib/settings/opening-hours";
+import { DEFAULT_FULFILLMENT } from "@/lib/fulfillment/settings";
+import {
+  deliveryAnswer,
+  hoursAnswer,
+  pickupAnswer,
+  zoneMentioned,
+  type FulfillmentFacts,
+} from "@/lib/assistant/fulfillment-answers";
 import { useCart } from "@/features/cart/cart-context";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useAllProducts, useAllCategories } from "@/hooks/useProducts";
@@ -142,6 +150,26 @@ function clientFallback(
 
   if (message) {
     const lower = message.toLowerCase();
+    // Delivery / pickup / opening hours: the same answers as the server, from the live settings.
+    const facts: FulfillmentFacts = {
+      fulfillment: settings?.fulfillment ?? DEFAULT_FULFILLMENT,
+      openingHours: settings?.openingHours ?? DEFAULT_OPENING_HOURS,
+      now: new Date(),
+      phone: settings?.phone ?? "",
+    };
+    const zone = zoneMentioned(message, facts.fulfillment.delivery.zones);
+    const has = (words: string[]) => words.some((w) => lower.includes(w));
+    if (zone || has(["משלוח", "שליח", "delivery", "deliver", "توصيل", "دليفري", "ديليفري"])) {
+      const a = deliveryAnswer(facts, loc, zone);
+      return respond(a.text, [], { showContact: a.showContact });
+    }
+    if (has(["איסוף", "לאסוף", "pickup", "pick up", "collect", "استلام"])) {
+      const a = pickupAnswer(facts, loc);
+      return respond(a.text, [], { showContact: a.showContact });
+    }
+    if (has(["ساعات", "שעות", "hours", "وقت", "פתוח", "נפתח", "סגור", "open", "closed", "مفتوح", "تفتح", "مغلق"])) {
+      return respond(hoursAnswer(facts, loc).text);
+    }
     if (lower.includes("عنوان") || lower.includes("כתובת") || lower.includes("address") || lower.includes("موقع")) {
       const address = settings?.address || "";
       return respond(address || (loc === "ar" ? "لا يوجد عنوان محدد حالياً." : loc === "he" ? "אין כתובת מוגדרת כרגע." : "No address available."));
@@ -149,10 +177,6 @@ function clientFallback(
     if (lower.includes("هاتف") || lower.includes("טלפון") || lower.includes("phone") || lower.includes("اتصل")) {
       const phone = settings?.phone || "";
       return respond(phone ? `📞 ${phone}` : (loc === "ar" ? "لا يوجد رقم هاتف." : "No phone number."));
-    }
-    if (lower.includes("ساعات") || lower.includes("שעות") || lower.includes("hours") || lower.includes("وقت")) {
-      const hours = openingHoursText(settings, loc);
-      return respond(hours || (loc === "ar" ? "لم يتم تحديد ساعات العمل." : "Hours not set."));
     }
     const matched = available.filter((p) => {
       const name = getLocalizedName(p, loc).toLowerCase();

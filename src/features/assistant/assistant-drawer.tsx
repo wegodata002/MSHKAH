@@ -16,6 +16,7 @@ import { useT, useLocale } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/lib/brand";
 import { resolveAssistantIcon } from "@/lib/icons/assistant-icons";
+import { whatsappUrl } from "@/lib/assistant/fulfillment-answers";
 
 export function AssistantDrawer() {
   const t = useT();
@@ -57,7 +58,8 @@ export function AssistantDrawer() {
     .sort((a, b) => a.sortOrder - b.sortOrder);
 
   const phone = settings?.phone ?? "";
-  const whatsapp = settings?.social?.whatsapp ?? settings?.phone ?? "";
+  // Only when a WhatsApp number is entered in the settings (never the phone as a stand-in).
+  const whatsappHref = whatsappUrl(settings?.social?.whatsapp);
   const mapsUrl = settings?.mapsUrl ?? "";
 
   useEffect(() => {
@@ -262,9 +264,9 @@ export function AssistantDrawer() {
                             {t("assistant.callUs")}
                           </a>
                         )}
-                        {whatsapp && (
+                        {whatsappHref && (
                           <a
-                            href={`https://wa.me/${whatsapp.replace(/\D/g, "")}`}
+                            href={whatsappHref}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1.5 rounded-xl border border-beige-dark/30 bg-warm-white px-3 py-2 text-xs font-semibold text-coffee"

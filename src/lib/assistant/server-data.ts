@@ -16,7 +16,8 @@ import { getProductImage } from "@/lib/menu/placeholders";
 import type { Category, Product } from "@/types";
 import type { FirestoreSettings } from "@/types/firestore";
 import { parseAssistantConfig } from "@/lib/assistant/parse-config";
-import { openingHoursText, resolveOpeningHours } from "@/lib/settings/opening-hours";
+import { DEFAULT_OPENING_HOURS, openingHoursText, resolveOpeningHours } from "@/lib/settings/opening-hours";
+import { normalizeFulfillmentSettings } from "@/lib/fulfillment/settings";
 import {
   ASSISTANT_DOC_ID,
   type AssistantContext,
@@ -116,9 +117,14 @@ export async function loadAssistantContext(locale: Locale): Promise<AssistantCon
         { openingHours: resolveOpeningHours(settingsData), hours: settingsData?.hours ?? "" },
         locale
       ),
-      whatsapp: settingsData?.social?.whatsapp ?? settingsData?.phone ?? "",
+      // Only a WhatsApp number entered in the settings; never the phone as a stand-in.
+      whatsapp: settingsData?.social?.whatsapp?.trim() ?? "",
       mapsUrl: settingsData?.mapsUrl ?? "",
     },
     banners,
+    fulfillment: {
+      settings: normalizeFulfillmentSettings(settingsData?.fulfillment),
+      openingHours: resolveOpeningHours(settingsData) ?? DEFAULT_OPENING_HOURS,
+    },
   };
 }

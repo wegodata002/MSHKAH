@@ -7,6 +7,7 @@ import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useSettings } from "@/hooks/useSettings";
 import { BRAND } from "@/lib/brand";
 import { openingHoursText } from "@/lib/settings/opening-hours";
+import { whatsappUrl } from "@/lib/assistant/fulfillment-answers";
 
 export function SiteFooter() {
   const t = useT();
@@ -16,7 +17,8 @@ export function SiteFooter() {
   const phone = settings?.phone ?? "";
   const address = settings?.address ?? "";
   const hours = openingHoursText(settings, locale);
-  const whatsapp = settings?.social?.whatsapp ?? phone;
+  // Only when a WhatsApp number is entered in the settings; "0587887090" opens wa.me/972587887090.
+  const whatsappHref = whatsappUrl(settings?.social?.whatsapp);
   const mapsUrl = settings?.mapsUrl ?? "";
 
   return (
@@ -68,10 +70,10 @@ export function SiteFooter() {
                   )}
                 </li>
               )}
-              {whatsapp && (
+              {whatsappHref && (
                 <li>
                   <a
-                    href={`https://wa.me/${whatsapp.replace(/\D/g, "")}`}
+                    href={whatsappHref}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-body flex items-center gap-2 hover:text-turquoise"
