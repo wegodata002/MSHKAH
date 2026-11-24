@@ -10,8 +10,6 @@ import {
   User,
   MessageSquare,
   Store,
-  Truck,
-  MapPin,
   CheckCircle2,
   Banknote,
   CreditCard,
@@ -29,7 +27,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
-import { createOrderFromCart, getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
+import { getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
+import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
 import { formatPrice, cn } from "@/lib/utils";
@@ -89,8 +88,8 @@ export default function CheckoutPage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
-  const [orderType, setOrderType] = useState<"pickup" | "delivery">("pickup");
-  const [address, setAddress] = useState("");
+  // Pickup only until PR 4 (delivery areas + pickup times). The server prices the order.
+  const orderType = "pickup" as const;
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [hypAvailability, setHypAvailability] = useState<"unknown" | "enabled" | "disabled">("unknown");
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
@@ -147,13 +146,21 @@ export default function CheckoutPage() {
     );
   }
 
+  /** A clear message for orders the server turned down. */
+  const orderErrorMessage = (result: Extract<SubmitOrderResult, { ok: false }>): string => {
+    if (result.code === "PRODUCT_UNAVAILABLE" && result.productNames?.length) {
+      return t("checkout.productUnavailable").replace("{items}", result.productNames.join(", "));
+    }
+    if (result.code === "PRODUCT_NOT_FOUND" || result.code === "PRODUCT_UNAVAILABLE") {
+      return t("checkout.productMissing");
+    }
+    if (result.code === "RATE_LIMITED") return t("checkout.tooManyOrders");
+    return t("checkout.orderSaveError");
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !phone) { setError(t("validation.required")); return; }
-    if (orderType === "delivery" && !address.trim()) {
-      setError(t("validation.required"));
-      return;
-    }
     const normalizedEmail = normalizeCustomerEmail(email);
     if (payment === "card" && !normalizedEmail) {
       setError(t("validation.email"));
@@ -178,48 +185,43 @@ export default function CheckoutPage() {
         : null;
       const customerId = customerData?.customerId || GUEST_CUSTOMER_ID;
 
-      const fulfillmentNote =
-        orderType === "delivery"
-          ? t("checkout.delivery")
-          : t("checkout.pickupFromStore", "איסוף עצמי מהעסק");
+      // Same notes text as before (the printout drops the pickup line).
       const orderNotes = [
         notes.trim(),
         phone.trim() ? `${t("checkout.phone")}: ${phone.trim()}` : "",
-        fulfillmentNote,
-        orderType === "delivery" && address.trim()
-          ? `${t("checkout.address")}: ${address.trim()}`
-          : "",
+        t("checkout.pickupFromStore", "איסוף עצמי מהעסק"),
       ]
         .filter(Boolean)
         .join("\n");
 
       let orderId = pendingOrderId;
       if (!orderId) {
-        const result = await createOrderFromCart(items, customerId, name, {
-          subtotal,
-          discount,
-          total,
-          paymentMethod: payment,
-          customerPhone: phone.trim(),
-          customerEmail: normalizedEmail || undefined,
+        const result = await submitOrder({
+          items: cartToOrderItems(items),
+          customer: {
+            id: customerId,
+            name: name.trim(),
+            phone: phone.trim(),
+            email: normalizedEmail || undefined,
+          },
           notes: orderNotes || undefined,
           locale,
-          orderType,
-          deliveryAddress: orderType === "delivery" ? address.trim() : undefined,
           couponCode: couponCode || undefined,
+          payment: payment === "card" ? "online" : "counter",
+          fulfillment: { type: orderType },
         });
-        if (!result.success) {
-          console.error("[checkout] order failed:", result.error, result.code);
-          if (result.code === "ORDER_SAVE_FAILED") {
+        if (!result.ok) {
+          console.error("[checkout] order failed:", result.code, result.status);
+          if (result.status >= 500 || result.status === 0) {
             requestCriticalCheckoutFailureNotification({
-              message: result.error || "Order save failed",
+              message: `Order create failed (${result.status})`,
               code: result.code,
             });
           }
-          setError(t("checkout.orderSaveError"));
+          setError(orderErrorMessage(result));
           return;
         }
-        orderId = result.data.id;
+        orderId = result.id;
         if (customerId !== GUEST_CUSTOMER_ID) {
           await fetch("/api/checkout/customer", {
             method: "POST",
@@ -298,32 +300,16 @@ export default function CheckoutPage() {
                 <div className="space-y-6 lg:col-span-3">
                   <div className="rounded-2xl bg-warm-white p-5 shadow-soft">
                     <h2 className="text-sm font-semibold">{t("checkout.orderType")}</h2>
+                    {/* Pickup only for now; delivery (areas, fee) returns in the next step. */}
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {(["pickup", "delivery"] as const).map((type) => (
-                        <button
-                          key={type}
-                          type="button"
-                          onClick={() => setOrderType(type)}
-                          className={cn(
-                            "flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border-2 px-4 py-4 text-start transition-all",
-                            orderType === type
-                              ? "border-turquoise bg-turquoise/5"
-                              : "border-beige-dark/30 bg-warm-white"
-                          )}
-                        >
-                          {type === "pickup" ? (
-                            <Store className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                          ) : (
-                            <Truck className="h-5 w-5 shrink-0" strokeWidth={1.75} />
-                          )}
-                          <span className="font-semibold">
-                            {type === "pickup" ? t("checkout.pickup") : t("checkout.delivery")}
-                          </span>
-                          {orderType === type && (
-                            <CheckCircle2 className="ms-auto h-5 w-5 shrink-0 text-turquoise" strokeWidth={1.75} />
-                          )}
-                        </button>
-                      ))}
+                      <div
+                        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-2xl border-2 border-turquoise bg-turquoise/5 px-4 py-4 text-start"
+                        data-order-type="pickup"
+                      >
+                        <Store className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                        <span className="font-semibold">{t("checkout.pickup")}</span>
+                        <CheckCircle2 className="ms-auto h-5 w-5 shrink-0 text-turquoise" strokeWidth={1.75} />
+                      </div>
                     </div>
                   </div>
 
@@ -345,18 +331,6 @@ export default function CheckoutPage() {
                         <Label className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.phone")}</Label>
                         <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="mt-1" required />
                       </div>
-                      {orderType === "delivery" && (
-                        <div>
-                          <Label className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.address")}</Label>
-                          <Input
-                            value={address}
-                            onChange={(e) => setAddress(e.target.value)}
-                            className="mt-1"
-                            autoComplete="street-address"
-                            required
-                          />
-                        </div>
-                      )}
                       <div>
                         <Label className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.email")}</Label>
                         <Input
@@ -495,7 +469,7 @@ export default function CheckoutPage() {
                         </div>
                       )}
                       <p className="text-xs text-coffee/50">
-                        {orderType === "delivery" ? t("checkout.delivery") : t("checkout.pickupFromStore")}
+                        {t("checkout.pickupFromStore")}
                       </p>
                       <div className="flex justify-between pt-2 text-lg font-bold">
                         <span>{t("cart.total")}</span>

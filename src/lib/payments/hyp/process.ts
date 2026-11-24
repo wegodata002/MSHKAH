@@ -15,6 +15,8 @@ import { runFailedPostPaymentTasks, runPaidPostPaymentTasks } from "@/lib/paymen
 import { hypLogFields, parseHypRedirect } from "@/lib/payments/hyp/query";
 import { HYP_CURRENCY, HYP_PROVIDER } from "@/lib/payments/hyp/types";
 import type { FirestoreOrder } from "@/types/firestore";
+import { loadFulfillmentContext } from "@/lib/orders/server-context";
+import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
 
 export class HypPaymentError extends Error {
   constructor(
@@ -33,7 +35,7 @@ function pageLangFromLocale(locale?: string): "HEB" | "ENG" {
 
 async function trustedChargeAmount(
   order: FirestoreOrder
-): Promise<{ amount: number; discount: number; subtotal: number }> {
+): Promise<{ amount: number; discount: number; subtotal: number; delivery: number }> {
   const items = order.items ?? [];
   if (items.length === 0) {
     throw new HypPaymentError("Order has no items", "INVALID_AMOUNT", 400);
@@ -63,7 +65,24 @@ async function trustedChargeAmount(
     catalogSum += (catalogPrice + extras) * qty;
   }
   // Discount is derived from the stored coupon code only — never order.discount.
-  return chargeFromCatalogSum(catalogSum, order);
+  // Delivery fee comes from the settings for the order's area — never order.delivery,
+  // which the browser could still write directly until the rules are locked.
+  const deliveryFee = await trustedDeliveryFee(order);
+  return { ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }), delivery: deliveryFee };
+}
+
+async function trustedDeliveryFee(order: FirestoreOrder): Promise<number> {
+  if (order.orderType !== "delivery") return 0;
+  const zoneId = order.deliveryZoneId?.trim();
+  if (!zoneId) {
+    throw new HypPaymentError("Delivery area is missing", "DELIVERY_ZONE_REQUIRED", 409);
+  }
+  const { fulfillment } = await loadFulfillmentContext(getAdminDb());
+  const fee = deliveryFeeForZone(fulfillment, zoneId);
+  if (fee === null) {
+    throw new HypPaymentError("Delivery area is unknown", "DELIVERY_ZONE_UNKNOWN", 409);
+  }
+  return fee;
 }
 
 export async function createHypPaymentAttempt(
@@ -112,17 +131,18 @@ export async function createHypPaymentAttempt(
     order = { ...order, ...customerPatch };
   }
 
-  const { amount, discount, subtotal } = await trustedChargeAmount(order);
+  const { amount, discount, subtotal, delivery } = await trustedChargeAmount(order);
   if (amount <= 0) {
     throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
   }
   if (
     amount !== authoritativeOrderAmount(order) ||
     amount !== order.total ||
-    discount !== order.discount
+    discount !== order.discount ||
+    delivery !== (Number(order.delivery) || 0)
   ) {
-    await orderRef.update({ total: amount, subtotal, discount });
-    order = { ...order, total: amount, subtotal, discount };
+    await orderRef.update({ total: amount, subtotal, discount, delivery });
+    order = { ...order, total: amount, subtotal, discount, delivery };
   }
 
   const customerEmail = normalizeCustomerEmail(order.customerEmail);
