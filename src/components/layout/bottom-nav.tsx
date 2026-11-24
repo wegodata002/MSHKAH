@@ -5,9 +5,8 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useHideCustomerChrome } from "@/hooks/useAdminPath";
-import { Home, LayoutGrid, ShoppingBag, ClipboardList, User } from "lucide-react";
+import { Home, LayoutGrid, ClipboardList, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCart } from "@/features/cart/cart-context";
 import { useT } from "@/components/providers/locale-provider";
 
 const NAV_ITEM_CLASS =
@@ -16,7 +15,6 @@ const NAV_ITEM_CLASS =
 export function BottomNav() {
   const pathname = usePathname();
   const hideChrome = useHideCustomerChrome();
-  const { itemCount, openCart } = useCart();
   const t = useT();
   const [mounted, setMounted] = useState(false);
 
@@ -27,10 +25,10 @@ export function BottomNav() {
   if (hideChrome) return null;
   if (!mounted) return null;
 
+  // No cart item here: the cart lives in the header and in the round checkout button.
   const navItems = [
     { href: "/", labelKey: "nav.home", icon: Home, exact: true },
     { href: "/catalog", labelKey: "nav.catalog", icon: LayoutGrid },
-    { href: "/cart", labelKey: "nav.cart", icon: ShoppingBag, isCart: true },
     { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
     { href: "/account", labelKey: "nav.account", icon: User },
   ];
@@ -48,38 +46,6 @@ export function BottomNav() {
             : pathname.startsWith(item.href);
           const Icon = item.icon;
           const label = t(item.labelKey);
-
-          if (item.isCart) {
-            return (
-              <button
-                key={item.href}
-                type="button"
-                onClick={openCart}
-                className={NAV_ITEM_CLASS}
-              >
-                <Icon
-                  className={cn(
-                    "h-5 w-5 shrink-0 transition-colors",
-                    isActive ? "text-turquoise" : "text-coffee/45"
-                  )}
-                  strokeWidth={1.75}
-                />
-                {itemCount > 0 && (
-                  <span className="absolute top-1.5 end-[calc(50%-18px)] flex h-4 min-w-4 items-center justify-center rounded-full bg-turquoise px-1 text-[9px] font-bold text-warm-white">
-                    {itemCount}
-                  </span>
-                )}
-                <span
-                  className={cn(
-                    "text-[10px] font-medium leading-none",
-                    isActive ? "text-turquoise" : "text-coffee/45"
-                  )}
-                >
-                  {label}
-                </span>
-              </button>
-            );
-          }
 
           return (
             <Link
