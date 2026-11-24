@@ -16,6 +16,22 @@ import type { FirestoreOrder } from "@/types/firestore";
  * Any failure is logged and swallowed so a Brevo / email outage never
  * rolls back the payment (same contract as print and admin-email tasks).
  */
+/**
+ * Which club member gets the points for an order. The member identified on the server when the
+ * order was created (club session) comes first; older orders, and orders without a session,
+ * fall back to matching the order email. No email and no member id → nobody.
+ */
+export async function loyaltyMemberIdForOrder(
+  order: { loyalty?: { memberId?: string | null } | null; customerEmail?: string | null },
+  findMemberIdByEmailHash: (emailHash: string) => Promise<string | null>
+): Promise<string | null> {
+  const fromSession = order.loyalty?.memberId?.trim();
+  if (fromSession) return fromSession;
+  const email = order.customerEmail?.trim();
+  if (!email) return null;
+  return findMemberIdByEmailHash(hashEmail(email));
+}
+
 export async function awardLoyaltyPointsForOrder(
   orderId: string,
   db: Firestore = getAdminDb()
@@ -34,17 +50,15 @@ export async function awardLoyaltyPointsForOrder(
         redeemedValueMinor?: number;
       } | null;
     };
-    const email = order.customerEmail?.trim();
-    if (!email) return { ok: true, status: "no_member" };
-
-    const emailHash = hashEmail(email);
-    const memberSnap = await db
-      .collection(COLLECTIONS.loyaltyMembers)
-      .where("emailHash", "==", emailHash)
-      .limit(1)
-      .get();
-    const memberDoc = memberSnap.docs[0];
-    if (!memberDoc) return { ok: true, status: "no_member" };
+    const memberId = await loyaltyMemberIdForOrder(order, async (emailHash) => {
+      const memberSnap = await db
+        .collection(COLLECTIONS.loyaltyMembers)
+        .where("emailHash", "==", emailHash)
+        .limit(1)
+        .get();
+      return memberSnap.docs[0]?.id ?? null;
+    });
+    if (!memberId) return { ok: true, status: "no_member" };
 
     const paidTotal = Number(order.total) || 0;
     const qualifying = qualifyingAmountMinor({
@@ -55,7 +69,7 @@ export async function awardLoyaltyPointsForOrder(
     if (qualifying <= 0) return { ok: true, status: "skipped" };
 
     const result = await awardOrderPoints(db, {
-      memberId: memberDoc.id,
+      memberId,
       orderId,
       qualifyingAmountMinor: qualifying,
     });

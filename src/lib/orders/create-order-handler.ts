@@ -1,4 +1,5 @@
 import { phoneKey } from "@/lib/customers/identity";
+import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import type { FulfillmentSettings } from "@/lib/fulfillment/settings";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import {
@@ -22,6 +23,11 @@ export type CreateOrderDeps = {
   /** Returns true when under the limit. */
   rateLimit: (key: string, windowSeconds: number, limit: number) => Promise<boolean>;
   saveOrder: (draft: ServerOrderDraft) => Promise<string>;
+  /**
+   * The club member logged in on this device (from the signed club session), or null.
+   * Never trusted from the request body. A failure here must not block the order.
+   */
+  findClubMember?: () => Promise<{ id: string; email?: string | null } | null>;
 };
 
 export type CreateOrderResponse =
@@ -67,7 +73,17 @@ export async function handleCreateOrder(
     });
     if (!built.ok) return { status: 409, body: { ok: false, ...built.error } };
 
-    const id = await deps.saveOrder(built.order);
+    // Club member: points by member id (not by email); their saved email, if any, for the
+    // payment confirmation. The checkout no longer asks for an email.
+    const member = deps.findClubMember ? await deps.findClubMember().catch(() => null) : null;
+    const order: ServerOrderDraft = { ...built.order };
+    if (member?.id) {
+      order.loyalty = { memberId: member.id };
+      const memberEmail = normalizeCustomerEmail(member.email);
+      if (memberEmail && !order.customerEmail) order.customerEmail = memberEmail;
+    }
+
+    const id = await deps.saveOrder(order);
     return { status: 200, body: { ok: true, id, orderNumber: built.order.orderNumber, total: built.order.total } };
   } catch (error) {
     console.error("[orders/create] failed:", error instanceof Error ? error.message : error);

@@ -147,6 +147,8 @@ export type ServerOrderDraft = {
   isTestOrder?: true;
   locale?: "he" | "ar" | "en";
   pricedBy: "server";
+  /** Club member identified from the club session on the server (points go to this member). */
+  loyalty?: { memberId: string };
 };
 
 export const TEST_ORDER_NOTE = "TEST — HYP payment verification. Do not include in sales reports.";

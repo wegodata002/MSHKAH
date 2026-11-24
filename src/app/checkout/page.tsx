@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
-  Mail,
   Phone,
   User,
   MessageSquare,
@@ -15,6 +14,7 @@ import {
   ShoppingBag,
   Tag,
   X,
+  Trash2,
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { CheckoutProgress } from "@/components/checkout/checkout-progress";
@@ -28,11 +28,11 @@ import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
 import { getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
 import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
-import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
 import { formatPrice, cn } from "@/lib/utils";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
 import { formatLocalTime } from "@/lib/fulfillment/availability";
+import { checkoutFingerprint } from "@/features/checkout/checkout-fingerprint";
 import { zoneName } from "@/lib/fulfillment/settings";
 import { useFulfillmentAvailability, describeNext } from "@/features/checkout/use-fulfillment-availability";
 import {
@@ -44,15 +44,26 @@ import {
   type ZoneChoice,
 } from "@/features/checkout/checkout-fulfillment";
 
-function OrderLineItem({ item }: { item: import("@/types").CartItem }) {
+function OrderLineItem({ item, onRemove }: { item: import("@/types").CartItem; onRemove: () => void }) {
+  const t = useT();
   const localized = useLocalizedProduct(item.product);
   return (
-    <div className="space-y-0.5 text-sm">
-      <div className="flex justify-between">
-        <span className="text-coffee/70">
+    <div className="space-y-0.5 text-sm" data-summary-line={item.lineId}>
+      <div className="flex items-center justify-between gap-2">
+        <span className="min-w-0 flex-1 text-coffee/70">
           {item.quantity}× {localized.name}
         </span>
         <span>{formatPrice(calculateLineTotal(item.unitPrice, item.quantity))}</span>
+        {/* Same as the cart: remove right away, no confirmation. */}
+        <button
+          type="button"
+          onClick={onRemove}
+          data-remove-line
+          className="-me-2 inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-coffee/40 transition-colors hover:bg-red-50 hover:text-red-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-turquoise"
+          aria-label={`${t("cart.remove")} ${localized.name}`}
+        >
+          <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+        </button>
       </div>
       {item.selections.map((s) => (
         <p key={`${s.groupId}-${s.optionId}`} className="ps-3 text-xs text-coffee/45">
@@ -69,7 +80,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const {
     items, subtotal, discount, total,
-    clearCart, couponCode, applyCoupon, removeCoupon,
+    clearCart, couponCode, applyCoupon, removeCoupon, removeItem,
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -95,7 +106,6 @@ export default function CheckoutPage() {
   }, [couponCode]);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
   const [notes, setNotes] = useState("");
   // What can be ordered now (opening hours, delivery hours and areas from the settings).
   // The browser only shows it; the server checks it again and prices the order.
@@ -159,6 +169,22 @@ export default function CheckoutPage() {
     if (hypAvailability === "disabled" && payment === "card") setPayment("cash");
   }, [hypAvailability, payment]);
 
+  // A card order that was created but not paid (the payment page failed to open) is reused on the
+  // next try — but only while nothing changed. Any change to the cart, coupon, order type, area,
+  // address, pickup time or payment method needs a new order, so forget the old one.
+  const orderFingerprint = checkoutFingerprint({
+    items,
+    couponCode,
+    orderType,
+    zoneId: orderType === "delivery" ? deliveryZone?.id ?? "" : "",
+    address: orderType === "delivery" ? address.trim() : "",
+    pickupTime: orderType === "pickup" ? pickupTime : "",
+    payment,
+  });
+  useEffect(() => {
+    setPendingOrderId(null);
+  }, [orderFingerprint]);
+
   const cardDisabled = hypAvailability === "disabled";
 
   if (items.length === 0 && !success) {
@@ -206,15 +232,6 @@ export default function CheckoutPage() {
     if (!name || !phone) { setError(t("validation.required")); return; }
     if (!canOrder) return;
     if (orderType === "delivery" && !address.trim()) { setError(t("validation.required")); return; }
-    const normalizedEmail = normalizeCustomerEmail(email);
-    if (payment === "card" && !normalizedEmail) {
-      setError(t("validation.email"));
-      return;
-    }
-    if (email.trim() && !normalizedEmail) {
-      setError(t("validation.email"));
-      return;
-    }
 
     setLoading(true);
     setError(null);
@@ -223,7 +240,7 @@ export default function CheckoutPage() {
       const customerResponse = await fetch("/api/checkout/customer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), phone: phone.trim(), email: normalizedEmail || undefined }),
+        body: JSON.stringify({ name: name.trim(), phone: phone.trim() }),
       }).catch(() => null);
       const customerData = customerResponse?.ok
         ? ((await customerResponse.json()) as { customerId?: string })
@@ -248,7 +265,6 @@ export default function CheckoutPage() {
             id: customerId,
             name: name.trim(),
             phone: phone.trim(),
-            email: normalizedEmail || undefined,
           },
           notes: orderNotes || undefined,
           locale,
@@ -289,7 +305,6 @@ export default function CheckoutPage() {
             orderId,
             customerName: name.trim(),
             customerPhone: phone.trim(),
-            customerEmail: normalizedEmail || undefined,
           }),
         });
         const payData = (await payRes.json()) as { ok?: boolean; paymentUrl?: string };
@@ -401,19 +416,6 @@ export default function CheckoutPage() {
                         <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="mt-1" required />
                       </div>
                       <div>
-                        <Label className="flex items-center gap-1"><Mail className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.email")}</Label>
-                        <Input
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          type="email"
-                          inputMode="email"
-                          autoComplete="email"
-                          className="mt-1"
-                          placeholder="name@email.com"
-                          required={payment === "card"}
-                        />
-                      </div>
-                      <div>
                         <Label className="flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.notes")}</Label>
                         <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1" placeholder={t("checkout.notes")} />
                       </div>
@@ -488,7 +490,7 @@ export default function CheckoutPage() {
                     <h2 className="text-sm font-semibold">{t("checkout.orderSummary")}</h2>
                     <div className="mt-4 space-y-2">
                       {items.map((item) => (
-                        <OrderLineItem key={item.lineId} item={item} />
+                        <OrderLineItem key={item.lineId} item={item} onRemove={() => removeItem(item.lineId)} />
                       ))}
                     </div>
                     {/* Coupon field — same look as the cart. Inside the order <form>, so the
