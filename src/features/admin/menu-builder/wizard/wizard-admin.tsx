@@ -7,6 +7,7 @@ import { useAllCategories, useAllProducts } from "@/hooks/useProducts";
 import { useSettings } from "@/hooks/useSettings";
 import { getLocalizedName } from "@/lib/i18n/localized-content";
 import { BRAND } from "@/lib/brand";
+import { DEFAULT_FULFILLMENT } from "@/lib/fulfillment/settings";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_PDF_DRAFT,
@@ -49,6 +50,7 @@ const FALLBACK_SETTINGS: AppSettings = {
   address: "",
   hours: "",
   openingHours: null,
+  fulfillment: DEFAULT_FULFILLMENT,
   currency: "ILS",
   theme: { primary: "#3D2B24", accent: "#007A80", background: "#F8F3ED" },
   seo: { title: BRAND.name, description: BRAND.taglineAlt },

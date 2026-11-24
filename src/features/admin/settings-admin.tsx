@@ -19,6 +19,8 @@ import {
 import { SystemStatusCard } from "@/features/admin/system-status-card";
 import { MeasureUnitsSettings } from "@/features/admin/measure-units-settings";
 import { OpeningHoursEditor } from "@/features/admin/opening-hours-editor";
+import { FulfillmentSettingsCard } from "@/features/admin/fulfillment-settings-card";
+import { fulfillmentIssues } from "@/lib/fulfillment/settings";
 import { DEFAULT_OPENING_HOURS, legacyHoursText } from "@/lib/settings/opening-hours";
 import { useT } from "@/components/providers/locale-provider";
 import { AdminPageHeader } from "./components/admin-page-header";
@@ -44,6 +46,8 @@ export function SettingsAdmin() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** Mark invalid order-option fields once a save was attempted with problems. */
+  const [showFulfillmentIssues, setShowFulfillmentIssues] = useState(false);
   const dirty = Boolean(settings && baseline && stableJson(settings) !== stableJson(baseline));
   const dirtyRef = useRef(false);
   dirtyRef.current = dirty;
@@ -69,8 +73,16 @@ export function SettingsAdmin() {
     );
   }
 
+  const issues = fulfillmentIssues(settings.fulfillment);
+
   const handleSave = async () => {
     if (saving) return;
+    if (issues.length > 0) {
+      setShowFulfillmentIssues(true);
+      setSaveError(t("admin.fulfillment.fixBeforeSave"));
+      return;
+    }
+    setShowFulfillmentIssues(false);
     setSaving(true);
     setSaveError(null);
     const result = await updateSettings(settings);
@@ -87,6 +99,7 @@ export function SettingsAdmin() {
   const discardChanges = () => {
     if (baseline) setSettings(baseline);
     setSaveError(null);
+    setShowFulfillmentIssues(false);
   };
 
   /**
@@ -246,6 +259,13 @@ export function SettingsAdmin() {
             </div>
           </div>
         </AdminCard>
+
+        <FulfillmentSettingsCard
+          value={settings.fulfillment}
+          onChange={(fulfillment) => setSettings({ ...settings, fulfillment })}
+          issues={issues}
+          showIssues={showFulfillmentIssues}
+        />
 
         <MeasureUnitsSettings />
 
