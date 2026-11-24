@@ -1,7 +1,7 @@
 "use client";
 
-import { useId } from "react";
-import { CheckCircle2, Clock, MapPin, Phone, Store, Truck } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { Check, CheckCircle2, ChevronDown, Clock, MapPin, Phone, Store, Truck } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ import { cn, formatPrice } from "@/lib/utils";
 import { formatLocalTime } from "@/lib/fulfillment/availability";
 import { zoneName, type DeliveryZone } from "@/lib/fulfillment/settings";
 import { describeNext, type FulfillmentNow } from "./use-fulfillment-availability";
+import { PICKUP_TIMES_PAGE, initialVisibleTimes, moreVisibleTimes } from "./pickup-time-list";
 
 export type CheckoutOrderType = "pickup" | "delivery";
 /** A real area id, "other" (contact the store), or "" (nothing chosen yet). */
@@ -109,7 +110,11 @@ export function OrderTypePicker({
   );
 }
 
-/** Today's pickup times; the first one is "Earliest – HH:MM". */
+/**
+ * Today's pickup times. Closed: a field with the chosen time ("Earliest – HH:MM" for the first).
+ * Open: the list opens downward inside the page with 6 times; "Show more" adds 6 each time.
+ * Picking a time closes the list. Keyboard: Enter/Space opens, arrows move, Escape closes.
+ */
 export function PickupTimeSelect({
   slots,
   value,
@@ -120,28 +125,142 @@ export function PickupTimeSelect({
   onChange: (next: string) => void;
 }) {
   const t = useT();
-  const id = useId();
+  const labelId = useId();
+  const listId = useId();
+  const [open, setOpen] = useState(false);
+  const [visible, setVisible] = useState(PICKUP_TIMES_PAGE);
+  const fieldRef = useRef<HTMLButtonElement>(null);
+  const chipRefs = useRef<Array<HTMLButtonElement | null>>([]);
+
+  const times = slots.map((slot) => formatLocalTime(slot));
+  const selectedIndex = times.indexOf(value);
+  const label = (time: string, index: number) =>
+    index === 0 ? t("checkout.pickupEarliest").replace("{time}", time) : time;
+  const shown = Math.min(visible, times.length);
+
+  const openList = () => {
+    setVisible(initialVisibleTimes(times.length, selectedIndex));
+    setOpen(true);
+  };
+  const close = (focusField = true) => {
+    setOpen(false);
+    if (focusField) fieldRef.current?.focus();
+  };
+  const pick = (time: string) => {
+    onChange(time);
+    close();
+  };
+
+  // When the list opens, focus the selected time (or the first one).
+  useEffect(() => {
+    if (open) chipRefs.current[Math.max(selectedIndex, 0)]?.focus();
+    // Only when it opens; moving between times is handled by the arrow keys.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const onGridKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      close();
+      return;
+    }
+    const current = chipRefs.current.findIndex((el) => el === document.activeElement);
+    if (current < 0) return;
+    const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
+    const step =
+      event.key === "ArrowDown" ? 1
+      : event.key === "ArrowUp" ? -1
+      : event.key === "ArrowRight" ? (rtl ? -1 : 1)
+      : event.key === "ArrowLeft" ? (rtl ? 1 : -1)
+      : 0;
+    if (!step) return;
+    event.preventDefault();
+    const next = Math.min(Math.max(current + step, 0), shown - 1);
+    chipRefs.current[next]?.focus();
+  };
+
   return (
     <div className={card}>
-      <Label htmlFor={id} className="flex items-center gap-1 text-sm font-semibold">
+      <p id={labelId} className="flex items-center gap-1 text-sm font-semibold">
         <Clock className="h-4 w-4" strokeWidth={1.75} />
         {t("checkout.pickupTime")}
-      </Label>
-      <select
-        id={id}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="mt-2 flex h-11 w-full rounded-xl border border-beige-dark/30 bg-warm-white px-3 text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-turquoise"
+      </p>
+      <button
+        ref={fieldRef}
+        type="button"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-labelledby={labelId}
+        aria-describedby={`${labelId}-value`}
+        data-pickup-field
+        onClick={() => (open ? close() : openList())}
+        className={cn(
+          "mt-2 flex h-11 w-full items-center justify-between rounded-xl border bg-warm-white px-3 text-start text-base",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-turquoise",
+          open ? "border-turquoise ring-2 ring-turquoise/20" : "border-beige-dark/30"
+        )}
       >
-        {slots.map((slot, index) => {
-          const time = formatLocalTime(slot);
-          return (
-            <option key={time} value={time}>
-              {index === 0 ? t("checkout.pickupEarliest").replace("{time}", time) : time}
-            </option>
-          );
-        })}
-      </select>
+        <span id={`${labelId}-value`}>{selectedIndex >= 0 ? label(value, selectedIndex) : "—"}</span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-coffee/60 transition-transform", open && "rotate-180")} />
+      </button>
+
+      {open ? (
+        <div id={listId}>
+          <div
+            role="radiogroup"
+            aria-labelledby={labelId}
+            onKeyDown={onGridKeyDown}
+            className="mt-3 grid grid-cols-3 gap-2 lg:grid-cols-6"
+          >
+            {times.slice(0, shown).map((time, index) => {
+              const selected = time === value;
+              return (
+                <button
+                  key={time}
+                  ref={(el) => {
+                    chipRefs.current[index] = el;
+                  }}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  tabIndex={selected || (selectedIndex < 0 && index === 0) ? 0 : -1}
+                  data-pickup-time={time}
+                  onClick={() => pick(time)}
+                  className={cn(
+                    "flex min-h-11 flex-col items-center justify-center rounded-xl border-2 px-1 py-1 text-[15px] font-semibold transition-colors",
+                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-turquoise",
+                    selected
+                      ? "border-turquoise bg-turquoise/5 text-turquoise"
+                      : "border-beige-dark/30 bg-warm-white hover:border-turquoise/50"
+                  )}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    {selected ? <Check className="h-3.5 w-3.5" strokeWidth={2.5} /> : null}
+                    {time}
+                  </span>
+                  {index === 0 ? (
+                    <span className="text-[11px] font-medium text-coffee/60">{t("checkout.pickupEarliestShort")}</span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+          {shown < times.length ? (
+            <div className="mt-3 flex justify-center">
+              <button
+                type="button"
+                data-pickup-more
+                onClick={() => setVisible((v) => moreVisibleTimes(v, times.length))}
+                className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-beige-dark/30 bg-warm-white px-4 text-sm font-semibold hover:border-turquoise/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-turquoise"
+              >
+                {t("checkout.showMoreTimes")}
+                <ChevronDown className="h-4 w-4" />
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
