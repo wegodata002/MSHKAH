@@ -42,6 +42,14 @@ import { loyaltyLog } from "@/lib/loyalty/admin/log";
  *     one-and-only "welcome" ledger entry
  */
 
+/**
+ * Firestore (Admin SDK) rejects `undefined` values; optional fields are left out instead.
+ * Only top-level keys: member documents are flat.
+ */
+export function withoutUndefined<T extends Record<string, unknown>>(value: T): T {
+  return Object.fromEntries(Object.entries(value).filter(([, v]) => v !== undefined)) as T;
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // Settings
 // ──────────────────────────────────────────────────────────────────────
@@ -110,14 +118,13 @@ export async function verifyEnrollmentCode(
 > {
   const emailHash = hashEmail(input.email);
   const submittedHash = hashCode(input.codePlain, emailHash);
-  const query = db
+  // One equality filter only: served by Firestore's automatic single-field index, so it never
+  // needs a composite index. The newest active code is picked here (a handful of codes per email).
+  const snap = await db
     .collection(COLLECTIONS.loyaltyEnrollmentTokens)
     .where("emailHash", "==", emailHash)
-    .where("status", "==", "active")
-    .orderBy("createdAt", "desc")
-    .limit(1);
-  const snap = await query.get();
-  const doc = snap.docs[0];
+    .get();
+  const doc = pickNewestActiveToken(snap.docs);
   if (!doc) return { ok: false, reason: "no_token" };
   return db.runTransaction(async (tx) => {
     const live = await tx.get(doc.ref);
@@ -165,6 +172,22 @@ export async function verifyEnrollmentCode(
     );
     return { ok: true as const, emailHash };
   });
+}
+
+/** The most recently created token still marked "active" (expiry is checked by the caller). */
+export function pickNewestActiveToken<D extends { data(): unknown }>(docs: D[]): D | undefined {
+  let best: D | undefined;
+  let bestAt = "";
+  for (const doc of docs) {
+    const data = doc.data() as { status?: string; createdAt?: string } | undefined;
+    if (data?.status !== "active") continue;
+    const at = typeof data.createdAt === "string" ? data.createdAt : "";
+    if (!best || at > bestAt) {
+      best = doc;
+      bestAt = at;
+    }
+  }
+  return best;
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -216,13 +239,14 @@ export async function upsertVerifiedMember(
   }
   const now = new Date();
   const id = randomUUID();
-  const member: LoyaltyMember = {
+  // Name and phone are optional: left out when empty (Firestore rejects `undefined`).
+  const member: LoyaltyMember = withoutUndefined({
     id,
     memberNumber: deriveMemberNumber({ id, createdAtMs: now.getTime() }),
     email,
     emailHash,
-    displayName: input.displayName,
-    phone: input.phone,
+    displayName: input.displayName || undefined,
+    phone: input.phone || undefined,
     status: "email_verified",
     balancePoints: 0,
     joinFeePaidMinor: 0,
@@ -230,7 +254,7 @@ export async function upsertVerifiedMember(
     consentMarketing: false,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
-  };
+  } satisfies LoyaltyMember);
   await db.collection(COLLECTIONS.loyaltyMembers).doc(id).set(member);
   return member;
 }
@@ -290,7 +314,8 @@ export async function activateMember(
     const action = input.source === "card" ? "activate_card" : input.source === "free" ? "activate_free" : "activate_cash";
     const next = nextStatusFor(member.status, action);
     if (!next) throw new Error("invalid_transition");
-    const nextMember: LoyaltyMember = {
+    // A free sign-up has no payment id; such fields are left out, not written as `undefined`.
+    const nextMember: LoyaltyMember = withoutUndefined({
       ...member,
       status: next,
       joinFeePaidMinor: input.paidAmountMinor,
@@ -303,7 +328,7 @@ export async function activateMember(
       welcomeEmailStatus: "pending",
       welcomeEmailAttemptAt: undefined,
       updatedAt: now,
-    };
+    } satisfies LoyaltyMember);
     tx.set(memberRef, nextMember);
     tx.set(welcomeRef, {
       id: welcomeRef.id,
@@ -569,13 +594,15 @@ export async function readMemberHistory(
   memberId: string,
   limit = 50
 ): Promise<LoyaltyLedgerEntry[]> {
+  // One equality filter (no composite index needed); newest first is sorted here.
   const snap = await db
     .collection(COLLECTIONS.loyaltyPointsLedger)
     .where("memberId", "==", memberId)
-    .orderBy("createdAt", "desc")
-    .limit(limit)
     .get();
-  return snap.docs.map((doc) => ({ id: doc.id, ...(doc.data() as Omit<LoyaltyLedgerEntry, "id">) }));
+  return snap.docs
+    .map((doc) => ({ id: doc.id, ...(doc.data() as Omit<LoyaltyLedgerEntry, "id">) }))
+    .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")))
+    .slice(0, limit);
 }
 
 // Re-export the pure helpers for API routes that need them.

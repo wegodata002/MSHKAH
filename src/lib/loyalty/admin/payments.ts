@@ -90,7 +90,7 @@ export async function startClubJoinPayment(
     const paymentUrl = await createHypPaymentPage({
       amount: formatHypAmount(amount),
       orderRef: paymentRef.id,
-      info: `Mishkah club ${input.memberNumber}`,
+      info: `Mishkat club ${input.memberNumber}`,
       clientName: input.name,
       cell: input.phone,
       email: input.email,

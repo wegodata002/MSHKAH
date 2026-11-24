@@ -12,8 +12,8 @@ import type { Order } from "@/types";
 describe("email templates", () => {
   it("renders MISHKAH branding without WEGO", () => {
     const testMail = renderTestEmailHtml();
-    expect(testMail.subject).toContain("MISHKAH CAFE");
-    expect(testMail.html).toContain("MISHKAH CAFE");
+    expect(testMail.subject).toContain("MISHKAT CAFE");
+    expect(testMail.html).toContain("MISHKAT CAFE");
     expect(testMail.html.toLowerCase()).not.toContain("wego");
     expect(testMail.text.toLowerCase()).not.toContain("wego");
   });
@@ -41,7 +41,7 @@ describe("email templates", () => {
       viewUrl: "https://portal.mishkatcafe.dev/orders?order=abc",
     });
 
-    expect(mail.subject).toBe("הזמנה חדשה #MC-2026-TEST | MISHKAH CAFE");
+    expect(mail.subject).toBe("הזמנה חדשה #MC-2026-TEST | MISHKAT CAFE");
     expect(mail.html).toContain("פתיחת ההזמנה");
     expect(mail.html).toContain("portal.mishkatcafe.dev");
     expect(mail.html).not.toContain("/admin");

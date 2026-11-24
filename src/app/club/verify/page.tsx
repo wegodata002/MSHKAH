@@ -17,7 +17,8 @@ type VerifyError =
   | "used"
   | "no_token"
   | "enrollment_disabled"
-  | "name_required";
+  | "name_required"
+  | "server_error";
 
 /**
  * Enter the emailed code. Joining is free, so a correct code goes straight to the member page
@@ -52,7 +53,8 @@ function ClubVerifyContent() {
       router.replace(name ? "/club/me?welcome=1" : "/club/me");
       return;
     }
-    setError(data && !data.ok ? data.reason : "mismatch");
+    // No answer, or an answer without a reason (network / server failure) is not a wrong code.
+    setError(data && !data.ok && data.reason ? data.reason : "server_error");
   }
 
   async function resend() {
@@ -109,7 +111,11 @@ function ClubVerifyContent() {
         </form>
         {error ? (
           <p className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
-            {t(error === "name_required" ? "club2.verify.err.name_required" : `club.verify.err.${error}`)}
+            {t(
+              error === "name_required" || error === "server_error"
+                ? `club2.verify.err.${error}`
+                : `club.verify.err.${error}`
+            )}
           </p>
         ) : null}
         {resent && !error ? (

@@ -1,5 +1,5 @@
 /**
- * Server-side email configuration for MISHKAH CAFE.
+ * Server-side email configuration for MISHKAT CAFE.
  * Never import this module from client components.
  */
 
@@ -18,7 +18,7 @@ export function getBrevoConfig() {
   return {
     apiKey: env("BREVO_API_KEY"),
     baseUrl: env("BREVO_BASE_URL", "https://api.brevo.com/v3").replace(/\/$/, ""),
-    senderName: env("BREVO_SENDER_NAME", "MISHKAH CAFE"),
+    senderName: env("BREVO_SENDER_NAME", "MISHKAT CAFE"),
     senderEmail: env("BREVO_SENDER_EMAIL", "email@mishkatcafe.dev"),
     replyTo: env("BREVO_REPLY_TO", "mishkahcaffe@gmail.com"),
   };
