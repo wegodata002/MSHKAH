@@ -2,12 +2,14 @@ import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
 import { getAdminDb } from "@/lib/firebase/admin";
 import {
+  activateMember,
   readLoyaltySettings,
   readMemberByEmail,
   upsertVerifiedMember,
   verifyEnrollmentCode,
 } from "@/lib/loyalty/admin/members";
 import { signClubSession } from "@/lib/loyalty/session";
+import { sendClubWelcomeEmail } from "@/lib/loyalty/welcome";
 import { loyaltyLog } from "@/lib/loyalty/admin/log";
 import { consumeRateLimit, rateLimitKey } from "@/lib/loyalty/admin/rate-limit";
 import { hashEmail } from "@/lib/loyalty/tokens";
@@ -39,7 +41,8 @@ export async function POST(request: NextRequest) {
   }
   const db = getAdminDb();
   const settings = await readLoyaltySettings(db);
-  if (!settings.enrollmentEnabled) {
+  // Sign-up paused: only existing members (logging in) get through.
+  if (!settings.enrollmentEnabled && !(await readMemberByEmail(db, email))) {
     return Response.json({ ok: false, reason: "enrollment_disabled" }, { status: 409 });
   }
   const emailHash = hashEmail(email);
@@ -58,14 +61,28 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, reason: result.reason }, { status: 400 });
   }
 
+  const displayName = body?.displayName?.trim().slice(0, 80) || undefined;
   const existing = await readMemberByEmail(db, email);
-  const member = existing
-    ? existing
-    : await upsertVerifiedMember(db, {
-        email,
-        displayName: body?.displayName?.slice(0, 80),
-        phone: body?.phone?.slice(0, 40),
-      });
+  // Joining needs a name; logging in (an existing member) does not.
+  if (!existing && !displayName) {
+    return Response.json({ ok: false, reason: "name_required" }, { status: 400 });
+  }
+  // Creates the member, or fills in a missing name on an existing one.
+  let member = await upsertVerifiedMember(db, { email, displayName, phone: body?.phone?.slice(0, 40) });
+
+  // Sign-up is free: a verified email becomes an active member right away (also members who
+  // started the old paid flow and never paid). Paid and suspended members are left as they are.
+  if (member.status === "email_verified" || member.status === "awaiting_payment") {
+    member = await activateMember(db, {
+      memberId: member.id,
+      source: "free",
+      paidAmountMinor: 0,
+      actor: "self",
+      consentTerms: true,
+      consentMarketing: false,
+    });
+    void sendClubWelcomeEmail(db, member.id);
+  }
 
   const session = signClubSession({ emailHash: result.emailHash });
   const jar = await cookies();
@@ -87,7 +104,6 @@ export async function POST(request: NextRequest) {
       status: member.status,
       balancePoints: member.balancePoints,
     },
-    joinFeeMinor: settings.joinFeeMinor,
     expiresAt: session.expiresAt,
   });
 }

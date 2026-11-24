@@ -9,7 +9,7 @@ import {
   hashEmail,
   normaliseEmail,
 } from "@/lib/loyalty/tokens";
-import { createEnrollmentToken, readLoyaltySettings } from "@/lib/loyalty/admin/members";
+import { createEnrollmentToken, readLoyaltySettings, readMemberByEmail } from "@/lib/loyalty/admin/members";
 import { consumeRateLimit, rateLimitKey } from "@/lib/loyalty/admin/rate-limit";
 import { loyaltyLog } from "@/lib/loyalty/admin/log";
 
@@ -41,8 +41,8 @@ export async function POST(request: NextRequest) {
 
   const db = getAdminDb();
   const settings = await readLoyaltySettings(db);
-  if (!settings.enrollmentEnabled) {
-    // Enrollment is paused — do not leak this; just drop the request silently.
+  // Sign-up paused: existing members can still log in; new emails are dropped silently (no leak).
+  if (!settings.enrollmentEnabled && !(await readMemberByEmail(db, email))) {
     return uniformResponse();
   }
 

@@ -1,6 +1,6 @@
 import { getMenuOrigin, getPublicStoreOrigin } from "@/lib/domains/host-routing";
 
-export type AdminQrLinkId = "menu" | "order";
+export type AdminQrLinkId = "menu" | "order" | "club";
 
 export type AdminQrLink = {
   id: AdminQrLinkId;
@@ -28,7 +28,7 @@ function readQrLink(envName: string, fallback: string): string {
   return normalizePublicUrl(process.env[envName] ?? "", fallback);
 }
 
-/** Single source for Admin QR cards. Override with NEXT_PUBLIC_QR_LINK_1 / _2. */
+/** Single source for Admin QR cards. Override with NEXT_PUBLIC_QR_LINK_1 / _2 (the club QR follows _2). */
 export function getAdminQrLinks(): AdminQrLink[] {
   return [
     {
@@ -42,6 +42,13 @@ export function getAdminQrLinks(): AdminQrLink[] {
       nameKey: "admin.qr.orderName",
       url: readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin()),
       filename: "mishkah-qr-order.png",
+    },
+    {
+      // Hang by the counter: customers scan it and join the club.
+      id: "club",
+      nameKey: "admin.qr.clubName",
+      url: `${readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin())}/club`,
+      filename: "mishkah-qr-club.png",
     },
   ];
 }

@@ -54,34 +54,54 @@ export function qualifyingAmountMinor(input: {
  */
 export function pointsForAmount(input: {
   qualifyingAmountMinor: number;
-  earnPointsPer100: number;
+  /** Spend (agorot) that earns one point, e.g. 10000 = every ₪100 = 1 point. */
+  spendPerPointMinor: number;
   roundingMode?: LoyaltyRoundingMode;
-  /** Previous unredeemed remainder in minor-units × points, if the caller
-   *  wants exact long-term accounting. 0 for stateless use. */
-  carryMinorPointSixteenths?: number;
-}): { points: number; carryMinorPointSixteenths: number } {
+  /** Unconverted spend (agorot) left from earlier orders, if the caller keeps it. 0 for stateless use. */
+  carryMinor?: number;
+}): { points: number; carryMinor: number } {
   const amount = Math.max(0, Math.floor(input.qualifyingAmountMinor || 0));
-  const ratio = Math.max(0, Math.floor(input.earnPointsPer100 || 0));
-  if (amount === 0 || ratio === 0) {
-    return { points: 0, carryMinorPointSixteenths: input.carryMinorPointSixteenths ?? 0 };
+  const spend = Math.max(0, Math.floor(input.spendPerPointMinor || 0));
+  const carry = input.carryMinor ?? 0;
+  if (amount === 0 || spend === 0) {
+    return { points: 0, carryMinor: carry };
   }
-  // amount is in agorot (ILS × 100), ratio is "points per 100 ILS = points per 10000 agorot".
-  // raw points scaled × 10000 = amount × ratio.
-  // Keep the remainder in that same "× 10000" scale.
-  const scaledTotal = amount * ratio + (input.carryMinorPointSixteenths ?? 0);
-  const whole = Math.floor(scaledTotal / 10000);
-  const remainder = scaledTotal - whole * 10000;
+  const total = amount + carry;
+  const whole = Math.floor(total / spend);
+  const remainder = total - whole * spend;
   const mode = input.roundingMode ?? "down";
-  if (mode === "nearest" && remainder >= 5000) {
-    // Nearest: 0.5 point rounds up; the carry stays as the remaining fraction.
-    return {
-      points: whole + 1,
-      // We "borrowed" a full point; the new carry is remainder − 10000 (negative),
-      // so a stateless re-run with carry=0 would give the same answer here.
-      carryMinorPointSixteenths: remainder - 10000,
-    };
+  if (mode === "nearest" && remainder * 2 >= spend) {
+    // Nearest: half a point or more rounds up; the carry becomes the (negative) borrowed part.
+    return { points: whole + 1, carryMinor: remainder - spend };
   }
-  return { points: whole, carryMinorPointSixteenths: remainder };
+  return { points: whole, carryMinor: remainder };
+}
+
+/**
+ * Points for one paid order on top of the member's saved remainder, and the new remainder.
+ * Used inside the award transaction so two orders never read the same remainder.
+ */
+export function earnWithCarry(input: {
+  qualifyingAmountMinor: number;
+  carryMinor: number | undefined;
+  spendPerPointMinor: number;
+  roundingMode?: LoyaltyRoundingMode;
+}): { points: number; carryMinor: number } {
+  const carry = Number.isFinite(input.carryMinor) ? Math.max(0, Math.floor(input.carryMinor ?? 0)) : 0;
+  // A remainder larger than one point (e.g. after the manager lowered ₪ per point) is converted now.
+  return pointsForAmount({
+    qualifyingAmountMinor: input.qualifyingAmountMinor,
+    spendPerPointMinor: input.spendPerPointMinor,
+    roundingMode: input.roundingMode,
+    carryMinor: carry,
+  });
+}
+
+/** Spend still needed for the next point (agorot). */
+export function spendToNextPoint(carryMinor: number | undefined, spendPerPointMinor: number): number {
+  const spend = Math.max(1, Math.floor(spendPerPointMinor || 0));
+  const carry = Math.max(0, Math.floor(carryMinor ?? 0)) % spend;
+  return spend - carry;
 }
 
 // ──────────────────────────────────────────────────────────────────────

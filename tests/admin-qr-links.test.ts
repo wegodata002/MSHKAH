@@ -3,9 +3,12 @@ import { getAdminQrLinks } from "@/lib/admin-qr-links";
 import { createQrPngDataUrl } from "@/lib/admin-qr-image";
 
 describe("admin QR links", () => {
-  it("exposes two public links from a single config", () => {
+  it("exposes the public links (menu, order, join the club) from a single config", () => {
     const links = getAdminQrLinks();
-    expect(links).toHaveLength(2);
+    expect(links).toHaveLength(3);
+    expect(links[2]?.id).toBe("club");
+    expect(links[2]?.filename).toBe("mishkah-qr-club.png");
+    expect(links[2]?.url).toBe(`${links[1]?.url}/club`);
     expect(links[0]?.id).toBe("menu");
     expect(links[1]?.id).toBe("order");
     expect(links[0]?.filename).toBe("mishkah-qr-menu.png");

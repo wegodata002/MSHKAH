@@ -51,6 +51,20 @@ export async function requireAdmin(
   return auth;
 }
 
+/** Any active staff member (Admin, Manager or Employee). */
+export async function requireStaff(
+  request: NextRequest
+): Promise<AuthContext | Response> {
+  const auth = await getAuthFromRequest(request);
+  if (!auth) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (!["Admin", "Manager", "Employee"].includes(auth.role)) {
+    return Response.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return auth;
+}
+
 export async function requireAdminOnly(
   request: NextRequest
 ): Promise<AuthContext | Response> {

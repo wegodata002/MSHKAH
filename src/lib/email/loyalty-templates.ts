@@ -42,21 +42,27 @@ export function renderClubVerificationCodeEmail(input: {
 
 export function renderClubWelcomeEmail(input: {
   memberNumber: string;
-  earnPointsPer100: number;
+  displayName?: string;
+  /** Spend (₪) that earns one point. */
+  spendPerPointIls: number;
+  /** Paid join fee (older paid sign-ups); 0 for the free sign-up → not shown. */
   joinFeeIls: number;
   accountUrl: string;
   showMarketingConsent: boolean;
 }): { subject: string; html: string; text: string } {
   const safeNumber = escapeHtml(input.memberNumber);
   const safeUrl = escapeHtml(input.accountUrl);
+  const ratio = Number.isInteger(input.spendPerPointIls) ? String(input.spendPerPointIls) : input.spendPerPointIls.toFixed(2);
+  const greeting = input.displayName?.trim() ? `, ${escapeHtml(input.displayName.trim())}` : "";
   const bodyHtml = `
-<h1 style="margin:0 0 12px;font-size:22px;">ברוך הבא למועדון משקאה</h1>
+<h1 style="margin:0 0 12px;font-size:22px;">ברוך הבא למועדון משקאה${greeting}</h1>
 <p style="margin:0 0 10px;font-size:14px;line-height:1.6;">
-  החברות שלך פעילה. בכל רכישה מזכה תצבור <strong>${input.earnPointsPer100} נקודות על כל 100 ₪</strong>.
+  החברות שלך פעילה. בכל רכישה תצבור <strong>נקודה על כל ₪${ratio}</strong>.
 </p>
 <p style="margin:0 0 10px;font-size:14px;line-height:1.6;">
-  מספר חבר: <strong>${safeNumber}</strong><br/>
-  דמי הצטרפות ששולמו: <strong>${input.joinFeeIls.toFixed(2)} ₪</strong>
+  מספר חבר: <strong>${safeNumber}</strong>${
+    input.joinFeeIls > 0 ? `<br/>\n  דמי הצטרפות ששולמו: <strong>${input.joinFeeIls.toFixed(2)} ₪</strong>` : ""
+  }
 </p>
 <div style="margin:22px 0;text-align:center;">
   <a href="${safeUrl}" style="display:inline-block;padding:12px 20px;background:#007A80;color:#FFFFFF;border-radius:10px;text-decoration:none;font-weight:700;">צפייה בכרטיס המועדון</a>
@@ -79,8 +85,8 @@ export function renderClubWelcomeEmail(input: {
     text:
       `ברוך הבא למועדון משקאה.\n` +
       `מספר חבר: ${input.memberNumber}\n` +
-      `יחס צבירה: ${input.earnPointsPer100} נקודות על כל 100 ₪\n` +
-      `דמי הצטרפות ששולמו: ${input.joinFeeIls.toFixed(2)} ₪\n` +
+      `צבירה: נקודה על כל ₪${ratio}\n` +
+      (input.joinFeeIls > 0 ? `דמי הצטרפות ששולמו: ${input.joinFeeIls.toFixed(2)} ₪\n` : "") +
       `כרטיס המועדון: ${input.accountUrl}`,
   };
 }

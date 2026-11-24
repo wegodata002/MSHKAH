@@ -106,7 +106,7 @@ function QrLinkCard({ link, index }: { link: AdminQrLink; index: number }) {
 export function QrLinksGrid() {
   const links = getAdminQrLinks();
   return (
-    <div className="grid gap-5 md:grid-cols-2">
+    <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
       {links.map((link, index) => (
         <QrLinkCard key={link.id} link={link} index={index} />
       ))}

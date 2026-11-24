@@ -22,8 +22,11 @@ export interface LoyaltySettings {
   redemptionEnabled: boolean;
   /** One-time join fee, in minor currency units (agorot/ils cents). */
   joinFeeMinor: number;
-  /** Points awarded per 100 ILS (minor units) of qualifying spend. */
-  earnPointsPer100: number;
+  /**
+   * Spend (minor units, agorot) that earns one point: 10000 = "every ₪100 = 1 point".
+   * Set by the manager. Replaces the old "points per ₪100" (earnPointsPer100), which is no longer read.
+   */
+  spendPerPointMinor: number;
   /** Discount value of 1 point, in minor units. 0 ⇒ redemption not yet configured. */
   pointValueMinor: number;
   /** Minimum points per single redemption; 0 means no minimum. */
@@ -49,7 +52,7 @@ export const DEFAULT_LOYALTY_SETTINGS: LoyaltySettings = {
   earnEnabled: false,
   redemptionEnabled: false,
   joinFeeMinor: 2000, // 20 ILS
-  earnPointsPer100: 10,
+  spendPerPointMinor: 10000, // ₪100 = 1 point
   pointValueMinor: 0,
   redemptionMinPoints: 0,
   redemptionMaxPoints: 0,
@@ -87,8 +90,14 @@ export interface LoyaltyMember {
   phone?: string;
   status: LoyaltyMemberStatus;
   balancePoints: number;
+  /**
+   * Spend (agorot) not yet turned into a point; carried to the next order
+   * (₪60 + ₪50 at ₪100 per point = 1 point, ₪10 left). Missing on older members = 0.
+   */
+  pointsCarryMinor?: number;
   joinFeePaidMinor: number;
-  joinFeeSource?: "card" | "cash";
+  /** "free" = joined without a fee (sign-up is free); "card"/"cash" = older paid sign-ups. */
+  joinFeeSource?: "card" | "cash" | "free";
   joinFeePaymentId?: string;
   joinFeePaidAt?: string;
   activatedAt?: string;
@@ -163,6 +172,8 @@ export interface LoyaltyMeResponse {
     email: string;
     status: LoyaltyMemberStatus;
     balancePoints: number;
+    /** Spend (agorot) toward the next point. */
+    pointsCarryMinor?: number;
     joinedAt?: string;
   } | null;
   // Mirrors the public bits of settings so the member card can render ratio etc.
@@ -171,7 +182,7 @@ export interface LoyaltyMeResponse {
     earnEnabled: boolean;
     redemptionEnabled: boolean;
     joinFeeMinor: number;
-    earnPointsPer100: number;
+    spendPerPointMinor: number;
     pointValueMinor: number;
     redemptionMinPoints: number;
     redemptionMaxPoints: number;

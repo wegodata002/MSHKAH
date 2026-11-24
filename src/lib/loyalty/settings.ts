@@ -31,6 +31,12 @@ function toRoundingMode(value: unknown, fallback: LoyaltyRoundingMode): LoyaltyR
  * - Negative / non-numeric values never persist (they fall back to the default).
  * - Booleans never become `undefined`; the earn/redeem/enroll triplet always resolves.
  */
+/** ₪1 … ₪10,000 per point; anything else falls back to ₪100. */
+function clampSpendPerPoint(value: unknown): number {
+  const n = toNonNegativeInt(value, DEFAULT_LOYALTY_SETTINGS.spendPerPointMinor);
+  return n >= 100 && n <= 1_000_000 ? n : DEFAULT_LOYALTY_SETTINGS.spendPerPointMinor;
+}
+
 export function parseLoyaltySettings(
   data: Partial<LoyaltySettings> | Record<string, unknown> | undefined
 ): LoyaltySettings {
@@ -48,7 +54,7 @@ export function parseLoyaltySettings(
     earnEnabled: toBool(d.earnEnabled, DEFAULT_LOYALTY_SETTINGS.earnEnabled),
     redemptionEnabled,
     joinFeeMinor: toNonNegativeInt(d.joinFeeMinor, DEFAULT_LOYALTY_SETTINGS.joinFeeMinor),
-    earnPointsPer100: toNonNegativeInt(d.earnPointsPer100, DEFAULT_LOYALTY_SETTINGS.earnPointsPer100),
+    spendPerPointMinor: clampSpendPerPoint(d.spendPerPointMinor),
     pointValueMinor,
     redemptionMinPoints: toNonNegativeInt(d.redemptionMinPoints, DEFAULT_LOYALTY_SETTINGS.redemptionMinPoints),
     redemptionMaxPoints: toNonNegativeInt(d.redemptionMaxPoints, DEFAULT_LOYALTY_SETTINGS.redemptionMaxPoints),
