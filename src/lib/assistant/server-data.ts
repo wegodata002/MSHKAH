@@ -6,48 +6,14 @@ import {
   mapMasterMenuProducts,
 } from "@/lib/menu/map-master-menu";
 import type { Locale } from "@/lib/i18n/types";
-import {
-  getCategoryDisplayName,
-  getLocalizedBannerField,
-  getLocalizedDescription,
-  getProductDisplayName,
-} from "@/lib/i18n/localized-content";
-import { getProductImage } from "@/lib/menu/placeholders";
+import { getLocalizedBannerField } from "@/lib/i18n/localized-content";
 import type { Category, Product } from "@/types";
 import type { FirestoreSettings } from "@/types/firestore";
 import { parseAssistantConfig } from "@/lib/assistant/parse-config";
 import { DEFAULT_OPENING_HOURS, openingHoursText, resolveOpeningHours } from "@/lib/settings/opening-hours";
 import { normalizeFulfillmentSettings } from "@/lib/fulfillment/settings";
-import {
-  ASSISTANT_DOC_ID,
-  type AssistantContext,
-  type AssistantProduct,
-} from "@/lib/assistant/types";
-
-function localizeProduct(p: Product, locale: Locale, categoryName?: string): AssistantProduct {
-  return {
-    id: p.id,
-    name: getProductDisplayName(p, locale),
-    description: getLocalizedDescription(p, locale),
-    price: p.price,
-    image: getProductImage(p.image, p.categoryId),
-    categoryId: p.categoryId,
-    categoryName,
-    available: p.available,
-    isPopular: p.isPopular,
-    isNew: p.isNew,
-    searchText: [
-      p.name_he,
-      p.name_ar,
-      p.name_en,
-      p.description_he,
-      p.description_ar,
-      p.description_en,
-    ]
-      .filter(Boolean)
-      .join(" "),
-  };
-}
+import { ASSISTANT_DOC_ID, type AssistantContext } from "@/lib/assistant/types";
+import { buildAssistantContext } from "@/lib/assistant/build-context";
 
 export async function loadAssistantContext(locale: Locale): Promise<AssistantContext> {
   const db = getAdminDb();
@@ -82,10 +48,6 @@ export async function loadAssistantContext(locale: Locale): Promise<AssistantCon
     assistantSnap.exists ? (assistantSnap.data() as Record<string, unknown>) : undefined
   );
 
-  const categoryMap = new Map(
-    categories.map((c) => [c.id, getCategoryDisplayName(c, locale)])
-  );
-
   const banners = bannersSnap.docs
     .map((d) => {
       const b = d.data() as Record<string, unknown>;
@@ -97,34 +59,24 @@ export async function loadAssistantContext(locale: Locale): Promise<AssistantCon
     })
     .filter((b) => b.title);
 
-  return {
+  return buildAssistantContext({
     locale,
-    products: products.map((p) =>
-      localizeProduct(p, locale, categoryMap.get(p.categoryId))
-    ),
-    categories: categories.map((c) => ({
-      id: c.id,
-      name: getCategoryDisplayName(c, locale),
-      searchText: [c.name_he, c.name_ar, c.name_en].filter(Boolean).join(" "),
-      parentId: c.parentId ?? null,
-      names: [c.name_he, c.name_ar, c.name_en].filter(Boolean),
-    })),
+    products,
+    categories,
     config,
-    settings: {
+    banners,
+    store: {
       phone: settingsData?.phone ?? "",
       address: settingsData?.address ?? "",
-      hours: openingHoursText(
+      hoursText: openingHoursText(
         { openingHours: resolveOpeningHours(settingsData), hours: settingsData?.hours ?? "" },
         locale
       ),
       // Only a WhatsApp number entered in the settings; never the phone as a stand-in.
       whatsapp: settingsData?.social?.whatsapp?.trim() ?? "",
       mapsUrl: settingsData?.mapsUrl ?? "",
-    },
-    banners,
-    fulfillment: {
-      settings: normalizeFulfillmentSettings(settingsData?.fulfillment),
+      fulfillment: normalizeFulfillmentSettings(settingsData?.fulfillment),
       openingHours: resolveOpeningHours(settingsData) ?? DEFAULT_OPENING_HOURS,
     },
-  };
+  });
 }

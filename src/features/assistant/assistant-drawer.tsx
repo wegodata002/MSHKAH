@@ -30,8 +30,7 @@ export function AssistantDrawer() {
     isLoading,
     config,
     settings,
-    cartOpen,
-    setCartOpen,
+    showCartInChat,
     selectedProduct,
     setSelectedProduct,
     suggestions,
@@ -54,8 +53,11 @@ export function AssistantDrawer() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const quickActions = config.quickActions
-    .filter((a) => a.enabled)
+    .filter((a) => a.enabled && a.action !== "cart")
     .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  // Only one cart card: under the most recent message that asked for the cart.
+  const cartMessageIndex = messages.reduce((last, msg, index) => (msg.showCart ? index : last), -1);
 
   const phone = settings?.phone ?? "";
   // Only when a WhatsApp number is entered in the settings (never the phone as a stand-in).
@@ -63,11 +65,22 @@ export function AssistantDrawer() {
   const mapsUrl = settings?.mapsUrl ?? "";
 
   useEffect(() => {
-    if (isOpen) {
-      inputRef.current?.focus();
-      scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-    }
-  }, [isOpen, messages, isLoading, cartOpen, selectedProduct]);
+    if (!isOpen) return;
+    inputRef.current?.focus();
+    const box = scrollRef.current;
+    if (!box) return;
+    // Wait a frame so the new message (and the cart card) are laid out.
+    const frame = requestAnimationFrame(() => {
+      const last = box.querySelector<HTMLElement>("[data-chat-message]:last-of-type");
+      const lastIsAnswer = last?.dataset.role === "assistant" && !isLoading;
+      if (last && lastIsAnswer && last.offsetHeight > box.clientHeight - 24) {
+        box.scrollTo({ top: last.offsetTop - box.offsetTop - 12, behavior: "smooth" });
+      } else {
+        box.scrollTo({ top: box.scrollHeight, behavior: "smooth" });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [isOpen, messages, isLoading, selectedProduct]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -93,7 +106,8 @@ export function AssistantDrawer() {
     void sendMessage(text);
   };
 
-  const showSuggestions = suggestions.length > 0 && !isLoading && !selectedProduct;
+  // Always above the input (after questions and after a refresh); disabled while answering.
+  const showSuggestions = suggestions.length > 0 && !selectedProduct;
 
   return (
     <AnimatePresence>
@@ -147,13 +161,11 @@ export function AssistantDrawer() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => setCartOpen(!cartOpen)}
+                  onClick={showCartInChat}
+                  disabled={isLoading}
                   aria-label={t("assistant.viewCart")}
-                  aria-pressed={cartOpen}
-                  className={cn(
-                    "relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors",
-                    cartOpen ? "bg-turquoise/15 text-turquoise" : "text-coffee/50 hover:bg-beige/60"
-                  )}
+                  data-assistant-cart-button
+                  className="relative flex h-9 w-9 items-center justify-center rounded-xl text-coffee/50 transition-colors hover:bg-beige/60 disabled:opacity-50"
                 >
                   <ShoppingBag className="h-4 w-4" strokeWidth={1.75} />
                   {itemCount > 0 && (
@@ -227,8 +239,13 @@ export function AssistantDrawer() {
                 </div>
               )}
 
-              {messages.map((msg) => (
-                <div key={msg.id} className={cn("flex gap-3", msg.role === "user" && "flex-row-reverse")}>
+              {messages.map((msg, index) => (
+                <div
+                  key={msg.id}
+                  data-chat-message
+                  data-role={msg.role}
+                  className={cn("flex gap-3", msg.role === "user" && "flex-row-reverse")}
+                >
                   {msg.role === "assistant" && <AssistantAvatar size="sm" />}
                   <div className={cn("max-w-[85%] space-y-2", msg.role === "user" && "items-end")}>
                     <div
@@ -288,6 +305,19 @@ export function AssistantDrawer() {
                         )}
                       </div>
                     )}
+                    {index === cartMessageIndex && itemCount > 0 && (
+                      <div className="rounded-2xl border border-beige-dark/20 bg-beige/20 p-3" data-chat-cart>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-coffee/50">
+                          {t("cart.title")}
+                        </p>
+                        <AssistantCartPanel
+                          onCheckout={() => {
+                            close();
+                            router.push("/checkout");
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
@@ -306,15 +336,6 @@ export function AssistantDrawer() {
                 )}
               </AnimatePresence>
 
-              {(cartOpen || messages.some((m) => m.showCart)) && (
-                <div className="rounded-2xl border border-beige-dark/20 bg-beige/20 p-3">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-coffee/50">
-                    {t("cart.title")}
-                  </p>
-                  <AssistantCartPanel onCheckout={() => router.push("/checkout")} />
-                </div>
-              )}
-
               {isLoading && (
                 <div className="flex gap-3">
                   <AssistantAvatar size="sm" />
@@ -329,6 +350,8 @@ export function AssistantDrawer() {
                   <button
                     key={q}
                     type="button"
+                    disabled={isLoading}
+                    data-assistant-suggestion
                     onClick={() => void sendMessage(q)}
                     className="rounded-full border border-turquoise/30 bg-turquoise/10 px-3 py-1.5 text-xs font-medium text-turquoise hover:bg-turquoise/20"
                   >
