@@ -82,7 +82,6 @@ export {
   getOrderStats,
   subscribeToOrders,
   createOrder,
-  createOrderFromCart,
   updateOrder,
   updateOrderStatus,
   updateOrderItemExtras,

@@ -226,6 +226,12 @@ export type DeliveryQuote =
   | { ok: false; reason: "unknown_zone" }
   | { ok: false; reason: "below_minimum"; zone: DeliveryZone; minOrder: number };
 
+/** The area's delivery fee from the settings, or null for an unknown area (used for card charges). */
+export function deliveryFeeForZone(settings: FulfillmentSettings, zoneId: string): number | null {
+  const zone = settings.delivery.zones.find((z) => z.id === zoneId);
+  return zone ? Math.round(zone.fee * 100) / 100 : null;
+}
+
 /** Delivery fee for a zone and order subtotal (before the fee). */
 export function quoteDelivery(
   settings: FulfillmentSettings,

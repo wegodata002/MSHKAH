@@ -21,7 +21,7 @@ import { ServiceError, type ServiceResult, success, failure } from "@/lib/errors
 import { mapOrder } from "@/lib/mappers";
 import { selectedModifierToFirestore } from "@/lib/mappers/modifier-mappers";
 import { orderSchema, type OrderInput } from "@/lib/validation/schemas";
-import { forcePickupForNewOrder, NEW_ORDER_FULFILLMENT } from "@/lib/orders/fulfillment";
+import { forcePickupForNewOrder } from "@/lib/orders/fulfillment";
 import { toIsoTimestamp } from "@/lib/dates/normalize";
 import type { VerifiedPayment } from "@/lib/orders/dashboard";
 import { normalizeOrderStatus, toStoredOrderStatus } from "@/lib/orders/status";
@@ -35,13 +35,9 @@ import {
   fingerprintChanges,
 } from "@/lib/email/significant-diff";
 import { nowTimestamp } from "@/types/firestore";
-import {
-  calculateLineTotal,
-  collectKitchenNotes,
-} from "@/lib/product-builder/engine";
-import { getLocalizedName } from "@/lib/i18n/localized-content";
+import { calculateLineTotal } from "@/lib/product-builder/engine";
 import { normalizeCouponCode } from "@/lib/orders/coupons";
-import type { Order, OrderStatus, OrderItem, CartItem, PaymentStatus } from "@/types";
+import type { Order, OrderStatus, OrderItem, PaymentStatus } from "@/types";
 import type { FirestoreOrder, FirestoreOrderItem, FirestoreDoc } from "@/types/firestore";
 
 const ORDER_SAVE_FAILED_CODE = "ORDER_SAVE_FAILED";
@@ -316,92 +312,6 @@ export async function createOrder(input: OrderInput): Promise<ServiceResult<Orde
     console.error("[createOrder] failed:", error);
     return failure(new ServiceError("Order save failed", ORDER_SAVE_FAILED_CODE));
   }
-}
-
-export async function createOrderFromCart(
-  cartItems: CartItem[],
-  customerId: string,
-  customerName: string,
-  checkout?: {
-    subtotal?: number;
-    discount?: number;
-    total?: number;
-    paymentMethod?: string;
-    paymentStatus?: PaymentStatus;
-    customerPhone?: string;
-    customerEmail?: string;
-    notes?: string;
-    locale?: "ar" | "he" | "en";
-    orderType?: "pickup" | "delivery";
-    deliveryAddress?: string;
-    couponCode?: string;
-  }
-): Promise<ServiceResult<Order>> {
-  const locale = checkout?.locale;
-  const items: OrderItem[] = cartItems.map((item) => {
-    const mapped: OrderItem = {
-      productId: item.product.id,
-      productName: locale
-        ? getLocalizedName(item.product, locale)
-        : item.product.name_he || item.product.name_en,
-      quantity: item.quantity,
-      price: item.unitPrice,
-      basePrice: item.product.price,
-    };
-
-    if (item.selections.length > 0) {
-      mapped.modifiers = item.selections;
-    }
-
-    const note = item.notes?.trim();
-    if (note) {
-      mapped.notes = note;
-    }
-
-    const kitchenNotes = collectKitchenNotes(item.selections);
-    if (kitchenNotes.length > 0) {
-      mapped.kitchenNotes = kitchenNotes;
-    }
-
-    return mapped;
-  });
-
-  const subtotal =
-    checkout?.subtotal ??
-    items.reduce(
-      (sum, item) => sum + calculateLineTotal(item.price, item.quantity),
-      0
-    );
-  const discount = checkout?.discount ?? 0;
-  const total = Math.max(subtotal - discount, 0.01);
-  const isTestOrder = cartItems.some((item) => item.product.isTestProduct === true);
-  const testNote = "TEST — HYP payment verification. Do not include in sales reports.";
-  const notes = [isTestOrder ? testNote : "", checkout?.notes?.trim() ?? ""]
-    .filter(Boolean)
-    .join("\n");
-
-  return createOrder({
-    customerId,
-    customerName,
-    items,
-    status: "pending",
-    subtotal,
-    discount,
-    delivery: 0,
-    total,
-    paymentMethod: checkout?.paymentMethod ?? "cash",
-    paymentStatus: checkout?.paymentStatus ?? "pending",
-    customerPhone: checkout?.customerPhone,
-    customerEmail: checkout?.customerEmail,
-    customerFullName: customerName.trim(),
-    orderType: checkout?.orderType === "delivery" ? "delivery" : NEW_ORDER_FULFILLMENT,
-    deliveryAddress:
-      checkout?.orderType === "delivery" ? checkout.deliveryAddress?.trim() : undefined,
-    notes,
-    isTestOrder: isTestOrder || undefined,
-    locale,
-    couponCode: checkout?.couponCode || undefined,
-  });
 }
 
 export async function updateOrder(

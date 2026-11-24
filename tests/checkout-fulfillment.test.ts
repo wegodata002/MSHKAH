@@ -37,14 +37,22 @@ describe("checkout fulfillment (pickup + delivery, fee stays 0)", () => {
     expect(result.total).toBe(30);
   });
 
-  it("checkout UI offers pickup and delivery", () => {
+  it("checkout creates orders through the server, not by writing to Firestore", () => {
     const checkout = readFileSync(
       resolve(process.cwd(), "src/app/checkout/page.tsx"),
       "utf8"
     );
-    expect(checkout).toMatch(/setOrderType/);
-    expect(checkout).toMatch(/\["pickup", "delivery"\]/);
-    expect(checkout).toMatch(/checkout\.address/);
+    const client = readFileSync(
+      resolve(process.cwd(), "src/lib/orders/submit-order-client.ts"),
+      "utf8"
+    );
+    expect(checkout).toMatch(/submitOrder\(/);
+    expect(checkout).not.toMatch(/createOrderFromCart/);
+    expect(client).toMatch(/\/api\/orders\/create/);
+    // The browser sends no prices: only product ids, quantities and add-ons.
+    const cartMapper = client.slice(client.indexOf("export function cartToOrderItems"), client.indexOf("export async function submitOrder"));
+    expect(cartMapper).toMatch(/productId/);
+    expect(cartMapper).not.toMatch(/unitPrice|subtotal|\bprice:|basePrice/);
   });
 
   it("createOrder still normalizes via forcePickupForNewOrder", () => {

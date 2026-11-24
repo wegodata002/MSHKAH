@@ -35,14 +35,15 @@ describe("new order fulfillment", () => {
     expect(result.delivery).toBe(0);
   });
 
-  it("checkout UI offers pickup and delivery", () => {
+  it("checkout is pickup only (delivery returns with areas in the next step)", () => {
     const checkout = readFileSync(
       resolve(process.cwd(), "src/app/checkout/page.tsx"),
       "utf8"
     );
-    expect(checkout).toMatch(/setOrderType/);
-    expect(checkout).toMatch(/\["pickup", "delivery"\]/);
-    expect(checkout).toMatch(/checkout\.address/);
+    expect(checkout).not.toMatch(/setOrderType/);
+    expect(checkout).not.toMatch(/\["pickup", "delivery"\]/);
+    expect(checkout).not.toMatch(/checkout\.address/);
+    expect(checkout).toMatch(/fulfillment: \{ type: orderType \}/);
   });
 
   it("createOrder still normalizes fulfillment fields", () => {
