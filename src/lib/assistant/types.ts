@@ -64,12 +64,23 @@ export const BEVERAGE_CATEGORIES = [
   "shakes",
 ] as const;
 
+/**
+ * The opening message before it said "pick a topic or type a question" (the topics are above the
+ * chat too, not only below). It is stored like this in the live settings; when the stored text is
+ * exactly this old default (never edited), the new default is shown instead.
+ */
+export const PREVIOUS_DEFAULT_GREETING = {
+  he: "שלום!\n\nאני העוזר של MISHKAT CAFÉ.\n\nאיך אפשר לעזור?\n\nאפשר לבחור אחת מהאפשרויות למטה.",
+  ar: "مرحباً!\n\nأنا مساعد MISHKAT CAFÉ.\n\nكيف يمكنني مساعدتك؟\n\nاختر أحد الخيارات أدناه.",
+  en: "Hello!\n\nI'm the MISHKAT CAFÉ assistant.\n\nHow can I help?\n\nChoose one of the options below.",
+} as const;
+
 export const DEFAULT_ASSISTANT_CONFIG: AssistantConfig = {
   enabled: true,
   greeting: {
-    he: "שלום!\n\nאני העוזר של MISHKAT CAFÉ.\n\nאיך אפשר לעזור?\n\nאפשר לבחור אחת מהאפשרויות למטה.",
-    ar: "مرحباً!\n\nأنا مساعد MISHKAT CAFÉ.\n\nكيف يمكنني مساعدتك؟\n\nاختر أحد الخيارات أدناه.",
-    en: "Hello!\n\nI'm the MISHKAT CAFÉ assistant.\n\nHow can I help?\n\nChoose one of the options below.",
+    he: "שלום!\n\nאני העוזר של MISHKAT CAFÉ.\n\nאיך אפשר לעזור?\n\nבחרו נושא מהכפתורים, או כתבו שם של מוצר או קטגוריה.",
+    ar: "مرحباً!\n\nأنا مساعد MISHKAT CAFÉ.\n\nكيف يمكنني مساعدتك؟\n\nاختاروا موضوعاً من الأزرار، أو اكتبوا اسم منتج أو فئة.",
+    en: "Hello!\n\nI'm the MISHKAT CAFÉ assistant.\n\nHow can I help?\n\nPick a topic from the buttons, or type a product or category name.",
   },
   suggestedQuestions: [
     { he: "שעות פתיחה", ar: "ساعات العمل", en: "Opening hours" },
