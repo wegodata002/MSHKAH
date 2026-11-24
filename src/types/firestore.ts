@@ -248,6 +248,8 @@ export interface FirestoreSettings {
   hours: string;
   /** Weekly schedule: { sun..sat: { open, from: "HH:MM", to: "HH:MM" } }. */
   openingHours?: Record<string, { open: boolean; from: string; to: string }> | null;
+  /** Pickup / delivery / dine-in options. Parsed by normalizeFulfillmentSettings. */
+  fulfillment?: unknown;
   currency: string;
   theme: {
     primary: string;

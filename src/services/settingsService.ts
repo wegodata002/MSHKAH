@@ -18,6 +18,11 @@ import {
   resolveOpeningHours,
   type OpeningHours,
 } from "@/lib/settings/opening-hours";
+import {
+  DEFAULT_FULFILLMENT,
+  normalizeFulfillmentSettings,
+  type FulfillmentSettings,
+} from "@/lib/fulfillment/settings";
 
 export interface AppSettings {
   storeName: string;
@@ -32,6 +37,8 @@ export interface AppSettings {
    * `hours` text was customised (that text is then shown as before).
    */
   openingHours: OpeningHours | null;
+  /** Pickup / delivery / dine-in options (defaults when nothing is stored). */
+  fulfillment: FulfillmentSettings;
   currency: string;
   theme: {
     primary: string;
@@ -53,6 +60,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   address: "",
   hours: "Sun–Thu 7:00–22:00",
   openingHours: DEFAULT_OPENING_HOURS,
+  fulfillment: DEFAULT_FULFILLMENT,
   currency: "ILS",
   theme: {
     primary: "#3D2B24",
@@ -76,6 +84,7 @@ function mapSettings(data: FirestoreSettings | undefined): AppSettings {
     address: data.address ?? "",
     hours: data.hours ?? DEFAULT_SETTINGS.hours,
     openingHours: resolveOpeningHours(data),
+    fulfillment: normalizeFulfillmentSettings(data.fulfillment),
     currency: data.currency ?? "ILS",
     theme: data.theme ?? DEFAULT_SETTINGS.theme,
     seo: data.seo ?? DEFAULT_SETTINGS.seo,
