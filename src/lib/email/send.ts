@@ -26,7 +26,7 @@ export type SendMishkahEmailOptions = {
 };
 
 /**
- * Central email entry-point for MISHKAH CAFE.
+ * Central email entry-point for MISHKAT CAFE.
  * Always server-side. Never throw secrets.
  */
 export async function sendMishkahEmail(

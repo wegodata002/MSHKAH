@@ -4,7 +4,7 @@ import { emailShell, escapeHtml } from "@/lib/email/templates";
  * Loyalty-club email templates.
  *
  * These are intentionally generic (no customer PII in the subject line) and
- * reuse the shared `emailShell` so they match the rest of the Mishkah mail
+ * reuse the shared `emailShell` so they match the rest of the Mishkat mail
  * style. Both templates return the same `{ subject, html, text }` shape as
  * the existing templates, so `sendMishkahEmail` can route them unchanged.
  */
@@ -15,7 +15,7 @@ export function renderClubVerificationCodeEmail(input: {
 }): { subject: string; html: string; text: string } {
   const safeCode = escapeHtml(input.code);
   const bodyHtml = `
-<h1 style="margin:0 0 12px;font-size:22px;">קוד אימות למועדון משקאה</h1>
+<h1 style="margin:0 0 12px;font-size:22px;">קוד אימות למועדון משכאת</h1>
 <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">
   הזן את הקוד הבא בדף ההצטרפות כדי לאמת את כתובת המייל שלך.
   הקוד תקף ל־${input.minutesValid} דקות ולשימוש חד־פעמי בלבד.
@@ -27,14 +27,14 @@ export function renderClubVerificationCodeEmail(input: {
 </p>
 `;
   return {
-    subject: "קוד אימות למועדון משקאה",
+    subject: "קוד אימות למועדון משכאת",
     html: emailShell({
-      title: "קוד אימות למועדון משקאה",
+      title: "קוד אימות למועדון משכאת",
       preheader: "קוד חד־פעמי להצטרפות למועדון",
       bodyHtml,
     }),
     text:
-      `קוד אימות למועדון משקאה: ${input.code}\n` +
+      `קוד אימות למועדון משכאת: ${input.code}\n` +
       `תקף ל־${input.minutesValid} דקות, לשימוש חד־פעמי בלבד.\n` +
       `אם לא ביקשת, אפשר להתעלם מההודעה.`,
   };
@@ -55,7 +55,7 @@ export function renderClubWelcomeEmail(input: {
   const ratio = Number.isInteger(input.spendPerPointIls) ? String(input.spendPerPointIls) : input.spendPerPointIls.toFixed(2);
   const greeting = input.displayName?.trim() ? `, ${escapeHtml(input.displayName.trim())}` : "";
   const bodyHtml = `
-<h1 style="margin:0 0 12px;font-size:22px;">ברוך הבא למועדון משקאה${greeting}</h1>
+<h1 style="margin:0 0 12px;font-size:22px;">ברוך הבא למועדון משכאת${greeting}</h1>
 <p style="margin:0 0 10px;font-size:14px;line-height:1.6;">
   החברות שלך פעילה. בכל רכישה תצבור <strong>נקודה על כל ₪${ratio}</strong>.
 </p>
@@ -76,14 +76,14 @@ export function renderClubWelcomeEmail(input: {
 </p>
 `;
   return {
-    subject: "ברוך הבא למועדון משקאה",
+    subject: "ברוך הבא למועדון משכאת",
     html: emailShell({
-      title: "ברוך הבא למועדון משקאה",
+      title: "ברוך הבא למועדון משכאת",
       preheader: "החברות שלך פעילה — צפה בכרטיס המועדון",
       bodyHtml,
     }),
     text:
-      `ברוך הבא למועדון משקאה.\n` +
+      `ברוך הבא למועדון משכאת.\n` +
       `מספר חבר: ${input.memberNumber}\n` +
       `צבירה: נקודה על כל ₪${ratio}\n` +
       (input.joinFeeIls > 0 ? `דמי הצטרפות ששולמו: ${input.joinFeeIls.toFixed(2)} ₪\n` : "") +

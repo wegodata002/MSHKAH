@@ -18,8 +18,8 @@ const COPY: Record<
   }
 > = {
   ar: {
-    brand: "مشكا",
-    brandSecondary: "MISHKAH CAFE",
+    brand: "مشكاة",
+    brandSecondary: "MISHKAT CAFE",
     headline: "طلب جديد",
     cash: "نقداً",
     card: "بطاقة",
@@ -28,8 +28,8 @@ const COPY: Record<
     paymentUnknown: "غير محدد",
   },
   he: {
-    brand: "MISHKAH CAFE",
-    brandSecondary: "משכא",
+    brand: "MISHKAT CAFE",
+    brandSecondary: "משכאת",
     headline: "הזמנה חדשה",
     cash: "מזומן",
     card: "כרטיס",
@@ -38,8 +38,8 @@ const COPY: Record<
     paymentUnknown: "לא צוין",
   },
   en: {
-    brand: "MISHKAH CAFE",
-    brandSecondary: "مشكا",
+    brand: "MISHKAT CAFE",
+    brandSecondary: "مشكاة",
     headline: "NEW ORDER",
     cash: "Cash",
     card: "Card",

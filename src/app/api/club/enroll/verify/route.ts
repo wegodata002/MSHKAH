@@ -23,7 +23,8 @@ const CODE_REGEX = /^\d{6}$/;
  * Verify the one-time code and open a signed session cookie.
  *
  * Error shape:
- *   { ok: false, reason: "mismatch" | "expired" | "throttled" | "used" | "no_token" }
+ *   { ok: false, reason: "mismatch" | "expired" | "throttled" | "used" | "no_token" | "server_error" }
+ * "server_error" (500) means something broke on our side; the page says so instead of "wrong code".
  * We never reveal whether an email is registered; "no_token" is returned the
  * same way as "mismatch" to the UI.
  */
@@ -39,6 +40,21 @@ export async function POST(request: NextRequest) {
   if (!email || !EMAIL_REGEX.test(email) || !code || !CODE_REGEX.test(code)) {
     return Response.json({ ok: false, reason: "mismatch" }, { status: 400 });
   }
+  try {
+    return await verifyAndOpenSession(email, code, body);
+  } catch (error) {
+    console.error("[loyalty] enroll verify failed", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return Response.json({ ok: false, reason: "server_error" }, { status: 500 });
+  }
+}
+
+async function verifyAndOpenSession(
+  email: string,
+  code: string,
+  body: { displayName?: string; phone?: string } | null
+): Promise<Response> {
   const db = getAdminDb();
   const settings = await readLoyaltySettings(db);
   // Sign-up paused: only existing members (logging in) get through.
@@ -68,7 +84,8 @@ export async function POST(request: NextRequest) {
     return Response.json({ ok: false, reason: "name_required" }, { status: 400 });
   }
   // Creates the member, or fills in a missing name on an existing one.
-  let member = await upsertVerifiedMember(db, { email, displayName, phone: body?.phone?.slice(0, 40) });
+  const phone = body?.phone?.trim().slice(0, 40) || undefined;
+  let member = await upsertVerifiedMember(db, { email, displayName, phone });
 
   // Sign-up is free: a verified email becomes an active member right away (also members who
   // started the old paid flow and never paid). Paid and suspended members are left as they are.
