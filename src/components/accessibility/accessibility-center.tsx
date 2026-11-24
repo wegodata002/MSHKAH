@@ -201,7 +201,10 @@ export function AccessibilityCenter() {
           "a11y-fab print:hidden fixed z-40 flex h-14 w-14 items-center justify-center rounded-full",
           "glass shadow-premium border border-white/30",
           "text-turquoise transition-transform hover:scale-105 active:scale-95",
-          "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+4.5rem)] start-4 lg:bottom-6 lg:start-auto lg:end-24",
+          // Bottom row, right next to the assistant on the end side (checkout button: start corner).
+          "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.75rem)] end-20 lg:bottom-6 lg:end-24",
+          // Pages without the bottom nav (e.g. admin login): no space to reserve for it.
+          "max-lg:[body:not(:has(.mobile-bottom-nav))_&]:bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-turquoise focus-visible:ring-offset-2",
           panelOpen && "scale-0 opacity-0 pointer-events-none"
         )}
@@ -236,7 +239,8 @@ export function AccessibilityCenter() {
               className={cn(
                 "a11y-panel fixed z-[46] flex max-h-[min(85vh,720px)] w-[min(calc(100vw-2rem),400px)] flex-col",
                 "rounded-3xl glass shadow-premium overflow-hidden",
-                "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+4.5rem)] start-4 lg:bottom-6 lg:start-auto lg:end-24",
+                // Opens just above the bottom row, on the end side where its button is.
+                "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+4.75rem)] end-4 lg:bottom-6 lg:end-24",
                 "border border-white/40 dark:border-white/10"
               )}
               initial={{ opacity: 0, y: 24, scale: 0.96 }}

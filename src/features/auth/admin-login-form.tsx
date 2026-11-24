@@ -84,14 +84,23 @@ export function AdminLoginForm() {
         </div>
       </div>
 
-      <div className="flex flex-1 items-center justify-center bg-cream px-6 py-12">
+      {/* Below lg the body already keeps ~76px of bottom room (taller than the floating accessibility
+          button), so the form can always scroll clear of it; short screens start at the top. */}
+      <div className="flex flex-1 items-center justify-center bg-cream px-6 py-6 sm:py-12 max-lg:[@media(max-height:700px)]:items-start">
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           className="w-full max-w-md"
         >
-          <div className="mb-8 flex flex-col items-center lg:items-start">
-            <Logo size="lg" href={null} className="h-14 w-auto" />
+          {/* Phones / tablets: the store photo, smaller, above the form (the desktop shows it as the side panel).
+              Height follows the screen (112–200px) so the form stays on screen. */}
+          <div className="relative mb-5 h-[clamp(7rem,20vh,12.5rem)] overflow-hidden rounded-2xl shadow-soft lg:hidden">
+            <StoreImage priority imageClassName="object-cover" sizes="(max-width: 1024px) 100vw, 1px" />
+          </div>
+          <div className="mb-6 flex flex-col items-center sm:mb-8 lg:items-start">
+            {/* Short phone screens: the store photo above already carries the brand; hiding the
+                logo keeps the whole form on screen and clear of the accessibility button. */}
+            <Logo size="lg" href={null} className="h-14 w-auto max-lg:[@media(max-height:700px)]:hidden" />
             <h2 className="mt-4 font-display text-2xl font-bold text-dark-brown">
               {t("admin.welcome")}
             </h2>
@@ -106,7 +115,8 @@ export function AdminLoginForm() {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="admin@mishkat.cafe"
+                placeholder="name@example.com"
+                autoComplete="email"
                 className="mt-1.5"
                 required
               />
@@ -120,13 +130,17 @@ export function AdminLoginForm() {
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
+                  autoComplete="current-password"
+                  // Room for the show/hide icon on the end side (right in English, left in he/ar).
+                  className="pe-11"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-coffee/40"
+                  aria-label={showPassword ? t("admin.hidePassword", "Hide password") : t("admin.showPassword", "Show password")}
+                  aria-pressed={showPassword}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-coffee/40 hover:text-coffee/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-turquoise/40"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>

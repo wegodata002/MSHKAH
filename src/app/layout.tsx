@@ -19,8 +19,7 @@ import { LocaleHtmlScript } from "@/components/providers/locale-html-sync";
 import { LocaleProvider } from "@/components/providers/locale-provider";
 import { CartProvider } from "@/features/cart/cart-context";
 import { CartDrawer } from "@/features/cart/cart-drawer";
-import { FloatingCartButton } from "@/features/cart/floating-cart-button";
-import { MobileCartBar } from "@/features/cart/mobile-cart-bar";
+import { CheckoutFab } from "@/features/cart/checkout-fab";
 import { BottomNav } from "@/components/layout/bottom-nav";
 import { PwaManager } from "@/components/pwa/pwa-manager";
 import { BrandSplash } from "@/components/brand/brand-splash";
@@ -133,7 +132,7 @@ export default function RootLayout({
       <head>
         <LocaleHtmlScript />
       </head>
-      <body className="flex min-h-dvh flex-col overflow-x-hidden bg-cream pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+12px)] has-[[data-admin]]:pb-0 has-[[data-menu-display]]:pb-0 lg:pb-0">
+      <body className="flex min-h-dvh flex-col overflow-x-hidden bg-cream pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+12px)] has-[[data-admin]]:pb-0 has-[[data-menu-display]]:pb-0 lg:pb-0 max-lg:has-[[data-cart-fab]]:pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+4.75rem)] lg:has-[[data-cart-fab]]:pb-24">
         <BrandSplash />
         <ThemeProvider>
           <AccessibilityProvider>
@@ -145,8 +144,7 @@ export default function RootLayout({
                       {children}
                     </main>
                     <ClientSiteFooter />
-                    <FloatingCartButton />
-                    <MobileCartBar />
+                    <CheckoutFab />
                     <CartDrawer />
                     <BottomNav />
                     <PwaManager />
