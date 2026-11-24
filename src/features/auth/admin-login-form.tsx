@@ -121,12 +121,17 @@ export function AdminLoginForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  autoComplete="current-password"
+                  // Room for the show/hide icon on the end side (right in English, left in he/ar).
+                  className="pe-11"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-coffee/40"
+                  aria-label={showPassword ? t("admin.hidePassword", "Hide password") : t("admin.showPassword", "Show password")}
+                  aria-pressed={showPassword}
+                  className="absolute end-3 top-1/2 -translate-y-1/2 rounded p-0.5 text-coffee/40 hover:text-coffee/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-turquoise/40"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
