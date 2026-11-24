@@ -47,6 +47,7 @@ import { kitchenTicketHtml, printKitchenTicket } from "@/lib/orders/kitchen-tick
 import { exportHtmlAsPdf } from "@/lib/export-pdf";
 import { useT } from "@/components/providers/locale-provider";
 import { useAuthFetch } from "@/lib/auth/auth-fetch";
+import { clientAdminFetch } from "@/lib/auth/client-admin-fetch";
 import { AdminPageHeader } from "./components/admin-page-header";
 import type { Order, OrderStatus, PaymentStatus } from "@/types";
 
@@ -230,6 +231,9 @@ export function OrdersAdmin() {
 
   const recordCashPayment = async (order: Order) => {
     const result = await markOrderCashPaid(order.id, user?.email ?? user?.uid ?? "admin");
+    // Club points for a cash / courier order once it is paid (the server checks the order is paid;
+    // a failure here never affects the payment itself).
+    if (result.success) void clientAdminFetch("/api/admin/club/award-order", { orderId: order.id }).catch(() => undefined);
     pushToast(t(result.success ? "admin.orders.cashPaidSaved" : "admin.orders.cashPaidError"), result.success ? "success" : "error");
     return result.success;
   };

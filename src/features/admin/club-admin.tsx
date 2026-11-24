@@ -152,33 +152,24 @@ export function ClubAdmin() {
 
       <AdminCard title={t("admin.club.values.title")}>
         <div className="grid gap-4 md:grid-cols-2">
+          {/* Sign-up is free, so there is no join fee to set. One point for every ₪X of spend. */}
           <div>
-            <Label htmlFor="joinFee">{t("admin.club.values.joinFee")}</Label>
+            <Label htmlFor="spendPerPoint">{t("admin.club.values.spendPerPoint")}</Label>
             <Input
-              id="joinFee"
+              id="spendPerPoint"
               type="number"
-              min="0"
-              step="0.01"
-              value={fromMinor(draft.joinFeeMinor)}
-              onChange={(event) =>
-                patch({ joinFeeMinor: toMinor(Number(event.target.value || 0)) })
-              }
-            />
-            <p className="mt-1 text-xs text-coffee/60">{t("admin.club.values.joinFeeHint")}</p>
-          </div>
-          <div>
-            <Label htmlFor="earnRatio">{t("admin.club.values.earnRatio")}</Label>
-            <Input
-              id="earnRatio"
-              type="number"
-              min="0"
+              min="1"
+              max="10000"
               step="1"
-              value={draft.earnPointsPer100}
-              onChange={(event) =>
-                patch({ earnPointsPer100: Math.max(0, Math.floor(Number(event.target.value || 0))) })
-              }
+              value={fromMinor(draft.spendPerPointMinor)}
+              onChange={(event) => {
+                const ils = Math.min(10000, Math.max(1, Math.round(Number(event.target.value || 0))));
+                patch({ spendPerPointMinor: toMinor(ils) });
+              }}
             />
-            <p className="mt-1 text-xs text-coffee/60">{t("admin.club.values.earnRatioHint")}</p>
+            <p className="mt-1 text-xs text-coffee/60">
+              {t("admin.club.values.spendPerPointHint").replace("{ils}", String(fromMinor(draft.spendPerPointMinor)))}
+            </p>
           </div>
           <div>
             <Label htmlFor="pointValue">{t("admin.club.values.pointValue")}</Label>

@@ -27,8 +27,9 @@ export async function POST(request: NextRequest) {
   const settings = await readLoyaltySettings(getAdminDb());
   const content = renderClubWelcomeEmail({
     memberNumber: "M-0000-TEST",
-    earnPointsPer100: settings.earnPointsPer100,
-    joinFeeIls: fromMinor(settings.joinFeeMinor),
+    displayName: "בדיקה",
+    spendPerPointIls: fromMinor(settings.spendPerPointMinor),
+    joinFeeIls: 0,
     accountUrl: `${getPublicSiteUrl()}/club/me`,
     showMarketingConsent: true,
   });

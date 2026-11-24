@@ -8,69 +8,47 @@ import {
   fromMinor,
 } from "@/lib/loyalty/points-math";
 
-describe("pointsForAmount — the core 10/100 rule", () => {
-  it("awards 10 points for 100 ILS at the default ratio", () => {
-    expect(
-      pointsForAmount({ qualifyingAmountMinor: toMinor(100), earnPointsPer100: 10 }).points
-    ).toBe(10);
+describe("pointsForAmount — every ₪X = 1 point (default ₪100)", () => {
+  const P100 = toMinor(100); // ₪100 per point
+
+  it("₪100 → 1 point; ₪250 → 2 points (rounds down)", () => {
+    expect(pointsForAmount({ qualifyingAmountMinor: toMinor(100), spendPerPointMinor: P100 }).points).toBe(1);
+    expect(pointsForAmount({ qualifyingAmountMinor: toMinor(250), spendPerPointMinor: P100 }).points).toBe(2);
   });
 
-  it("awards 15 points for 150 ILS", () => {
-    expect(
-      pointsForAmount({ qualifyingAmountMinor: toMinor(150), earnPointsPer100: 10 }).points
-    ).toBe(15);
+  it("below the threshold never fabricates a point: ₪99.99 → 0", () => {
+    expect(pointsForAmount({ qualifyingAmountMinor: 9999, spendPerPointMinor: P100 }).points).toBe(0);
   });
 
-  it("awards 5 points for 50 ILS", () => {
-    expect(
-      pointsForAmount({ qualifyingAmountMinor: toMinor(50), earnPointsPer100: 10 }).points
-    ).toBe(5);
+  it("the manager's value: ₪10 per point → ₪149 = 14 points", () => {
+    expect(pointsForAmount({ qualifyingAmountMinor: toMinor(149), spendPerPointMinor: toMinor(10) }).points).toBe(14);
   });
 
-  it("rounds DOWN by default: 149 ILS → 14 points, not 15", () => {
+  it("nearest rounding: ₪150 at ₪100 per point → 2", () => {
     expect(
-      pointsForAmount({ qualifyingAmountMinor: toMinor(149), earnPointsPer100: 10 }).points
-    ).toBe(14);
+      pointsForAmount({ qualifyingAmountMinor: toMinor(150), spendPerPointMinor: P100, roundingMode: "nearest" }).points
+    ).toBe(2);
+    expect(
+      pointsForAmount({ qualifyingAmountMinor: toMinor(149), spendPerPointMinor: P100, roundingMode: "nearest" }).points
+    ).toBe(1);
   });
 
-  it("rounds DOWN never fabricates: 1 ILS → 0 points", () => {
-    expect(
-      pointsForAmount({ qualifyingAmountMinor: toMinor(1), earnPointsPer100: 10 }).points
-    ).toBe(0);
+  it("0 amount or 0 ratio → 0 points", () => {
+    expect(pointsForAmount({ qualifyingAmountMinor: 0, spendPerPointMinor: P100 }).points).toBe(0);
+    expect(pointsForAmount({ qualifyingAmountMinor: toMinor(500), spendPerPointMinor: 0 }).points).toBe(0);
   });
 
-  it("nearest rounding behaves like Math.round for 49 ILS at 10/100", () => {
-    expect(
-      pointsForAmount({
-        qualifyingAmountMinor: toMinor(49),
-        earnPointsPer100: 10,
-        roundingMode: "nearest",
-      }).points
-    ).toBe(5);
-  });
-
-  it("awards 0 when amount or ratio is 0 regardless of mode", () => {
-    expect(pointsForAmount({ qualifyingAmountMinor: 0, earnPointsPer100: 10 }).points).toBe(0);
-    expect(
-      pointsForAmount({ qualifyingAmountMinor: toMinor(100), earnPointsPer100: 0 }).points
-    ).toBe(0);
-  });
-
-  it("preserves precision across small orders using carry (down mode)", () => {
-    // Ten 50-agora orders at 10/100 → each is 0.05 points.
-    // Without carry: 0 forever. With carry: 1 point ever 20 orders.
+  it("carry keeps the leftover across small orders", () => {
+    // Twenty ₪5 orders at ₪100 per point → exactly 1 point overall.
     let carry = 0;
     let total = 0;
     for (let i = 0; i < 20; i += 1) {
-      const result = pointsForAmount({
-        qualifyingAmountMinor: 50,
-        earnPointsPer100: 10,
-        carryMinorPointSixteenths: carry,
-      });
+      const result = pointsForAmount({ qualifyingAmountMinor: toMinor(5), spendPerPointMinor: P100, carryMinor: carry });
       total += result.points;
-      carry = result.carryMinorPointSixteenths;
+      carry = result.carryMinor;
     }
     expect(total).toBe(1);
+    expect(carry).toBe(0);
   });
 });
 

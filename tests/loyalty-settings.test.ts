@@ -18,14 +18,14 @@ describe("parseLoyaltySettings", () => {
   it("coerces missing fields to their defaults", () => {
     const parsed = parseLoyaltySettings({ joinFeeMinor: 2500 });
     expect(parsed.joinFeeMinor).toBe(2500);
-    expect(parsed.earnPointsPer100).toBe(DEFAULT_LOYALTY_SETTINGS.earnPointsPer100);
+    expect(parsed.spendPerPointMinor).toBe(10000);
     expect(parsed.enrollmentEnabled).toBe(DEFAULT_LOYALTY_SETTINGS.enrollmentEnabled);
   });
 
   it("rejects negative numbers and NaN by falling back to the default", () => {
-    const parsed = parseLoyaltySettings({ joinFeeMinor: -500, earnPointsPer100: Number.NaN });
+    const parsed = parseLoyaltySettings({ joinFeeMinor: -500, spendPerPointMinor: Number.NaN });
     expect(parsed.joinFeeMinor).toBe(DEFAULT_LOYALTY_SETTINGS.joinFeeMinor);
-    expect(parsed.earnPointsPer100).toBe(DEFAULT_LOYALTY_SETTINGS.earnPointsPer100);
+    expect(parsed.spendPerPointMinor).toBe(10000);
   });
 
   it("locks redemption OFF until point value is set AND approved", () => {

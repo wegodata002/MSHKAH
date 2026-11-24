@@ -1,12 +1,14 @@
 "use client";
 
 import { Suspense, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, MailCheck } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useT } from "@/components/providers/locale-provider";
+import { ClubCard } from "@/features/club/club-ui";
 
 type VerifyError =
   | "mismatch"
@@ -14,14 +16,12 @@ type VerifyError =
   | "throttled"
   | "used"
   | "no_token"
-  | "enrollment_disabled";
+  | "enrollment_disabled"
+  | "name_required";
 
 /**
- * `ClubVerifyContent` holds all the client state and the `useSearchParams`
- * call. Next.js 15 bails this subtree out of static prerendering, so the
- * default export must wrap it in a Suspense boundary — otherwise the
- * production build fails with "useSearchParams() should be wrapped in a
- * suspense boundary".
+ * Enter the emailed code. Joining is free, so a correct code goes straight to the member page
+ * (new members land with ?welcome=1). `useSearchParams` needs the Suspense wrapper below.
  */
 function ClubVerifyContent() {
   const t = useT();
@@ -31,6 +31,7 @@ function ClubVerifyContent() {
   const name = params?.get("name") ?? "";
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const [resent, setResent] = useState(false);
   const [error, setError] = useState<VerifyError | null>(null);
 
   async function submit() {
@@ -41,31 +42,17 @@ function ClubVerifyContent() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: email.trim(), code: code.trim(), displayName: name || undefined }),
-    });
-    const data = (await response.json().catch(() => null)) as
-      | { ok: true }
+    }).catch(() => null);
+    const data = (await response?.json().catch(() => null)) as
+      | { ok: true; member?: { status?: string } }
       | { ok: false; reason: VerifyError }
       | null;
     setBusy(false);
     if (data?.ok) {
-      // Go straight to the pay step.
-      await startPayment();
+      router.replace(name ? "/club/me?welcome=1" : "/club/me");
       return;
     }
     setError(data && !data.ok ? data.reason : "mismatch");
-  }
-
-  async function startPayment() {
-    const response = await fetch("/api/club/enroll/pay", { method: "POST" });
-    const data = (await response.json().catch(() => null)) as
-      | { ok: true; paymentUrl: string }
-      | { error: string; code: string }
-      | null;
-    if (data && "paymentUrl" in data) {
-      window.location.href = data.paymentUrl;
-    } else {
-      router.push(`/club/activate?status=${encodeURIComponent((data?.code || "pay_failed").toLowerCase())}`);
-    }
   }
 
   async function resend() {
@@ -75,56 +62,70 @@ function ClubVerifyContent() {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email: email.trim() }),
-    });
+    }).catch(() => undefined);
     setBusy(false);
+    setResent(true);
   }
 
   return (
-    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 py-6 md:px-6">
-      <div className="rounded-3xl bg-warm-white p-5 shadow-soft">
-        <h1 className="font-display text-xl font-semibold text-dark-brown">
-          {t("club.verify.title")}
-        </h1>
-        <p className="mt-1 text-xs text-coffee/60">
-          {t("club.verify.subtitle").replace("{email}", email)}
+    <div className="mx-auto flex max-w-md flex-col gap-5 px-4 py-8 md:px-6">
+      <ClubCard>
+        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-turquoise/10 text-turquoise">
+          <MailCheck className="h-6 w-6" strokeWidth={1.75} />
+        </span>
+        <h1 className="mt-3 font-display text-2xl font-bold text-dark-brown">{t("club2.verify.title")}</h1>
+        <p className="mt-1 text-sm text-coffee/65">
+          {t("club.verify.subtitle").replace("{email}", "")}
+          <span dir="ltr" className="font-semibold text-dark-brown">{email}</span>
         </p>
-        <div className="mt-4 flex flex-col gap-3">
+        <form
+          className="mt-5 space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submit();
+          }}
+        >
           <Input
             inputMode="numeric"
             autoComplete="one-time-code"
             dir="ltr"
             value={code}
             maxLength={6}
+            aria-label={t("club2.verify.codeLabel")}
             onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-            placeholder="123456"
-            className="text-center text-xl tracking-widest"
+            placeholder="••••••"
+            className="h-14 text-center text-2xl font-bold tracking-[0.5em]"
           />
-          <Button
-            type="button"
-            variant="turquoise"
-            disabled={busy || code.length !== 6}
-            onClick={() => void submit()}
-            className="w-full"
-          >
+          <Button type="submit" variant="turquoise" size="lg" disabled={busy || code.length !== 6} className="h-12 w-full text-base">
             {busy ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
                 {t("club.verify.verifying")}
               </>
             ) : (
-              t("club.verify.submit")
+              t("club2.verify.submit")
             )}
           </Button>
-          <Button type="button" variant="ghost" onClick={() => void resend()} disabled={busy} className="w-full">
-            {t("club.verify.resend")}
-          </Button>
-        </div>
+        </form>
         {error ? (
-          <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-900">
-            {t(`club.verify.err.${error}`)}
-          </div>
+          <p className="mt-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900" role="alert">
+            {t(error === "name_required" ? "club2.verify.err.name_required" : `club.verify.err.${error}`)}
+          </p>
         ) : null}
-      </div>
+        {resent && !error ? (
+          <p className="mt-3 rounded-2xl bg-turquoise/10 p-3 text-sm text-turquoise" role="status">
+            {t("club2.verify.resent")}
+          </p>
+        ) : null}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <button type="button" onClick={() => void resend()} disabled={busy} className="min-h-11 font-semibold text-turquoise disabled:opacity-50">
+            {t("club.verify.resend")}
+          </button>
+          <Link href="/club" className="min-h-11 content-center text-coffee/60 hover:text-coffee">
+            {t("club2.verify.changeEmail")}
+          </Link>
+        </div>
+      </ClubCard>
     </div>
   );
 }

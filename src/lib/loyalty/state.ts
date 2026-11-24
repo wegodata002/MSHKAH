@@ -13,12 +13,14 @@ export type MembershipAction =
   | "start_payment"
   | "activate_card"
   | "activate_cash"
+  /** Free sign-up: active right after the email code is verified. */
+  | "activate_free"
   | "suspend"
   | "resume";
 
 const ALLOWED: Record<LoyaltyMemberStatus, MembershipAction[]> = {
-  email_verified: ["start_payment", "activate_cash"],
-  awaiting_payment: ["activate_card", "activate_cash"],
+  email_verified: ["start_payment", "activate_cash", "activate_free"],
+  awaiting_payment: ["activate_card", "activate_cash", "activate_free"],
   active: ["suspend"],
   suspended: ["resume"],
 };
@@ -45,6 +47,7 @@ export function nextStatusFor(
       return "awaiting_payment";
     case "activate_card":
     case "activate_cash":
+    case "activate_free":
       return "active";
     case "suspend":
       return "suspended";

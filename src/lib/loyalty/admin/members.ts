@@ -22,7 +22,7 @@ import {
   tokenState,
 } from "@/lib/loyalty/tokens";
 import {
-  pointsForAmount,
+  earnWithCarry,
   pointsToReverseForRefund,
   qualifyingAmountMinor,
   toMinor,
@@ -268,7 +268,7 @@ export async function activateMember(
   db: Firestore,
   input: {
     memberId: string;
-    source: "card" | "cash";
+    source: "card" | "cash" | "free";
     paymentId?: string;
     paidAmountMinor: number;
     actor?: string;
@@ -287,7 +287,7 @@ export async function activateMember(
     if (!snap.exists) throw new Error("member_not_found");
     const member = snap.data() as LoyaltyMember;
     if (member.status === "active") return member;
-    const action = input.source === "card" ? "activate_card" : "activate_cash";
+    const action = input.source === "card" ? "activate_card" : input.source === "free" ? "activate_free" : "activate_cash";
     const next = nextStatusFor(member.status, action);
     if (!next) throw new Error("invalid_transition");
     const nextMember: LoyaltyMember = {
@@ -372,11 +372,14 @@ export async function awardOrderPoints(
     if (!memberSnap.exists) return null;
     const member = memberSnap.data() as LoyaltyMember;
     if (member.status !== "active") return null;
-    const award = pointsForAmount({
+    // The member's saved remainder joins this order's spend; what is left is saved again.
+    const award = earnWithCarry({
       qualifyingAmountMinor: input.qualifyingAmountMinor,
-      earnPointsPer100: settings.earnPointsPer100,
+      carryMinor: member.pointsCarryMinor,
+      spendPerPointMinor: settings.spendPerPointMinor,
       roundingMode: settings.roundingMode,
     });
+    const carryMinor = Math.max(0, award.carryMinor);
     if (award.points <= 0) {
       // Still write a zero-value ledger entry so we have a record that we
       // *considered* this order; prevents future POS import from re-awarding.
@@ -392,6 +395,7 @@ export async function awardOrderPoints(
         createdAt: now,
       };
       tx.set(ledgerRef, entry);
+      tx.set(memberRef, { pointsCarryMinor: carryMinor, updatedAt: now }, { merge: true });
       return { entry, newBalance: member.balancePoints };
     }
     const entry: LoyaltyLedgerEntry = {
@@ -409,7 +413,7 @@ export async function awardOrderPoints(
     const newBalance = member.balancePoints + award.points;
     tx.set(
       memberRef,
-      { balancePoints: newBalance, updatedAt: now },
+      { balancePoints: newBalance, pointsCarryMinor: carryMinor, updatedAt: now },
       { merge: true }
     );
     loyaltyLog("member.earn", {
