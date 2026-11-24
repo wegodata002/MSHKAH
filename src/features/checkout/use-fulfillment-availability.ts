@@ -9,7 +9,7 @@ import {
   type PickupAvailability,
 } from "@/lib/fulfillment/availability";
 import { DEFAULT_FULFILLMENT, type DeliveryZone } from "@/lib/fulfillment/settings";
-import { DEFAULT_OPENING_HOURS } from "@/lib/settings/opening-hours";
+import { DEFAULT_OPENING_HOURS, type OpeningHours } from "@/lib/settings/opening-hours";
 
 /** What can be ordered right now, from the live settings. Re-checked every 30 seconds. */
 export type FulfillmentNow = {
@@ -20,6 +20,8 @@ export type FulfillmentNow = {
   delivery: DeliveryAvailability | null;
   zones: DeliveryZone[];
   storePhone: string;
+  /** The weekly opening hours in use (settings, or the default week). */
+  openingHours: OpeningHours;
 };
 
 const REFRESH_MS = 30_000;
@@ -58,6 +60,7 @@ export function useFulfillmentAvailability(): FulfillmentNow {
       delivery,
       zones: delivery ? fulfillment.delivery.zones : [],
       storePhone: settings?.phone?.trim() ?? "",
+      openingHours: hours,
     };
   }, [settings, loading, now, gaveUpWaiting]);
 }

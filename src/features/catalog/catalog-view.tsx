@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Search, X } from "lucide-react";
 import { SiteHeader } from "@/components/layout/header";
 import { HeroBanner } from "@/features/catalog/hero-banner";
+import { AvailabilityPill } from "@/features/catalog/availability-pill";
 import { CategoryNav } from "@/features/catalog/category-nav";
 import { CategoryProductSection } from "@/features/catalog/category-product-section";
 import { FilterSortButton, FilterSortPanel } from "@/features/catalog/product-filters-bar";
@@ -188,6 +189,8 @@ export function CatalogView() {
 
       <div className="mx-auto max-w-[1280px] px-4 md:px-8 lg:px-10">
         <div className="mt-4 min-w-0 pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+5.5rem)] md:mt-6 lg:pb-12">
+          {/* What can be ordered now: one short line under the banner, above the categories. */}
+          {isHome && <AvailabilityPill />}
           {/* Sticky catalog bar: categories (+ mobile icons) and the desktop search/filter row. */}
           <div
             ref={stickyRef}
