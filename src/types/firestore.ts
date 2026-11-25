@@ -110,6 +110,7 @@ export interface FirestoreOrder {
   tableArea?: "inside" | "outside";
   tableNumber?: number;
   deliveryAddress?: string;
+  deliveryLocationUrl?: string;
   /** Set by POST /api/orders/create (optional on older orders). */
   deliveryZoneId?: string;
   deliveryZoneName?: string;

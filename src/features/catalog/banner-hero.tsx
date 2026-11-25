@@ -60,48 +60,59 @@ export function BannerHero({
   if (image === "/store.jpg") image = "/meskahphoto.png";
   const x = mobile ? banner.mobilePositionX : banner.desktopPositionX;
   const y = mobile ? banner.mobilePositionY : banner.desktopPositionY;
-  const zoom = mobile ? banner.mobileZoom : banner.desktopZoom;
   const showButton = banner.ctaAction !== "none" && Boolean(content.button);
 
   const hero = (
     <div
       className={cn(
         "relative isolate overflow-hidden rounded-3xl bg-dark-brown text-warm-white shadow-soft",
-        mobile ? "aspect-[16/10] max-h-[38vh] min-h-[160px] w-full" : "aspect-[14/5] w-full",
+        // Limited height: phone about a quarter of the screen (150–220px), desktop up to 420px; full width.
+        mobile ? "h-[clamp(150px,25svh,220px)] w-full" : "aspect-[14/5] max-h-[420px] w-full",
         className
       )}
     >
+      {/* Behind: the same picture, blurred, filling the strips at the sides (or top and bottom). */}
+      <Image
+        src={image}
+        alt=""
+        aria-hidden
+        fill
+        unoptimized={image.includes("firebasestorage")}
+        priority={!interactive}
+        className="scale-110 object-cover opacity-80 blur-2xl"
+        sizes={mobile ? "390px" : "(max-width: 1024px) 100vw, 1400px"}
+        data-banner-backdrop
+      />
+      {/* The picture itself, whole — never cropped. Position still applies; zoom is not used (it would crop). */}
       <Image
         src={image}
         alt={content.title}
         fill
         unoptimized={image.includes("firebasestorage")}
         priority={!interactive}
-        className="object-cover"
-        style={{
-          objectPosition: `${x ?? 50}% ${y ?? 50}%`,
-          transform: `scale(${zoom ?? 1})`,
-        }}
+        className="object-contain"
+        style={{ objectPosition: `${x ?? 50}% ${y ?? 50}%` }}
         sizes={mobile ? "390px" : "(max-width: 1024px) 100vw, 1400px"}
+        data-banner-image
       />
       <div className="absolute inset-0 bg-gradient-to-l from-dark-brown/80 via-dark-brown/30 to-transparent rtl:bg-gradient-to-r" />
       <div
         className={cn(
           "relative z-10 flex h-full max-w-xl flex-col justify-center",
-          mobile ? "p-6" : "p-8 md:p-12 lg:p-16"
+          mobile ? "p-4 pb-7" : "p-8 md:p-10 lg:p-12"
         )}
       >
-        <h2 className={cn("font-display font-bold", mobile ? "text-3xl" : "text-3xl md:text-5xl")}>
+        <h2 className={cn("font-display font-bold", mobile ? "line-clamp-2 text-2xl leading-tight" : "text-3xl md:text-5xl")}>
           {content.title}
         </h2>
         {content.subtitle && (
-          <p className={cn("mt-3 leading-relaxed text-warm-white/90", mobile ? "text-base" : "text-lg")}>
+          <p className={cn("leading-relaxed text-warm-white/90", mobile ? "mt-1 line-clamp-1 text-sm" : "mt-3 text-lg")}>
             {content.subtitle}
           </p>
         )}
         {showButton && (
-          <div className="mt-6">
-            <Button asChild={interactive} variant="turquoise" className="rounded-full px-6">
+          <div className={mobile ? "mt-3" : "mt-6"}>
+            <Button asChild={interactive} variant="turquoise" size={mobile ? "sm" : "default"} className={cn("rounded-full", mobile ? "px-4" : "px-6")}>
               {interactive ? (
                 <Link href={bannerHref(banner)}>
                   {content.button}

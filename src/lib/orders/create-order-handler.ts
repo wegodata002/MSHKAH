@@ -1,4 +1,4 @@
-import { phoneKey } from "@/lib/customers/identity";
+import { normalizeIsraeliPhone } from "@/lib/customers/phone";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import type { FulfillmentSettings } from "@/lib/fulfillment/settings";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
@@ -48,7 +48,7 @@ export type CreateOrderDeps = {
 
 export type CreateOrderResponse =
   | { status: 200; body: { ok: true; id: string; orderNumber: string; total: number } }
-  | { status: 400; body: { ok: false; code: "INVALID_REQUEST" } }
+  | { status: 400; body: { ok: false; code: "INVALID_REQUEST" | "INVALID_PHONE" } }
   | { status: 409; body: { ok: false } & OrderBuildError }
   | { status: 429; body: { ok: false; code: "RATE_LIMITED" } }
   | { status: 500; body: { ok: false; code: "ORDER_SAVE_FAILED" } };
@@ -72,10 +72,14 @@ export async function handleCreateOrder(
   const parsed = createOrderRequestSchema.safeParse(rawBody);
   if (!parsed.success) return { status: 400, body: { ok: false, code: "INVALID_REQUEST" } };
   const request = parsed.data;
-  const digits = phoneKey(request.customer.phone);
-  // A table order may come without a phone (name only); a phone that is given must be valid.
-  const phoneOptional = request.fulfillment.type === "dine_in" && digits.length === 0;
-  if (!phoneOptional && digits.length < 9) return { status: 400, body: { ok: false, code: "INVALID_REQUEST" } };
+  // A table order may come without a phone (name only); a phone that is given must be a real
+  // Israeli number: 9 or 10 digits starting with 0, or +972 (saved as 0…).
+  const givenPhone = request.customer.phone.trim();
+  const phone = normalizeIsraeliPhone(givenPhone);
+  const phoneOptional = request.fulfillment.type === "dine_in" && !givenPhone;
+  if (!phoneOptional && !phone) return { status: 400, body: { ok: false, code: "INVALID_PHONE" } };
+  if (phone) request.customer.phone = phone;
+  const digits = phone ?? "";
 
   try {
     const { perPhone, perIp, perTable } = ORDER_RATE_LIMITS;

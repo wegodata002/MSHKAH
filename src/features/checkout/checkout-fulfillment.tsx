@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, CheckCircle2, ChevronDown, Clock, MapPin, Phone, Store, Truck, UtensilsCrossed } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Clock, MapPin, Phone, Store, Truck, UtensilsCrossed, Navigation } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -305,6 +305,8 @@ export function DeliveryZonePicker({
   onChange,
   address,
   onAddressChange,
+  locationLink,
+  onLocationLinkChange,
   subtotal,
   storePhone,
 }: {
@@ -313,6 +315,9 @@ export function DeliveryZonePicker({
   onChange: (next: ZoneChoice) => void;
   address: string;
   onAddressChange: (next: string) => void;
+  /** Optional Waze / Google Maps link (the courier's navigation button opens it). */
+  locationLink: string;
+  onLocationLinkChange: (next: string) => void;
   /** Products before the coupon, as the minimum is checked on the server. */
   subtotal: number;
   storePhone: string;
@@ -320,6 +325,7 @@ export function DeliveryZonePicker({
   const t = useT();
   const { locale } = useLocale();
   const addressId = useId();
+  const linkId = useId();
   const chosen = zones.find((z) => z.id === value);
   const missing = chosen && chosen.minOrder > 0 && subtotal < chosen.minOrder ? chosen.minOrder - subtotal : 0;
 
@@ -372,6 +378,25 @@ export function DeliveryZonePicker({
             required
           />
           <p className="text-xs text-coffee/55">{t("checkout.deliveryAsap")}</p>
+          <Label htmlFor={linkId} className="flex items-center gap-1 pt-3">
+            <Navigation className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.locationLink")}
+            <span className="text-xs font-normal text-coffee/50">({t("checkout.optional")})</span>
+          </Label>
+          <Input
+            id={linkId}
+            value={locationLink}
+            onChange={(e) => onLocationLinkChange(e.target.value)}
+            // Plain text, not type="url": a link shared with words around it ("Meet me here https://…")
+            // must not be blocked by the browser — parseLocationLink finds the link in it.
+            type="text"
+            inputMode="url"
+            dir="ltr"
+            autoComplete="off"
+            maxLength={1000}
+            placeholder="https://waze.com/ul/…"
+            data-location-link
+          />
+          <p className="text-xs text-coffee/55">{t("checkout.locationLinkHint")}</p>
         </div>
       ) : null}
     </div>

@@ -510,6 +510,9 @@ export function CategoriesAdmin() {
               }
               onDelete={deleteImageByUrl}
             />
+            <p className="-mt-2 text-xs text-coffee/55" data-category-image-hint>
+              {t("admin.categories.coverImageHint")}
+            </p>
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" {...form.register("active")} className="rounded" />
               {t("admin.categories.visibleInCatalog")}

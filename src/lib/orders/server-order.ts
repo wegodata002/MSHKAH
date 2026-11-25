@@ -12,6 +12,7 @@ import {
   quoteDelivery,
 } from "@/lib/fulfillment/availability";
 import { zoneName, type FulfillmentSettings } from "@/lib/fulfillment/settings";
+import { parseLocationLink } from "@/lib/fulfillment/location-link";
 import { jerusalemDate } from "@/lib/staff/types";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import type { ProductBuilderConfig, SelectedModifier } from "@/types/modifiers";
@@ -76,6 +77,8 @@ export const createOrderRequestSchema = z.object({
       type: z.literal("delivery"),
       zoneId: z.string().trim().min(1).max(100),
       address: z.string().trim().min(1).max(300),
+      /** Optional Waze / Google Maps link from the customer (any other link is refused). */
+      locationUrl: z.string().trim().max(1000).optional(),
     }),
     z.object({
       type: z.literal("dine_in"),
@@ -123,6 +126,8 @@ export type OrderBuildError =
   | { code: "PICKUP_TIME_UNAVAILABLE" }
   | { code: "DELIVERY_UNAVAILABLE"; reason: "disabled" | "no_zones" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_ZONE" }
+  /** The location link is not a Waze / Google Maps link. */
+  | { code: "INVALID_LOCATION_LINK" }
   | { code: "BELOW_MINIMUM"; minOrder: number }
   | { code: "DINE_IN_UNAVAILABLE"; reason: "disabled" | "no_tables" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_TABLE" }
@@ -164,6 +169,8 @@ export type ServerOrderDraft = {
   /** Dine-in: "YYYY-MM-DD" (Jerusalem) of the order, for the waiter screen. */
   serviceDate?: string;
   deliveryAddress?: string;
+  /** The customer's Waze / Google Maps link (checked), for the courier's navigation button. */
+  deliveryLocationUrl?: string;
   deliveryZoneId?: string;
   deliveryZoneName?: string;
   notes: string;
@@ -337,6 +344,11 @@ export function buildServerOrder(
     }
     delivery = money(quote.fee);
     typeFields.deliveryAddress = fulfillment.address.trim();
+    if (fulfillment.locationUrl?.trim()) {
+      const link = parseLocationLink(fulfillment.locationUrl);
+      if (!link) return { ok: false, error: { code: "INVALID_LOCATION_LINK" } };
+      typeFields.deliveryLocationUrl = link.url;
+    }
     typeFields.deliveryZoneId = quote.zone.id;
     typeFields.deliveryZoneName = zoneName(quote.zone, locale ?? "he");
   } else {
