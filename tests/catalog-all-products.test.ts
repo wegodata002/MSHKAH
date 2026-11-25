@@ -37,7 +37,8 @@ describe("catalog shows all category products", () => {
       "utf8"
     );
 
-    expect(card).toMatch(/aspect-square/);
+    // 4:3 photo on every screen size (the square phone photo made cards too tall).
+    expect(card).not.toMatch(/aspect-square/);
     expect(card).toMatch(/aspect-\[4\/3\]/);
     expect(card).toMatch(/flex-col/);
     expect(card).toMatch(/line-clamp-2/);

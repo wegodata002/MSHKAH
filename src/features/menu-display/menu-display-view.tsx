@@ -82,7 +82,7 @@ function MenuDisplayCard({
         }
       }}
       className={cn(
-        "flex h-full cursor-pointer flex-col overflow-hidden rounded-2xl bg-warm-white text-start shadow-soft ring-1 ring-beige-dark/15 transition-shadow hover:shadow-md dark:bg-[#1a1412] dark:ring-white/10",
+        "flex h-full cursor-pointer flex-col overflow-hidden rounded-xl bg-warm-white sm:rounded-2xl text-start shadow-soft ring-1 ring-beige-dark/15 transition-shadow hover:shadow-md dark:bg-[#1a1412] dark:ring-white/10",
         !product.available && "opacity-60"
       )}
     >
@@ -92,25 +92,26 @@ function MenuDisplayCard({
           categoryId={product.categoryId}
           alt={localized.name}
           className="object-cover"
-          sizes="(max-width:640px) 100vw, (max-width:1024px) 33vw, 20vw"
+          sizes="(max-width:767px) 50vw, (max-width:1024px) 33vw, 20vw"
         />
         {!product.available && (
-          <span className="absolute start-3 top-3 rounded-full bg-dark-brown/80 px-2.5 py-1 text-[11px] font-medium text-warm-white">
+          <span className="absolute start-2 top-2 rounded-full bg-dark-brown/80 px-2 py-0.5 text-[10px] sm:start-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-[11px] font-medium text-warm-white">
             {t("catalog.unavailable", "לא זמין")}
           </span>
         )}
       </div>
-      <div className="flex flex-1 flex-col gap-1.5 p-4 md:p-5">
-        <h3 className="font-display text-lg font-bold leading-snug text-dark-brown md:text-xl dark:text-warm-white">
+      {/* Phones: two compact cards per row (was one full-width card). */}
+      <div className="flex flex-1 flex-col gap-1 p-2.5 sm:gap-1.5 sm:p-4 md:p-5">
+        <h3 className="line-clamp-2 font-display text-sm font-bold leading-snug sm:text-lg text-dark-brown md:text-xl dark:text-warm-white">
           {localized.name}
         </h3>
         {localized.description?.trim() ? (
-          <p className="line-clamp-2 text-sm leading-relaxed text-coffee/70 dark:text-warm-white/65">
+          <p className="line-clamp-2 text-xs leading-snug text-coffee/70 sm:text-sm sm:leading-relaxed dark:text-warm-white/65">
             {localized.description}
           </p>
         ) : null}
-        <ProductModifiersTeaser groups={modifierPreview} />
-        <p className="mt-auto pt-2 text-xl font-bold text-turquoise md:text-2xl">
+        <ProductModifiersTeaser groups={modifierPreview} className="text-[11px] sm:text-xs" />
+        <p className="mt-auto pt-1.5 text-base font-bold text-turquoise sm:pt-2 sm:text-xl md:text-2xl">
           {formatPrice(product.price)}
         </p>
       </div>
@@ -184,11 +185,11 @@ export function MenuDisplayView() {
 
       <main className="mx-auto max-w-[1600px] px-4 py-5 md:px-6 md:py-8">
         {loading ? (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-5">
             {Array.from({ length: 10 }).map((_, i) => (
               <div
                 key={i}
-                className="h-72 animate-pulse rounded-2xl bg-beige/50 dark:bg-white/5"
+                className="h-56 animate-pulse rounded-xl sm:h-72 sm:rounded-2xl bg-beige/50 dark:bg-white/5"
               />
             ))}
           </div>
@@ -197,7 +198,7 @@ export function MenuDisplayView() {
             {t("catalog.noProducts", "אין מוצרים להצגה")}
           </p>
         ) : (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-5">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 md:gap-5">
             {visibleProducts.map((product, index) => (
               <MenuDisplayCard
                 key={product.id}

@@ -1,4 +1,4 @@
-import { getMenuOrigin, getPublicStoreOrigin } from "@/lib/domains/host-routing";
+import { getPublicStoreOrigin } from "@/lib/domains/host-routing";
 
 export type AdminQrLinkId = "menu" | "order" | "club";
 
@@ -28,13 +28,16 @@ function readQrLink(envName: string, fallback: string): string {
   return normalizePublicUrl(process.env[envName] ?? "", fallback);
 }
 
-/** Single source for Admin QR cards. Override with NEXT_PUBLIC_QR_LINK_1 / _2 (the club QR follows _2). */
+/** Single source for Admin QR cards. Override the store link with NEXT_PUBLIC_QR_LINK_2 (menu = /catalog, club = /club). */
 export function getAdminQrLinks(): AdminQrLink[] {
   return [
     {
       id: "menu",
       nameKey: "admin.qr.menuName",
-      url: readQrLink("NEXT_PUBLIC_QR_LINK_1", getMenuOrigin()),
+      // The storefront's one-page menu (all categories, category bar follows the scroll) — not the
+      // view-only menu.mishkatcafe.dev. Follows the store link like the club QR; NEXT_PUBLIC_QR_LINK_1
+      // is no longer read, so an old value pointing at the menu domain cannot override it.
+      url: `${readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin())}/catalog`,
       filename: "mishkah-qr-menu.png",
     },
     {

@@ -132,8 +132,9 @@ describe("menu display product filter", () => {
       },
     ] as Product[];
 
+    // "All" matches the catalog: a product whose category is missing/hidden is not shown.
     const all = filterMenuDisplayProducts(products, null, categories);
-    expect(all.map((p) => p.id)).toEqual(["1", "2"]);
+    expect(all.map((p) => p.id)).toEqual(["1"]);
 
     const coffee = filterMenuDisplayProducts(products, "coffee", categories);
     expect(coffee.map((p) => p.id)).toEqual(["1"]);
