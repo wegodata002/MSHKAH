@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bike, KeyRound, Loader2, Pencil, Plus, Shuffle, UtensilsCrossed } from "lucide-react";
 import { useT } from "@/components/providers/locale-provider";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AdminPageHeader } from "@/features/admin/components/admin-page-header";
 import { StaffDevicesSection } from "@/features/admin/staff-devices-section";
+import { StaffFilters } from "@/features/admin/staff-filters";
+import { DEFAULT_STAFF_FILTER, filterStaff, staffCounts, type StaffFilter } from "@/lib/staff/filter";
 import {
   AdminModal,
   AdminModalBody,
@@ -91,6 +93,9 @@ export function StaffAdmin() {
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [filter, setFilter] = useState<StaffFilter>(DEFAULT_STAFF_FILTER);
+  const shown = useMemo(() => (staff ? filterStaff(staff, filter) : []), [filter, staff]);
+  const counts = useMemo(() => staffCounts(staff ?? [], filter.query), [filter.query, staff]);
 
   // Dialog form.
   const [name, setName] = useState("");
@@ -196,8 +201,18 @@ export function StaffAdmin() {
           <p className="mt-1 text-sm text-coffee/60">{t("admin.staff.emptyHint")}</p>
         </div>
       ) : (
+        <>
+          <StaffFilters filter={filter} counts={counts} onChange={setFilter} />
+          {shown.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-beige-dark/40 p-6 text-center" data-staff-no-results>
+              <p className="text-sm text-coffee/70">{t("admin.staff.filter.none")}</p>
+              <button type="button" onClick={() => setFilter(DEFAULT_STAFF_FILTER)} className="mt-2 text-sm font-semibold text-turquoise underline" data-staff-clear-filters>
+                {t("admin.staff.filter.clear")}
+              </button>
+            </div>
+          )}
         <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-staff-list>
-          {staff.map((member) => {
+          {shown.map((member) => {
             const Icon = member.role === "courier" ? Bike : UtensilsCrossed;
             return (
               <li
@@ -246,6 +261,7 @@ export function StaffAdmin() {
             );
           })}
         </ul>
+        </>
       )}
 
       {/* Cafe tablets that stay signed in to the waiter screen. */}

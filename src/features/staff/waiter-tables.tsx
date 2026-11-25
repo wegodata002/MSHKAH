@@ -1,11 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, Banknote, Check, CreditCard, Loader2, LogOut, Plus, Tablet, UserRound } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { formatPrice, cn } from "@/lib/utils";
 import { tableAreaName, tableDisplayName, tablesByArea, type DineInTable, type TableArea } from "@/lib/fulfillment/settings";
 import { WaiterNewOrder } from "@/features/staff/waiter-new-order";
+import { SoundButton } from "@/features/staff/sound-button";
+import { useScreenWakeLock, useSeenHighlight, useWorkAlerts } from "@/features/staff/use-work-alerts";
+import { newWaiterWork } from "@/lib/staff/alerts";
 import { summarizeTable, type PaidWith, type TableSummary, type WaiterOrder } from "@/lib/waiter/tables";
 
 /** How often the waiter screen asks for updates (all waiters see each other's changes). */
@@ -104,11 +107,14 @@ function OrderCard({
   order,
   busy,
   locked,
+  flash = false,
   onServed,
   onPay,
 }: {
   order: WaiterOrder;
   busy: boolean;
+  /** New or just ready: highlighted for a few seconds. */
+  flash?: boolean;
   /** Fixed tablet before choosing who is working: buttons off, no spinner. */
   locked: boolean;
   onServed: () => void;
@@ -131,7 +137,8 @@ function OrderCard({
   const canPay = !order.paid;
   return (
     <li
-      className={cn("rounded-2xl border-s-4 bg-warm-white p-4 shadow-soft", order.stage === "ready" ? "border-s-orange-500" : order.stage === "served" ? "border-s-emerald-500" : "border-s-turquoise")}
+      data-flash={flash ? "yes" : undefined}
+      className={cn("rounded-2xl border-s-4 bg-warm-white p-4 shadow-soft", flash && "ring-4 ring-amber-400/70", order.stage === "ready" ? "border-s-orange-500" : order.stage === "served" ? "border-s-emerald-500" : "border-s-turquoise")}
       data-waiter-order={order.orderNumber}
       data-stage={order.stage}
     >
@@ -210,22 +217,44 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
 
   useEffect(() => setDeviceWaiter(readDeviceWaiter()), []);
 
+  // New work: a new order at a table, or a dish that became ready. Sound, vibration, tab title,
+  // the table tile highlighted until it is opened, and the order card for 6 seconds once seen.
+  const alerts = useWorkAlerts();
+  const { notify } = alerts;
+  const { keys: flashOrders, add: flashOrder } = useSeenHighlight(alerts.visible, 6000);
+  const [attention, setAttention] = useState<Set<string>>(new Set());
+  const lastStages = useRef<Map<string, string> | null>(null);
+  /** Orders this screen sent itself: no alert for them. */
+  const sentHere = useRef<Set<string>>(new Set());
+  const openTable = useRef<string | null>(null);
+  openTable.current = tableId;
+
   const load = useCallback(async () => {
     try {
       const res = await fetch("/api/staff/tables", { cache: "no-store" });
       if (res.status === 401) return onSignedOut();
       const json = (await res.json()) as { ok?: boolean } & Data;
       if (!res.ok || !json.ok) throw new Error("load");
+      const { newOrders, nowReady } = newWaiterWork(lastStages.current, json.orders, sentHere.current);
+      lastStages.current = new Map(json.orders.map((o) => [o.id, o.stage]));
+      const fresh = [...newOrders, ...nowReady];
+      if (fresh.length) {
+        notify(fresh.length);
+        flashOrder(fresh.map((o) => o.id));
+        const tables = fresh.map((o) => o.tableId).filter((id) => id !== openTable.current);
+        if (tables.length) setAttention((prev) => new Set([...prev, ...tables]));
+      }
       setData(json);
       setOffline(false);
     } catch {
       setOffline(true);
     }
-  }, [onSignedOut]);
+  }, [flashOrder, notify, onSignedOut]);
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => document.visibilityState === "visible" && void load(), WAITER_POLL_MS);
+    // Also in the background, so new work still alerts (the browser may slow this to about once a minute).
+    const timer = window.setInterval(() => void load(), WAITER_POLL_MS);
     const onVisible = () => document.visibilityState === "visible" && void load();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -246,6 +275,8 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
   const isDevice = data?.mode === "device";
   const chosen = isDevice && deviceWaiter && data?.waiters.some((w) => w.id === deviceWaiter.id) ? deviceWaiter : null;
   const needWho = isDevice && !chosen;
+  // The fixed cafe tablet keeps its screen on while this screen is open.
+  useScreenWakeLock(isDevice);
 
   const chooseWaiter = (w: { id: string; name: string }) => {
     setDeviceWaiter(w);
@@ -352,6 +383,8 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
       )}
 
+      {!alerts.soundReady && <SoundButton onEnable={alerts.enableSound} />}
+
       {error && (
         <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert" data-waiter-error>
           {error}
@@ -372,6 +405,7 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
           onBack={() => setOrdering(null)}
           onSignedOut={onSignedOut}
           onSent={(orderNumber) => {
+            sentHere.current.add(orderNumber);
             setOrdering(null);
             setSentNotice(t("waiter.newOrder.sent").replace("{number}", orderNumber));
             void load();
@@ -416,6 +450,7 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
                   order={order}
                   busy={busy === order.id}
                   locked={needWho}
+                  flash={flashOrders.has(order.id)}
                   onServed={() => void act(order.id, { action: "served", orderId: order.id })}
                   onPay={() => setPay({ orderIds: [order.id], amount: order.total, title: t("waiter.payOne") })}
                 />
@@ -464,10 +499,16 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
                     onClick={() => {
                       setTableId(table.id);
                       setSentNotice(null);
+                      setAttention((prev) => {
+                        const next = new Set(prev);
+                        next.delete(table.id);
+                        return next;
+                      });
                     }}
                     data-table-tile={table.id}
+                    data-attention={attention.has(table.id) ? "yes" : undefined}
                     data-state={s.state}
-                    className={cn("relative flex h-24 w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 bg-warm-white shadow-soft", TILE[s.state])}
+                    className={cn("relative flex h-24 w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 bg-warm-white shadow-soft", TILE[s.state], attention.has(table.id) && "animate-pulse ring-4 ring-amber-400")}
                   >
                     <span className="text-2xl font-bold text-dark-brown">{table.number}</span>
                     <span className="text-[11px] text-coffee/65">

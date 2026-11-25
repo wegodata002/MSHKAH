@@ -27,8 +27,6 @@ export type StaffLoginResult =
   | { status: 200; body: { ok: true; name: string; role: StaffRole }; session: { staffId: string; sessionVersion: number } }
   | { status: 400; body: { ok: false; code: "INVALID" } }
   | { status: 401; body: { ok: false; code: "WRONG_PIN"; attemptsLeft: number } }
-  /** A right code of the other role (waiter code at the couriers' QR, or the reverse): not signed in, not counted. */
-  | { status: 403; body: { ok: false; code: "WRONG_ROLE"; role: StaffRole } }
   | { status: 429; body: { ok: false; code: "BLOCKED"; retryAfterSeconds: number } };
 
 export async function handleStaffLogin(body: unknown, ip: string, deps: StaffLoginDeps): Promise<StaffLoginResult> {
@@ -39,18 +37,17 @@ export async function handleStaffLogin(body: unknown, ip: string, deps: StaffLog
   const wait = await deps.blockedFor(ip);
   if (wait !== null) return { status: 429, body: { ok: false, code: "BLOCKED", retryAfterSeconds: wait } };
 
-  // A disabled member's code is answered exactly like a wrong code.
+  // A disabled member's code, and a code of the other role at this QR (a waiter's code at the
+  // couriers' QR, or the reverse), are answered exactly like a wrong code and counted: the answer
+  // never tells which role a code belongs to.
   const member = await deps.findActiveByPinHash(deps.hashPin(pin));
-  if (!member) {
+  if (!member || member.role !== audience) {
     const attemptsLeft = await deps.recordFailure(ip);
     if (attemptsLeft <= 0) {
       return { status: 429, body: { ok: false, code: "BLOCKED", retryAfterSeconds: STAFF_LOGIN_LIMITS.windowSeconds } };
     }
     return { status: 401, body: { ok: false, code: "WRONG_PIN", attemptsLeft } };
   }
-
-  // Each QR signs in its own role only. The code is right, so it is not counted as a wrong try.
-  if (member.role !== audience) return { status: 403, body: { ok: false, code: "WRONG_ROLE", role: member.role } };
 
   await deps.clearFailures(ip);
   return {
