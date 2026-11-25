@@ -31,7 +31,7 @@ export function formatClubDate(iso: string, locale: ClubEmailLocale): string {
 
 const CODE_TEXT = {
   he: {
-    subject: "קוד אימות למועדון משכאת",
+    subject: "קוד אימות למועדון משקאת",
     preheader: "קוד חד־פעמי להצטרפות למועדון",
     intro: (m: number) =>
       `הזן את הקוד הבא בדף ההצטרפות כדי לאמת את כתובת המייל שלך. הקוד תקף ל־${m} דקות ולשימוש חד־פעמי בלבד.`,
@@ -89,9 +89,9 @@ ${welcome ? `<p style="margin:0 0 14px;font-size:14px;line-height:1.6;font-weigh
 
 const WELCOME_TEXT = {
   he: {
-    subject: "ברוך הבא למועדון משכאת",
+    subject: "ברוך הבא למועדון משקאת",
     preheader: "החברות שלך פעילה — צפה בכרטיס המועדון",
-    title: (greeting: string) => `ברוך הבא למועדון משכאת${greeting}`,
+    title: (greeting: string) => `ברוך הבא למועדון משקאת${greeting}`,
     active: (ratio: string) => `החברות שלך פעילה. בכל רכישה תצבור <strong>נקודה על כל ₪${ratio}</strong>.`,
     memberNo: "מספר חבר",
     feePaid: "דמי הצטרפות ששולמו",
@@ -105,7 +105,7 @@ const WELCOME_TEXT = {
     cta: "צפייה בכרטיס המועדון",
     terms: "אישרת את תנאי המועדון בעת ההצטרפות.",
     marketing: " הסכמה לקבלת פרסום היא נפרדת ואפשר לשנות אותה בחשבון שלך בכל עת.",
-    textWelcome: "ברוך הבא למועדון משכאת.",
+    textWelcome: "ברוך הבא למועדון משקאת.",
     textEarn: (ratio: string) => `צבירה: נקודה על כל ₪${ratio}`,
     textCard: "כרטיס המועדון",
   },

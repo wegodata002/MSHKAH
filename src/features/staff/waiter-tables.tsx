@@ -9,11 +9,13 @@ import { WaiterNewOrder } from "@/features/staff/waiter-new-order";
 import { SoundButton } from "@/features/staff/sound-button";
 import { useScreenWakeLock, useSeenHighlight, useWorkAlerts } from "@/features/staff/use-work-alerts";
 import { newWaiterWork } from "@/lib/staff/alerts";
-import { summarizeTable, type PaidWith, type TableSummary, type WaiterOrder } from "@/lib/waiter/tables";
+import { tableHasWork, summarizeTable, type PaidWith, type TableSummary, type WaiterOrder } from "@/lib/waiter/tables";
 
 /** How often the waiter screen asks for updates (all waiters see each other's changes). */
 export const WAITER_POLL_MS = 10_000;
 const DEVICE_WAITER_KEY = "mishkat-device-waiter";
+/** "Only tables with work": kept on this device until turned off. */
+const BUSY_ONLY_KEY = "mishkat-waiter-busy-only";
 
 type Data = {
   mode: "personal" | "device";
@@ -270,6 +272,27 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
     return map;
   }, [data]);
   const shownArea = area ?? groups[0]?.area ?? "inside";
+  const [busyOnly, setBusyOnly] = useState(false);
+  useEffect(() => {
+    try {
+      setBusyOnly(window.localStorage.getItem(BUSY_ONLY_KEY) === "1");
+    } catch {
+      // not kept on this device
+    }
+  }, []);
+  const toggleBusyOnly = () => {
+    const next = !busyOnly;
+    setBusyOnly(next);
+    try {
+      if (next) window.localStorage.setItem(BUSY_ONLY_KEY, "1");
+      else window.localStorage.removeItem(BUSY_ONLY_KEY);
+    } catch {
+      // kept for this visit only
+    }
+  };
+  const busyIn = (tables: DineInTable[]) => tables.filter((tb) => tableHasWork(summaries.get(tb.id)!));
+  const areaTables = groups.find((g) => g.area === shownArea)?.tables ?? [];
+  const shownTables = busyOnly ? busyIn(areaTables) : areaTables;
 
   // Fixed tablet: "Who is working now?" (kept on the tablet until changed; must be an active waiter).
   const isDevice = data?.mode === "device";
@@ -472,6 +495,19 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
         </div>
       ) : (
         <>
+          <button
+            type="button"
+            onClick={toggleBusyOnly}
+            aria-pressed={busyOnly}
+            className={cn(
+              "mb-3 inline-flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-semibold",
+              busyOnly ? "border-turquoise bg-turquoise text-warm-white" : "border-beige-dark/40 bg-warm-white text-coffee/70"
+            )}
+            data-busy-only={busyOnly ? "on" : "off"}
+          >
+            <span className={cn("h-2.5 w-2.5 rounded-full", busyOnly ? "bg-warm-white" : "bg-coffee/25")} aria-hidden />
+            {t("waiter.busyOnly")}
+          </button>
           {groups.length > 1 && (
             <div className="mb-4 grid grid-cols-2 gap-1 rounded-xl bg-beige/60 p-1" role="tablist">
               {groups.map((g) => (
@@ -485,12 +521,18 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
                   className={cn("h-11 rounded-lg font-semibold", shownArea === g.area ? "bg-warm-white text-turquoise shadow-soft" : "text-coffee/65")}
                 >
                   {tableAreaName(g.area, locale)}
+                  {busyOnly && <span className="ms-1.5 text-xs opacity-70">{busyIn(g.tables).length}</span>}
                 </button>
               ))}
             </div>
           )}
+          {busyOnly && shownTables.length === 0 && (
+            <p className="rounded-2xl bg-warm-white p-6 text-center text-coffee/60 shadow-soft" data-no-work>
+              {t("waiter.noWork")}
+            </p>
+          )}
           <ul className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5" data-table-grid>
-            {(groups.find((g) => g.area === shownArea)?.tables ?? []).map((table) => {
+            {shownTables.map((table) => {
               const s = summaries.get(table.id)!;
               return (
                 <li key={table.id}>

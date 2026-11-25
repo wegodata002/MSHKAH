@@ -131,11 +131,12 @@ describe("floating buttons fade out while the footer is on screen", () => {
   });
 });
 
-describe("bottom bar: Favorites instead of Account", () => {
-  it("links to /favorites and no longer to /account", () => {
+describe("phone: Favorites in the header (with a count), not in the bottom bar", () => {
+  it("header heart links to /favorites; the bottom bar has no account or favourites link", () => {
     const nav = read("src/components/layout/bottom-nav.tsx");
-    expect(nav).toMatch(/href: "\/favorites", labelKey: "nav\.favorites"/);
+    expect(nav).not.toMatch(/href: "\/favorites"/);
     expect(nav).not.toMatch(/href: "\/account"/);
+    expect(read("src/components/layout/header.tsx")).toContain('href="/favorites" aria-label={t("nav.favorites")}');
     expect(existsSync(resolve(process.cwd(), "src/components/layout/mobile-bottom-nav.tsx"))).toBe(false);
     expect(existsSync(resolve(process.cwd(), "src/app/favorites/page.tsx"))).toBe(true);
   });

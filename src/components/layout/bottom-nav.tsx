@@ -5,10 +5,11 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useHideCustomerChrome } from "@/hooks/useAdminPath";
-import { Home, LayoutGrid, ClipboardList, Heart } from "lucide-react";
+import { Home, LayoutGrid, ClipboardList, Tag } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useT } from "@/components/providers/locale-provider";
-import { useFavorites } from "@/hooks/useFavorites";
+import { OFFERS_HREF } from "@/lib/customer-nav";
+import { useActiveOrderCount } from "@/lib/orders/my-order-views";
 
 const NAV_ITEM_CLASS =
   "relative flex h-[var(--mobile-bottom-nav-height)] min-h-[var(--mobile-bottom-nav-height)] flex-1 flex-col items-center justify-center gap-0.5 px-1";
@@ -17,7 +18,8 @@ export function BottomNav() {
   const pathname = usePathname();
   const hideChrome = useHideCustomerChrome();
   const t = useT();
-  const { count: favoritesCount } = useFavorites();
+  // Orders still in progress on this device: a count only when there is one.
+  const activeOrders = useActiveOrderCount();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -27,13 +29,14 @@ export function BottomNav() {
   if (hideChrome) return null;
   if (!mounted) return null;
 
-  // No cart item here: the cart lives in the header and in the round checkout button.
-  // "Favourites" took the place of "Account" (/account stays reachable from the footer links).
-  const navItems = [
+  // No cart here: the cart is in the header and in the round checkout button. Favourites, the
+  // account and everything else are in the header and the ☰ side menu.
+  const navItems: { href: string; labelKey: string; icon: typeof Home; exact?: boolean; neverActive?: boolean; badge?: number }[] = [
     { href: "/", labelKey: "nav.home", icon: Home, exact: true },
     { href: "/catalog", labelKey: "nav.catalog", icon: LayoutGrid },
-    { href: "/orders", labelKey: "nav.orders", icon: ClipboardList },
-    { href: "/favorites", labelKey: "nav.favorites", icon: Heart, badge: favoritesCount },
+    // Until the offers branch: the menu (never shown as the current page).
+    { href: OFFERS_HREF, labelKey: "nav.offers", icon: Tag, neverActive: true },
+    { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, badge: activeOrders },
   ];
 
   const nav = (
@@ -44,15 +47,17 @@ export function BottomNav() {
     >
       <div className="mobile-bottom-nav__inner">
         {navItems.map((item) => {
-          const isActive = item.exact
-            ? pathname === item.href
-            : pathname.startsWith(item.href);
+          const isActive = item.neverActive
+            ? false
+            : item.exact
+              ? pathname === item.href
+              : pathname.startsWith(item.href);
           const Icon = item.icon;
           const label = t(item.labelKey);
 
           return (
             <Link
-              key={item.href}
+              key={item.labelKey}
               href={item.href}
               className={NAV_ITEM_CLASS}
               aria-current={isActive ? "page" : undefined}

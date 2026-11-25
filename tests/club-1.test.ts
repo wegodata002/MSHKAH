@@ -91,7 +91,7 @@ describe("welcome email", () => {
       accountUrl: "https://example.com/club/me",
       showMarketingConsent: true,
     });
-    expect(mail.html).toContain("ברוך הבא למועדון משכאת, דנה");
+    expect(mail.html).toContain("ברוך הבא למועדון משקאת, דנה");
     expect(mail.html).toContain("נקודה על כל ₪100");
     expect(mail.html).not.toContain("דמי הצטרפות");
     expect(mail.text).toContain("צבירה: נקודה על כל ₪100");

@@ -1,22 +1,23 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { MY_ORDERS_KEEP_MS, MY_ORDERS_MAX } from "@/lib/orders/my-orders-limits";
 
 /**
  * Orders placed (or found) on this device, for "My orders" in the bottom bar. Kept in this browser only
- * (localStorage) for 30 days; holds the tracking link token, never personal details.
+ * (localStorage) for 90 days, up to 60 orders; holds the tracking link token, never personal details.
  */
 export type MyOrderEntry = { token: string; orderNumber: string; savedAt: number };
 
 const STORAGE_KEY = "mishkat-my-orders";
-export const MY_ORDERS_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
-const MAX_ENTRIES = 30;
+export { MY_ORDERS_KEEP_MS };
+const MAX_ENTRIES = MY_ORDERS_MAX;
 const EMPTY: readonly MyOrderEntry[] = [];
 
 let cache: readonly MyOrderEntry[] | null = null;
 const listeners = new Set<() => void>();
 
-/** Newest first, older than 30 days dropped, one entry per order. */
+/** Newest first, older than 90 days dropped, one entry per order. */
 export function pruneMyOrders(entries: unknown, now = Date.now()): MyOrderEntry[] {
   if (!Array.isArray(entries)) return [];
   const seen = new Set<string>();
