@@ -1,6 +1,7 @@
 import { calculateLineTotal } from "@/lib/product-builder/engine";
 import type { PrintLocale, ReceiptItemLine, ReceiptModel } from "@/lib/print-jobs/types";
 import { parsePrintLocale } from "@/lib/print-jobs/ids";
+import { tableDisplayName } from "@/lib/fulfillment/settings";
 import type { FirestoreOrder, FirestoreOrderItem } from "@/types/firestore";
 import type { Order, OrderItem } from "@/types";
 
@@ -73,7 +74,7 @@ export function pickupLabel(locale: PrintLocale): string {
 
 export function fulfillmentLabel(
   locale: PrintLocale,
-  orderType?: "pickup" | "delivery"
+  orderType?: "pickup" | "delivery" | "dine_in"
 ): string {
   return orderType === "delivery" ? COPY[locale].delivery : COPY[locale].pickup;
 }
@@ -163,7 +164,9 @@ type OrderLike = {
   paymentMethod?: string;
   locale?: string;
   createdAt: string;
-  orderType?: "pickup" | "delivery";
+  orderType?: "pickup" | "delivery" | "dine_in";
+  tableArea?: "inside" | "outside";
+  tableNumber?: number;
   deliveryAddress?: string;
   /** "HH:MM" chosen pickup time. */
   pickupTime?: string;
@@ -180,7 +183,12 @@ export function buildReceiptModelFromOrder(
   const discount = order.discount && order.discount > 0 ? order.discount : undefined;
   const subtotal = discount && order.subtotal && order.subtotal > 0 ? order.subtotal : undefined;
   const isDelivery = order.orderType === "delivery";
-  const pickupTime = !isDelivery ? order.pickupTime?.trim() : undefined;
+  // Dine-in: "שולחן 3 · פנים" on the fulfillment line the printer agent already prints (no agent update).
+  const table =
+    order.orderType === "dine_in" && order.tableArea && order.tableNumber
+      ? tableDisplayName({ area: order.tableArea, number: order.tableNumber }, locale)
+      : null;
+  const pickupTime = !isDelivery && !table ? order.pickupTime?.trim() : undefined;
   const address = isDelivery ? order.deliveryAddress?.trim() || undefined : undefined;
   const zone = isDelivery ? order.deliveryZoneName?.trim() || undefined : undefined;
 
@@ -201,9 +209,11 @@ export function buildReceiptModelFromOrder(
     total: order.total,
     paymentLabel: paymentMethodLabel(order.paymentMethod, locale),
     // Time and area ride on fields the printer agent already prints (no agent update needed).
-    pickupLabel: pickupTime
-      ? `${fulfillmentLabel(locale, order.orderType)} · ${pickupTime}`
-      : fulfillmentLabel(locale, order.orderType),
+    pickupLabel: table
+      ? table
+      : pickupTime
+        ? `${fulfillmentLabel(locale, order.orderType)} · ${pickupTime}`
+        : fulfillmentLabel(locale, order.orderType),
     orderType: isDelivery ? "delivery" : "pickup",
     deliveryAddress: address && zone ? `${zone} — ${address}` : address ?? zone,
     createdTime: time,
@@ -229,6 +239,8 @@ export function buildReceiptModelFromFirestoreOrder(
       locale: data.locale,
       createdAt: createdAtIso,
       orderType: data.orderType,
+      tableArea: data.tableArea,
+      tableNumber: data.tableNumber,
       deliveryAddress: data.deliveryAddress,
       pickupTime: data.pickupTime,
       deliveryZoneName: data.deliveryZoneName,

@@ -13,6 +13,7 @@ import {
   type AdminQrLink,
 } from "@/lib/admin-qr-links";
 import { createQrPngDataUrl } from "@/lib/admin-qr-image";
+import { TableQrSection } from "@/features/admin/table-qr-section";
 
 function QrLinkCard({ link, index }: { link: AdminQrLink; index: number }) {
   const t = useT();
@@ -121,6 +122,7 @@ export function QrLinksAdmin() {
     <div className="space-y-6">
       <AdminPageHeader title={t("admin.qr.title")} subtitle={t("admin.qr.subtitle")} />
       <QrLinksGrid />
+      <TableQrSection />
     </div>
   );
 }

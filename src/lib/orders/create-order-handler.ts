@@ -53,6 +53,8 @@ export type CreateOrderResponse =
 export const ORDER_RATE_LIMITS = {
   perPhone: { windowSeconds: 60 * 60, limit: 30 },
   perIp: { windowSeconds: 60 * 60, limit: 100 },
+  /** Table orders without a phone are limited per table instead. */
+  perTable: { windowSeconds: 60 * 60, limit: 20 },
 } as const;
 
 function couponRefused(reason: "login_required" | "invalid" | "used" | "expired"): CreateOrderResponse {
@@ -68,11 +70,19 @@ export async function handleCreateOrder(
   if (!parsed.success) return { status: 400, body: { ok: false, code: "INVALID_REQUEST" } };
   const request = parsed.data;
   const digits = phoneKey(request.customer.phone);
-  if (digits.length < 9) return { status: 400, body: { ok: false, code: "INVALID_REQUEST" } };
+  // A table order may come without a phone (name only); a phone that is given must be valid.
+  const phoneOptional = request.fulfillment.type === "dine_in" && digits.length === 0;
+  if (!phoneOptional && digits.length < 9) return { status: 400, body: { ok: false, code: "INVALID_REQUEST" } };
 
   try {
-    const { perPhone, perIp } = ORDER_RATE_LIMITS;
-    const phoneOk = await deps.rateLimit(`create-order|phone|${digits}`, perPhone.windowSeconds, perPhone.limit);
+    const { perPhone, perIp, perTable } = ORDER_RATE_LIMITS;
+    const phoneOk = phoneOptional
+      ? await deps.rateLimit(
+          `create-order|table|${request.fulfillment.type === "dine_in" ? request.fulfillment.tableId : ""}`,
+          perTable.windowSeconds,
+          perTable.limit
+        )
+      : await deps.rateLimit(`create-order|phone|${digits}`, perPhone.windowSeconds, perPhone.limit);
     const ipOk = !ip || (await deps.rateLimit(`create-order|ip|${ip}`, perIp.windowSeconds, perIp.limit));
     if (!phoneOk || !ipOk) return { status: 429, body: { ok: false, code: "RATE_LIMITED" } };
 

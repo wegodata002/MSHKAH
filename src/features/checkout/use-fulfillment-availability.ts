@@ -4,11 +4,13 @@ import { useEffect, useMemo, useState } from "react";
 import { useSettings } from "@/hooks/useSettings";
 import {
   deliveryAvailability,
+  dineInAvailability,
   pickupAvailability,
   type DeliveryAvailability,
+  type DineInAvailability,
   type PickupAvailability,
 } from "@/lib/fulfillment/availability";
-import { DEFAULT_FULFILLMENT, type DeliveryZone } from "@/lib/fulfillment/settings";
+import { DEFAULT_FULFILLMENT, type DeliveryZone, type DineInTable } from "@/lib/fulfillment/settings";
 import { DEFAULT_OPENING_HOURS, type OpeningHours } from "@/lib/settings/opening-hours";
 
 /** What can be ordered right now, from the live settings. Re-checked every 30 seconds. */
@@ -22,6 +24,10 @@ export type FulfillmentNow = {
   storePhone: string;
   /** The weekly opening hours in use (settings, or the default week). */
   openingHours: OpeningHours;
+  /** Table orders right now ("Dine-in active", tables, opening hours); null while the settings load. */
+  dineIn: DineInAvailability | null;
+  /** The tables saved in the settings (read only). */
+  tables: DineInTable[];
 };
 
 const REFRESH_MS = 30_000;
@@ -61,6 +67,8 @@ export function useFulfillmentAvailability(): FulfillmentNow {
       zones: delivery ? fulfillment.delivery.zones : [],
       storePhone: settings?.phone?.trim() ?? "",
       openingHours: hours,
+      dineIn: settings ? dineInAvailability(fulfillment, hours, now) : null,
+      tables: settings ? fulfillment.dineIn.tables : [],
     };
   }, [settings, loading, now, gaveUpWaiting]);
 }

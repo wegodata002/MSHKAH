@@ -2,6 +2,7 @@ import { BRAND_COLORS } from "@/lib/brand";
 import { getPublicSiteUrl } from "@/lib/email/config";
 import type { OrderChange } from "@/lib/email/significant-diff";
 import { formatJerusalemDateTime } from "@/lib/orders/time";
+import { tableDisplayName } from "@/lib/fulfillment/settings";
 
 const COLORS = {
   primary: BRAND_COLORS.primary,
@@ -147,7 +148,9 @@ export type OrderEmailBase = {
   total: number;
   paymentMethod?: string;
   paymentStatus?: string;
-  orderType?: "pickup" | "delivery";
+  orderType?: "pickup" | "delivery" | "dine_in";
+  tableArea?: "inside" | "outside";
+  tableNumber?: number;
   pickupTime?: string;
   deliveryZoneName?: string;
   deliveryAddress?: string;
@@ -180,8 +183,9 @@ function paymentLabel(method?: string): string {
   return method;
 }
 
-function fulfillmentLabel(type?: "pickup" | "delivery"): string {
+function fulfillmentLabel(type?: "pickup" | "delivery" | "dine_in"): string {
   if (type === "delivery") return "משלוח";
+  if (type === "dine_in") return "ישיבה במקום";
   return "איסוף עצמי מהעסק";
 }
 
@@ -242,7 +246,8 @@ function customerBlock(payload: OrderEmailBase, extraRows?: string): string {
         <div><strong>תאריך:</strong> ${escapeHtml(date)}</div>
         ${time ? `<div><strong>שעה:</strong> ${escapeHtml(time)}</div>` : ""}
         <div><strong>סוג:</strong> ${escapeHtml(fulfillmentLabel(payload.orderType))}</div>
-        ${payload.orderType !== "delivery" && payload.pickupTime ? `<div><strong>שעת איסוף:</strong> ${escapeHtml(payload.pickupTime)}</div>` : ""}
+        ${payload.orderType === "dine_in" && payload.tableArea && payload.tableNumber ? `<div style="font-size:18px;"><strong>${escapeHtml(tableDisplayName({ area: payload.tableArea, number: payload.tableNumber }, "he"))}</strong></div>` : ""}
+        ${payload.orderType === "pickup" && payload.pickupTime ? `<div><strong>שעת איסוף:</strong> ${escapeHtml(payload.pickupTime)}</div>` : ""}
         ${payload.orderType === "delivery" && payload.deliveryZoneName ? `<div><strong>אזור:</strong> ${escapeHtml(payload.deliveryZoneName)}</div>` : ""}
         ${payload.orderType === "delivery" && payload.deliveryAddress ? `<div><strong>כתובת:</strong> ${escapeHtml(payload.deliveryAddress)}</div>` : ""}
         <div><strong>תשלום:</strong> ${escapeHtml(paymentLabel(payload.paymentMethod))}</div>

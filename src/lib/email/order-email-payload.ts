@@ -43,6 +43,8 @@ export function firestoreOrderToEmailPayload(
     paymentMethod: data.paymentMethod,
     paymentStatus: data.paymentStatus,
     orderType: data.orderType,
+    tableArea: data.tableArea,
+    tableNumber: data.tableNumber,
     pickupTime: data.pickupTime,
     deliveryZoneName: data.deliveryZoneName,
     deliveryAddress: data.deliveryAddress,

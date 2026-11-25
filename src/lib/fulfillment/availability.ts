@@ -1,6 +1,6 @@
 import { OPENING_DAY_KEYS, type OpeningHours } from "@/lib/settings/opening-hours";
 import { BUSINESS_TIMEZONE } from "@/lib/orders/status";
-import type { DeliveryZone, FulfillmentSettings } from "./settings";
+import type { DeliveryZone, DineInTable, FulfillmentSettings } from "./settings";
 
 /**
  * When pickup and delivery are available, from the weekly schedule.
@@ -256,6 +256,32 @@ export function deliveryAvailability(
   const window = windowAt(hours, at, options);
   if (window) return { available: true, until: window.end };
   return { available: false, reason: "closed", nextAt: nextOpeningAfter(hours, at, options) };
+}
+
+export type DineInAvailability =
+  | { available: true; until: Date }
+  | { available: false; reason: "disabled" | "no_tables" | "closed"; nextAt: Date | null };
+
+/**
+ * Whether a table order can be placed at `at`: "Dine-in active" switched on, at least one table,
+ * and the cafe open right now (its opening hours, no cut before closing).
+ */
+export function dineInAvailability(
+  settings: FulfillmentSettings,
+  openingHours: OpeningHours,
+  at: Date,
+  timeZone = BUSINESS_TIMEZONE
+): DineInAvailability {
+  if (!settings.dineIn.enabled) return { available: false, reason: "disabled", nextAt: null };
+  if (settings.dineIn.tables.length === 0) return { available: false, reason: "no_tables", nextAt: null };
+  const window = windowAt(openingHours, at, { timeZone });
+  if (window) return { available: true, until: window.end };
+  return { available: false, reason: "closed", nextAt: nextOpeningAfter(openingHours, at, { timeZone }) };
+}
+
+/** The table with this id among the tables saved in the settings, or null. */
+export function findTable(settings: FulfillmentSettings, tableId: string): DineInTable | null {
+  return settings.dineIn.tables.find((t) => t.id === tableId) ?? null;
 }
 
 export type DeliveryQuote =
