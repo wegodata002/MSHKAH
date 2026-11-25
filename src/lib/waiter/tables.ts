@@ -23,6 +23,8 @@ export type WaiterOrder = {
   servedBy: string | null;
   servedAt: string | null;
   paidBy: string | null;
+  /** Entered by a waiter for the guest ("רנא" / "רנא · טאבלט בר"); null when the guest ordered. */
+  createdBy: string | null;
   createdAt: string;
 };
 
@@ -44,6 +46,7 @@ export type WaiterOrderInput = {
   paidVia?: string;
   paidBy?: string;
   servedBy?: string;
+  createdBy?: string;
   readyAt?: string | null;
   deliveredAt?: string | null;
   createdAt?: string;
@@ -90,6 +93,7 @@ export function toWaiterOrder(order: WaiterOrderInput): WaiterOrder {
     servedBy: order.servedBy?.trim() || null,
     servedAt: order.deliveredAt ?? null,
     paidBy: paid ? order.paidBy?.trim() || null : null,
+    createdBy: order.createdBy?.trim() || null,
     createdAt: order.createdAt ?? "",
   };
 }

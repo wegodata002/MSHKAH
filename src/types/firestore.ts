@@ -140,6 +140,9 @@ export interface FirestoreOrder {
   paidVia?: "cash_counter" | "courier_cash" | "courier_card" | "waiter_cash" | "waiter_card";
   /** Dine-in: who marked it served ("רנא" or "רנא · טאבלט בר"). */
   servedBy?: string;
+  /** Entered by a waiter for the guest. */
+  createdBy?: string;
+  source?: "waiter";
   /** Dine-in: "YYYY-MM-DD" (Jerusalem) the order was placed; the waiter screen lists today's. */
   serviceDate?: string;
   /** Delivery: the courier (staffMembers id) and a copy of the name for the admin. Never sent to the customer. */

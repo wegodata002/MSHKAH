@@ -172,6 +172,9 @@ export type ServerOrderDraft = {
   pricedBy: "server";
   /** Club member identified from the club session on the server (points go to this member). */
   loyalty?: { memberId: string };
+  /** Entered by a waiter for the guest: who ("רנא" / "רנא · טאבלט בר") and from where. */
+  createdBy?: string;
+  source?: "waiter";
 };
 
 export const TEST_ORDER_NOTE = "TEST — HYP payment verification. Do not include in sales reports.";
@@ -219,6 +222,11 @@ export function buildServerOrder(
     orderNumber: string;
     /** Rate (0–1) of a personal club code the server already checked; codes from the fixed table otherwise. */
     personalCouponRate?: number;
+    /**
+     * Table orders entered by a waiter only: still accepted this many minutes after closing time
+     * (for guests already seated). Customers never get this.
+     */
+    staffGraceMinutes?: number;
   }
 ): { ok: true; order: ServerOrderDraft } | { ok: false; error: OrderBuildError } {
   const locale = request.locale;
@@ -334,7 +342,14 @@ export function buildServerOrder(
   } else {
     // Dine-in: "Dine-in active" on, a table saved in the settings, and the cafe open now.
     const availability = dineInAvailability(ctx.fulfillment, ctx.openingHours, ctx.now);
-    if (!availability.available) {
+    // A waiter may still enter an order up to N minutes after closing: open N minutes ago = closed less than N minutes.
+    const grace = ctx.staffGraceMinutes ?? 0;
+    const inStaffGrace =
+      !availability.available &&
+      availability.reason === "closed" &&
+      grace > 0 &&
+      dineInAvailability(ctx.fulfillment, ctx.openingHours, new Date(ctx.now.getTime() - grace * 60_000)).available;
+    if (!availability.available && !inStaffGrace) {
       return {
         ok: false,
         error: {
