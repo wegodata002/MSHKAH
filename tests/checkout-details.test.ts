@@ -163,15 +163,23 @@ describe("home banners", () => {
     expect(banner).toMatch(/blur-2xl/);
     expect(banner).not.toMatch(/scale\(\$\{zoom/);
   });
+
+  it("limited height, full width: phone a quarter of the screen (150–220px), desktop up to 420px", () => {
+    const banner = read("src/features/catalog/banner-hero.tsx");
+    expect(banner).toContain("h-[clamp(150px,25svh,220px)] w-full");
+    expect(banner).toContain("aspect-[14/5] max-h-[420px] w-full");
+  });
 });
 
 describe("category image", () => {
-  it("a small strip at the top of the category when there is an image; nothing otherwise; hint in the admin", () => {
+  it("a small round picture beside the category name (no strip); hint in the admin", () => {
     const section = read("src/features/catalog/category-product-section.tsx");
     expect(section).toContain("getCategoryHeroImage(category.image, category.id)");
-    expect(section).toContain("{stripImage && (");
-    expect(section).toContain("data-category-strip");
+    expect(section).toContain("data-category-thumb");
+    expect(section).toMatch(/h-10 w-10 shrink-0 overflow-hidden rounded-full/);
+    expect(section).not.toContain("data-category-strip");
     expect(read("src/features/admin/categories-admin.tsx")).toContain('t("admin.categories.coverImageHint")');
+    expect(read("src/data/admin-translations.ts")).toContain('"admin.categories.coverImageHint": "מוצג כתמונה קטנה ליד שם הקטגוריה ובתפריט ה-PDF."');
   });
 });
 

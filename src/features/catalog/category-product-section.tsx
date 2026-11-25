@@ -66,8 +66,8 @@ export function CategoryProductSection({
   if (count === 0) return null;
 
   const Icon = iconMap[category.icon] ?? Coffee;
-  // The category image from the admin: a small, quiet strip above the heading. No image → nothing.
-  const stripImage = getCategoryHeroImage(category.image, category.id);
+  // The category image from the admin: a small round picture beside the name, in the heading row.
+  const thumb = getCategoryHeroImage(category.image, category.id);
 
   return (
     <section
@@ -76,25 +76,25 @@ export function CategoryProductSection({
       aria-labelledby={`category-title-${category.id}`}
       className="pt-6 md:pt-8"
     >
-      {stripImage && (
-        <div className="relative mb-3 h-16 overflow-hidden rounded-2xl md:h-20" data-category-strip={category.id}>
-          <Image
-            src={stripImage}
-            alt=""
-            aria-hidden
-            fill
-            loading="lazy"
-            unoptimized={stripImage.includes("firebasestorage")}
-            className="object-cover"
-            sizes="(max-width: 1280px) 100vw, 1200px"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-cream/50 to-transparent" />
-        </div>
-      )}
       <div className="mb-3 flex items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
-          <Icon className="h-5 w-5" strokeWidth={1.75} />
-        </span>
+        {thumb ? (
+          <span className="relative h-10 w-10 shrink-0 overflow-hidden rounded-full ring-1 ring-beige-dark/20" data-category-thumb={category.id}>
+            <Image
+              src={thumb}
+              alt=""
+              aria-hidden
+              fill
+              loading="lazy"
+              unoptimized={thumb.includes("firebasestorage")}
+              className="object-cover"
+              sizes="40px"
+            />
+          </span>
+        ) : (
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
+            <Icon className="h-5 w-5" strokeWidth={1.75} />
+          </span>
+        )}
         <div className="min-w-0">
           <h2 id={`category-title-${category.id}`} className="heading-section" dir={localized.dir}>
             {localized.name}
