@@ -196,21 +196,37 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         ),
       };
     }
-    case "UPDATE_CONFIGURED_ITEM":
+    case "UPDATE_CONFIGURED_ITEM": {
+      // Edit of a line already in the cart (pen in the cart, checkout summary, assistant).
+      const target = state.items.find((item) => item.lineId === action.lineId);
+      if (!target) return state;
+      const updated: CartItem = {
+        ...target,
+        selections: action.selections,
+        unitPrice: action.unitPrice,
+        quantity: action.quantity,
+        notes: action.notes,
+      };
+      // Now the same as another line (product + add-ons + note)? Merge into the edited line.
+      const fingerprint = selectionsFingerprint(updated.product.id, updated.selections, updated.notes);
+      const twin = state.items.find(
+        (item) =>
+          item.lineId !== action.lineId &&
+          selectionsFingerprint(item.product.id, item.selections, item.notes) === fingerprint
+      );
       return {
         ...state,
-        items: state.items.map((item) =>
-          item.lineId === action.lineId
-            ? {
-                ...item,
-                selections: action.selections,
-                unitPrice: action.unitPrice,
-                quantity: action.quantity,
-                notes: action.notes,
-              }
-            : item
-        ),
+        items: state.items
+          .filter((item) => item !== twin)
+          .map((item) =>
+            item.lineId === action.lineId
+              ? twin
+                ? { ...updated, quantity: updated.quantity + twin.quantity }
+                : updated
+              : item
+          ),
       };
+    }
     case "HYDRATE": {
       // Never trust a stored rate: recompute it from the coupon table.
       // Unknown codes are dropped; an empty cart never restores a coupon.

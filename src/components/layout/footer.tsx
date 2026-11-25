@@ -5,6 +5,7 @@ import { Phone, MapPin, MessageCircle, Clock } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useSettings } from "@/hooks/useSettings";
+import { useFloatingButtonsFooter } from "@/hooks/useFooterInView";
 import { BRAND } from "@/lib/brand";
 import { openingHoursText } from "@/lib/settings/opening-hours";
 import { whatsappUrl } from "@/lib/assistant/fulfillment-answers";
@@ -13,6 +14,7 @@ export function SiteFooter() {
   const t = useT();
   const { locale } = useLocale();
   const { settings } = useSettings();
+  const { shortPage } = useFloatingButtonsFooter();
 
   const phone = settings?.phone ?? "";
   const address = settings?.address ?? "";
@@ -120,6 +122,9 @@ export function SiteFooter() {
             © {new Date().getFullYear()} {settings?.storeName ?? BRAND.name}. {t("footer.rights")}
           </p>
         </div>
+        {/* Short page (no scrolling): the floating buttons stay, so keep room for them under the text.
+            76px clears them: phones/tablets 12+56px above the bottom bar, desktop 24+56px minus pb-3. */}
+        {shortPage && <div data-fab-spacer aria-hidden className="h-[4.75rem]" />}
       </div>
     </footer>
   );

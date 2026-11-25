@@ -7,7 +7,7 @@ import { useFulfillmentAvailability } from "@/features/checkout/use-fulfillment-
 import { describeNext } from "@/features/checkout/describe-next";
 import { homeAvailabilityStatus } from "./home-availability";
 
-/** Home page: one short line with what can be ordered now (under the banner, above the categories). */
+/** Home page and /catalog: one short line with what can be ordered now (above the categories). */
 export function AvailabilityPill() {
   const t = useT();
   const { locale } = useLocale();

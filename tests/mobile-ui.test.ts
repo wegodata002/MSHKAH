@@ -105,14 +105,19 @@ describe("floating buttons fade out while the footer is on screen", () => {
       expect(src, file).toMatch(/footerInView && "pointer-events-none"|\(panelOpen \|\| footerInView\) && "pointer-events-none"/);
     }
     const hook = read("src/hooks/useFooterInView.ts");
-    expect(hook).toMatch(/IntersectionObserver/);
     expect(hook).toMatch(/\[data-site-footer\]/);
-    // Short pages (footer on screen from the start): the buttons still show until the customer scrolls.
-    expect(hook).toMatch(/window\.scrollY > 0/);
-    expect(hook).toMatch(/return inView && scrolled;/);
+    // Page that scrolls: hidden only after scrolling down with the footer on screen.
+    expect(hook).toMatch(/const hide = !shortPage && footerOnScreen && window\.scrollY > 0;/);
+    // "Short" ignores the footer's own room for the buttons, so adding it cannot flip the decision.
+    expect(hook).toMatch(/scrollHeight - \(spacer\?\.offsetHeight \?\? 0\)/);
   });
 
-  it("no extra room is kept at the bottom of the footer for the buttons", () => {
+  it("short page: the buttons stay and the footer keeps room for them instead", () => {
+    const footer = read("src/components/layout/footer.tsx");
+    expect(footer).toMatch(/\{shortPage && <div data-fab-spacer aria-hidden className="h-\[4\.75rem\]" \/>\}/);
+  });
+
+  it("pages that scroll keep no extra room at the bottom of the footer", () => {
     const css = read("src/app/globals.css");
     expect(css).toMatch(
       /\[data-site-footer\] \{\s*padding-bottom: calc\(var\(--mobile-bottom-nav-height\) \+ env\(safe-area-inset-bottom, 0px\) \+ 0\.5rem\);/

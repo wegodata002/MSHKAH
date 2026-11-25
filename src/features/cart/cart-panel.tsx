@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Minus, Pencil, Plus, Trash2, ShoppingBag, Tag, ArrowRight, X } from "lucide-react";
+import { Minus, Plus, Trash2, ShoppingBag, Tag, ArrowRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPrice } from "@/lib/utils";
@@ -12,11 +12,9 @@ import { useT } from "@/components/providers/locale-provider";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
 import { ProductImage } from "@/components/catalog/product-image";
-import { AddonsWizard } from "@/features/catalog/addons-wizard";
-import { useProductBuilderConfig } from "@/hooks/useModifiers";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
 import type { CartItem } from "@/types";
-import type { ProductBuilderConfig } from "@/types/modifiers";
+import { EditLineButton, useCartLineEditor } from "@/features/cart/cart-line-editor";
 import { FulfillmentNote } from "@/features/checkout/fulfillment-note";
 import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
 import { couponMessageKey } from "@/lib/orders/coupons";
@@ -31,13 +29,11 @@ function CartLineItem({
   item: CartItem;
   onRemove: () => void;
   onUpdateQuantity: (qty: number) => void;
-  onEdit?: (config: ProductBuilderConfig) => void;
+  onEdit?: (item: CartItem) => void;
   compact?: boolean;
 }) {
   const t = useT();
   const localized = useLocalizedProduct(item.product);
-  const { config: modifierConfig, loading: loadingModifiers } =
-    useProductBuilderConfig(onEdit ? item.product.id : null);
 
   return (
     <motion.div
@@ -66,17 +62,7 @@ function CartLineItem({
             </h4>
             <div className="flex shrink-0 items-center gap-1">
               {onEdit && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (modifierConfig) onEdit(modifierConfig);
-                  }}
-                  disabled={loadingModifiers || !modifierConfig}
-                  className="rounded-md p-1.5 text-coffee/45 transition-colors hover:bg-beige/40 hover:text-turquoise"
-                  aria-label={t("cart.editItem")}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </button>
+                <EditLineButton item={item} onEdit={onEdit} className="rounded-md p-1.5 hover:bg-beige/40" />
               )}
               <button
                 type="button"
@@ -139,7 +125,6 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
     items,
     removeItem,
     updateQuantity,
-    updateConfiguredItem,
     subtotal,
     discount,
     total,
@@ -150,10 +135,8 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
-  const [editing, setEditing] = useState<{
-    item: CartItem;
-    config: ProductBuilderConfig;
-  } | null>(null);
+  // Pen on every line: opens the product window with the line's add-ons, quantity and note.
+  const { edit, editor } = useCartLineEditor();
 
   const handleCoupon = async () => {
     if (!couponInput.trim()) return;
@@ -205,11 +188,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
                   compact={compact}
                   onRemove={() => removeItem(item.lineId)}
                   onUpdateQuantity={(qty) => updateQuantity(item.lineId, qty)}
-                  onEdit={
-                    item.configurable || item.selections.length > 0
-                      ? (config) => setEditing({ item, config })
-                      : undefined
-                  }
+                  onEdit={edit}
                 />
               ))}
             </div>
@@ -293,28 +272,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
         </div>
       )}
 
-      {editing && (
-        <AddonsWizard
-          open
-          onOpenChange={(nextOpen) => {
-            if (!nextOpen) setEditing(null);
-          }}
-          product={editing.item.product}
-          config={editing.config}
-          quantity={editing.item.quantity}
-          initialSelections={editing.item.selections}
-          mode="edit"
-          onConfirm={({ selections, unitPrice }) => {
-            updateConfiguredItem(editing.item.lineId, {
-              selections,
-              unitPrice,
-              quantity: editing.item.quantity,
-              notes: editing.item.notes,
-            });
-            setEditing(null);
-          }}
-        />
-      )}
+      {editor}
     </div>
   );
 }
