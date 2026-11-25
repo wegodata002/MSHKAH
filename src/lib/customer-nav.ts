@@ -1,5 +1,2 @@
-/**
- * "Offers" in the customer menus. Until the offers branch sorts them, it leads to the menu
- * (the old "/#offers" pointed to nothing on the home page).
- */
-export const OFFERS_HREF = "/catalog";
+/** "Offers" in the customer menus: the offers page (products chosen in the admin, in its order). */
+export const OFFERS_HREF = "/offers";

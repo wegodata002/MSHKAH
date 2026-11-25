@@ -14,6 +14,7 @@ import { DEFAULT_OPENING_HOURS, openingHoursText, resolveOpeningHours } from "@/
 import { normalizeFulfillmentSettings } from "@/lib/fulfillment/settings";
 import { ASSISTANT_DOC_ID, type AssistantContext } from "@/lib/assistant/types";
 import { buildAssistantContext } from "@/lib/assistant/build-context";
+import { getPopularity } from "@/lib/catalog/admin/popularity-store";
 
 export async function loadAssistantContext(locale: Locale): Promise<AssistantContext> {
   const db = getAdminDb();
@@ -59,8 +60,14 @@ export async function loadAssistantContext(locale: Locale): Promise<AssistantCon
     })
     .filter((b) => b.title);
 
+  // Real best sellers for "most popular"; without them the manual "popular" pins still work.
+  const popularRanking = await getPopularity(db)
+    .then((p) => p.ranking)
+    .catch(() => [] as string[]);
+
   return buildAssistantContext({
     locale,
+    popularRanking,
     products,
     categories,
     config,

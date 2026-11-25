@@ -22,8 +22,7 @@ import { MobileMenuDrawer } from "@/components/layout/mobile-menu-drawer";
 const NAV_LINKS = [
   { href: "/", labelKey: "nav.home", exact: true },
   { href: "/catalog", labelKey: "nav.catalog" },
-  // Until the offers branch: the menu. Never shown as the current page (it shares the menu link).
-  { href: OFFERS_HREF, labelKey: "nav.offers", neverActive: true },
+  { href: OFFERS_HREF, labelKey: "nav.offers" },
   { href: "/favorites", labelKey: "nav.favorites", count: "favorites" },
   { href: "/orders", labelKey: "nav.orders", count: "orders" },
 ] as const;

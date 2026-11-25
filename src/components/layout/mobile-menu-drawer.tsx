@@ -58,7 +58,7 @@ export function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: ()
   const links: DrawerLink[] = [
     { href: "/", labelKey: "nav.home", icon: Home, exact: true },
     { href: "/catalog", labelKey: "nav.catalog", icon: LayoutGrid },
-    { href: OFFERS_HREF, labelKey: "nav.offers", icon: Tag, neverActive: true },
+    { href: OFFERS_HREF, labelKey: "nav.offers", icon: Tag },
     { href: "/favorites", labelKey: "nav.favorites", icon: Heart, count: favorites },
     { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, count: activeOrders },
     { href: "/account", labelKey: "nav.accountClub", icon: Star },

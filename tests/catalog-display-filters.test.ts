@@ -39,9 +39,10 @@ const menu = [
 ];
 
 describe("applyDisplayFilters (customer catalog)", () => {
-  it("default / popular sort is identical to sortProducts", () => {
+  it("default sort is identical to sortProducts; 'popular' follows the sales ranking, the rest in menu order", () => {
     expect(ids(applyDisplayFilters(menu, undefined, "he"))).toEqual(ids(sortProducts(menu)));
-    expect(ids(applyDisplayFilters(menu, { sortBy: "popular" }, "he"))).toEqual(ids(sortProducts(menu)));
+    const ranked = menu.map((p) => (p.id === "salad" ? { ...p, popularRank: 0 } : p.id === "espresso" ? { ...p, popularRank: 1 } : p));
+    expect(ids(applyDisplayFilters(ranked, { sortBy: "popular" }, "he"))).toEqual(["salad", "espresso", "cake", "latte"]);
   });
 
   it("'menu' sorts by the admin's sortOrder only (popular items are not pulled to the top)", () => {

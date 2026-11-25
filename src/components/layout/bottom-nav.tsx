@@ -34,8 +34,7 @@ export function BottomNav() {
   const navItems: { href: string; labelKey: string; icon: typeof Home; exact?: boolean; neverActive?: boolean; badge?: number }[] = [
     { href: "/", labelKey: "nav.home", icon: Home, exact: true },
     { href: "/catalog", labelKey: "nav.catalog", icon: LayoutGrid },
-    // Until the offers branch: the menu (never shown as the current page).
-    { href: OFFERS_HREF, labelKey: "nav.offers", icon: Tag, neverActive: true },
+    { href: OFFERS_HREF, labelKey: "nav.offers", icon: Tag },
     { href: "/orders", labelKey: "nav.orders", icon: ClipboardList, badge: activeOrders },
   ];
 

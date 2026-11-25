@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Loader2, Pencil, Plus, RotateCcw, Save, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Eye, Loader2, Pencil, Plus, RotateCcw, Save, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SortableList } from "@/components/admin/sortable-list";
@@ -17,6 +17,7 @@ import { LocalizedEditor } from "@/features/admin/assistant-manager/localized-ed
 import { SuggestedQuestionDialog } from "@/features/admin/assistant-manager/question-dialog";
 import { QuickActionDialog } from "@/features/admin/assistant-manager/quick-action-dialog";
 import { resolveAssistantIcon } from "@/lib/icons/assistant-icons";
+import { moveOffer } from "@/lib/catalog/offers";
 import {
   subscribeToAssistantConfig,
   updateAssistantConfig,
@@ -415,10 +416,57 @@ export function AssistantManagerAdmin() {
           </Card>
 
           <Card title={t("admin.assistant.featuredProducts")} description={t("admin.assistant.featuredProductsHint")}>
+            {/* The "Offers" page shows them in this order. */}
+            {config.featuredProductIds.length > 0 && (
+              <div className="mb-3" data-offer-order>
+                <p className="mb-1.5 text-sm font-semibold">{t("admin.assistant.offersOrder")}</p>
+                <ol className="space-y-1.5">
+                  {config.featuredProductIds.map((id, index) => {
+                    const product = products.find((p) => p.id === id);
+                    const last = index === config.featuredProductIds.length - 1;
+                    return (
+                      <li key={id} className="flex items-center gap-2 rounded-xl border border-beige-dark/15 bg-warm-white px-3 py-2 dark:bg-white/5" data-offer-item={id}>
+                        <span className="w-5 text-center text-xs font-bold text-coffee/45">{index + 1}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm">{product ? product.name_he || product.name_en : t("admin.assistant.offerMissing")}</span>
+                        <button
+                          type="button"
+                          disabled={index === 0}
+                          onClick={() => updateConfig((current) => ({ ...current, featuredProductIds: moveOffer(current.featuredProductIds, id, -1) }))}
+                          aria-label={t("admin.assistant.moveUp")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-beige-dark/25 disabled:opacity-30"
+                          data-offer-up
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={last}
+                          onClick={() => updateConfig((current) => ({ ...current, featuredProductIds: moveOffer(current.featuredProductIds, id, 1) }))}
+                          aria-label={t("admin.assistant.moveDown")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-beige-dark/25 disabled:opacity-30"
+                          data-offer-down
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updateConfig((current) => ({ ...current, featuredProductIds: current.featuredProductIds.filter((x) => x !== id) }))}
+                          aria-label={t("admin.assistant.remove")}
+                          className="flex h-8 w-8 items-center justify-center rounded-lg text-red-600 hover:bg-red-50"
+                          data-offer-remove
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              </div>
+            )}
             <details>
               <summary className="cursor-pointer text-sm font-semibold">{t("admin.assistant.chooseFeaturedProducts")}</summary>
               <div className="mt-3 max-h-72 overflow-y-auto rounded-xl border border-beige-dark/15 p-2">
-                {products.slice(0, 100).map((product) => (
+                {products.map((product) => (
                   <label key={product.id} className="flex items-center gap-2 rounded-lg px-2 py-2 hover:bg-beige/30">
                     <input
                       type="checkbox"

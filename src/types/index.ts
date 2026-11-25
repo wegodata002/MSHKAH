@@ -53,6 +53,8 @@ export interface Product {
   hidden?: boolean;
   /** Temporary HYP / QA item. Exclude from real sales stats when supported. */
   isTestProduct?: boolean;
+  /** Browser only: place in "most popular" (real sales, then manual pins); none = not popular. */
+  popularRank?: number;
   createdAt: string;
   updatedAt: string;
 }
