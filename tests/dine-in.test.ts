@@ -54,7 +54,7 @@ function request(patch: Partial<CreateOrderRequest> = {}): CreateOrderRequest {
   } as CreateOrderRequest;
 }
 const build = (req: CreateOrderRequest, fulfillment = DINE_IN, now = TUESDAY_NOON) =>
-  buildServerOrder(req, { products: PRODUCTS, fulfillment, openingHours: DEFAULT_OPENING_HOURS, now, orderNumber: "MC-2026-TABLE001" });
+  buildServerOrder(req, { products: PRODUCTS, modifierConfigs: new Map(), fulfillment, openingHours: DEFAULT_OPENING_HOURS, now, orderNumber: "MC-2026-TABLE001" });
 
 describe("the saved tables, exactly as they are", () => {
   it("settings keep the ids outside-1..3 and inside-4..8", () => {
@@ -119,6 +119,7 @@ describe("server: table orders", () => {
     const deps: CreateOrderDeps = {
       now: () => TUESDAY_NOON,
       loadProducts: async (ids) => new Map(ids.map((id) => [id, PRODUCTS.get(id)])),
+      loadModifierConfigs: async () => new Map(),
       loadContext: async () => ({ fulfillment: DINE_IN, openingHours: DEFAULT_OPENING_HOURS }),
       rateLimit: async (key) => {
         keys.push(key);

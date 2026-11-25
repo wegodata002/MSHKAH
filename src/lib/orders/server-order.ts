@@ -14,26 +14,29 @@ import {
 import { zoneName, type FulfillmentSettings } from "@/lib/fulfillment/settings";
 import { jerusalemDate } from "@/lib/staff/types";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
-import type { SelectedModifier } from "@/types/modifiers";
+import type { ProductBuilderConfig, SelectedModifier } from "@/types/modifiers";
+import { priceLineModifiers } from "@/lib/orders/modifier-pricing";
 
 /**
  * Builds a storefront order on the server (POST /api/orders/create).
  * Pure: no Firebase, no clock — products, settings and "now" are passed in.
  *
  * Prices come from the catalog, the coupon from its code, the delivery fee from the
- * chosen area in the settings. Add-on prices (priceDelta) are taken as sent, exactly
- * like the card-payment check today; checking them against the database is a separate step.
+ * chosen area in the settings. Add-on prices, names and kitchen notes come from the
+ * product's add-on groups (`modifierConfigs`, same engine as the menu); from the request
+ * only which add-on and how many are read.
  */
 
 const MAX_ITEMS = 60;
 const MAX_QUANTITY = 99;
 
+/** Only groupId, optionId and quantity are used; names, price and note sent by the browser are ignored. */
 const modifierSchema = z.object({
   groupId: z.string().min(1).max(200),
-  groupName: z.string().max(200),
+  groupName: z.string().max(200).optional(),
   optionId: z.string().min(1).max(200),
-  optionName: z.string().max(200),
-  priceDelta: z.number().finite().min(-10000).max(10000),
+  optionName: z.string().max(200).optional(),
+  priceDelta: z.number().finite().optional(),
   quantity: z.number().int().min(1).max(MAX_QUANTITY),
   kitchenNote: z.string().max(300).optional(),
 });
@@ -105,12 +108,16 @@ export type CatalogProduct = {
   available?: unknown;
   active?: unknown;
   isTestProduct?: unknown;
+  /** For add-on rules that depend on the category. */
+  categoryId?: unknown;
 };
 
 export type OrderBuildError =
   | { code: "PRODUCT_NOT_FOUND"; productIds: string[] }
   | { code: "PRODUCT_UNAVAILABLE"; productNames: string[] }
   | { code: "INVALID_PRICE" }
+  /** An add-on that is not on the product, is out of stock, or over the group's limit. */
+  | { code: "OPTIONS_UNAVAILABLE"; productNames: string[] }
   | { code: "PAYMENT_NOT_ALLOWED" }
   | { code: "PICKUP_CLOSED"; reason: "disabled" | "closed"; nextAt: string | null }
   | { code: "PICKUP_TIME_UNAVAILABLE" }
@@ -204,6 +211,8 @@ export function buildServerOrder(
   request: CreateOrderRequest,
   ctx: {
     products: ReadonlyMap<string, CatalogProduct | undefined>;
+    /** Add-on groups per product id (server-loaded); a product missing here has no add-ons. */
+    modifierConfigs: ReadonlyMap<string, ProductBuilderConfig>;
     fulfillment: FulfillmentSettings;
     openingHours: OpeningHours;
     now: Date;
@@ -235,25 +244,23 @@ export function buildServerOrder(
   const items: ServerOrderDraft["items"] = [];
   let subtotal = 0;
   let isTest = false;
+  const badOptions = new Set<string>();
   for (const line of request.items) {
     const product = ctx.products.get(line.productId)!;
     const base = Number(product.price);
     if (!Number.isFinite(base) || base < 0) return { ok: false, error: { code: "INVALID_PRICE" } };
-    const modifiers: SelectedModifier[] = (line.modifiers ?? []).map((m) => {
-      const mod: SelectedModifier = {
-        groupId: m.groupId,
-        groupName: m.groupName,
-        optionId: m.optionId,
-        optionName: m.optionName,
-        priceDelta: m.priceDelta,
-        quantity: m.quantity,
-      };
-      const note = m.kitchenNote?.trim();
-      if (note) mod.kitchenNote = note;
-      return mod;
-    });
-    const extras = modifiers.reduce((sum, m) => sum + m.priceDelta * m.quantity, 0);
-    const unit = money(base + extras);
+    const priced = priceLineModifiers(
+      ctx.modifierConfigs.get(line.productId),
+      line.modifiers ?? [],
+      { productId: line.productId, categoryId: str(product.categoryId) || undefined },
+      locale ?? "he"
+    );
+    if (!priced.ok) {
+      badOptions.add(catalogProductName(product, locale));
+      continue;
+    }
+    const modifiers: SelectedModifier[] = priced.modifiers;
+    const unit = money(base + priced.extras);
     if (unit < 0) return { ok: false, error: { code: "INVALID_PRICE" } };
 
     const item: ServerOrderDraft["items"][number] = {
@@ -273,6 +280,7 @@ export function buildServerOrder(
     subtotal += unit * line.quantity;
     if (product.isTestProduct === true) isTest = true;
   }
+  if (badOptions.size > 0) return { ok: false, error: { code: "OPTIONS_UNAVAILABLE", productNames: [...badOptions] } };
   subtotal = money(subtotal);
 
   const couponCode = normalizeCouponCode(request.couponCode);

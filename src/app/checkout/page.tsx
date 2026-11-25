@@ -256,6 +256,9 @@ export default function CheckoutPage() {
     if (result.code === "PRODUCT_UNAVAILABLE" && result.productNames?.length) {
       return t("checkout.productUnavailable").replace("{items}", result.productNames.join(", "));
     }
+    if (result.code === "OPTIONS_UNAVAILABLE") {
+      return t("checkout.optionsUnavailable").replace("{items}", (result.productNames ?? []).join(", "));
+    }
     if (result.code === "PRODUCT_NOT_FOUND" || result.code === "PRODUCT_UNAVAILABLE") {
       return t("checkout.productMissing");
     }

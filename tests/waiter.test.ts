@@ -201,7 +201,7 @@ describe("table orders carry the service day", () => {
       fulfillment: { type: "dine_in", tableId: "inside-4" },
     } as CreateOrderRequest;
     const now = localToDate({ year: 2026, month: 11, day: 24 }, 12 * 60);
-    const result = buildServerOrder(req, { products, fulfillment, openingHours: DEFAULT_OPENING_HOURS, now, orderNumber: "MC-2026-TABLE001" });
+    const result = buildServerOrder(req, { products, modifierConfigs: new Map(), fulfillment, openingHours: DEFAULT_OPENING_HOURS, now, orderNumber: "MC-2026-TABLE001" });
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.order.serviceDate).toBe("2026-11-24");
   });

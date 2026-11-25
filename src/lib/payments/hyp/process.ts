@@ -16,6 +16,8 @@ import { hypLogFields, parseHypRedirect } from "@/lib/payments/hyp/query";
 import { HYP_CURRENCY, HYP_PROVIDER } from "@/lib/payments/hyp/types";
 import type { FirestoreOrder } from "@/types/firestore";
 import { loadFulfillmentContext } from "@/lib/orders/server-context";
+import { loadModifierConfigs } from "@/lib/orders/admin-modifier-config";
+import { priceLineModifiers } from "@/lib/orders/modifier-pricing";
 import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
@@ -45,12 +47,15 @@ async function trustedChargeAmount(
     throw new HypPaymentError("Order has no items", "INVALID_AMOUNT", 400);
   }
   const db = getAdminDb();
+  const productIds = items.map((item) => item.productId?.trim() ?? "");
+  if (productIds.some((id) => !id)) {
+    throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
+  }
+  // Add-on prices from the products' add-on groups — never from the prices stored on the order.
+  const modifierConfigs = await loadModifierConfigs(db, productIds);
   let catalogSum = 0;
-  for (const item of items) {
-    const productId = item.productId?.trim();
-    if (!productId) {
-      throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
-    }
+  for (const [index, item] of items.entries()) {
+    const productId = productIds[index]!;
     const snap = await db.collection(COLLECTIONS.products).doc(productId).get();
     if (!snap.exists) {
       throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
@@ -59,14 +64,25 @@ async function trustedChargeAmount(
     if (!Number.isFinite(catalogPrice) || catalogPrice < 0) {
       throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
     }
-    const stored = Number(item.price) || 0;
-    const base = Number(item.basePrice);
-    const extras = Number.isFinite(base) ? Math.max(0, stored - base) : 0;
+    const categoryId = snap.data()?.categoryId;
+    const priced = priceLineModifiers(
+      modifierConfigs.get(productId),
+      (item.modifiers ?? []).map((m) => ({ groupId: String(m.groupId ?? ""), optionId: String(m.optionId ?? ""), quantity: Number(m.quantity) })),
+      { productId, categoryId: typeof categoryId === "string" && categoryId ? categoryId : undefined },
+      "he"
+    );
+    if (!priced.ok) {
+      throw new HypPaymentError("Order add-ons are invalid", "INVALID_AMOUNT", 400);
+    }
+    const unit = catalogPrice + priced.extras;
+    if (unit < 0) {
+      throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
+    }
     const qty = Number(item.quantity) || 0;
     if (qty <= 0) {
       throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
     }
-    catalogSum += (catalogPrice + extras) * qty;
+    catalogSum += unit * qty;
   }
   // Discount is derived from the stored coupon code only — never order.discount.
   // Delivery fee comes from the settings for the order's area — never order.delivery,

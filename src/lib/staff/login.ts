@@ -1,5 +1,5 @@
 import { isValidPinFormat } from "@/lib/staff/pin";
-import type { StaffRole } from "@/lib/staff/types";
+import { staffAudience, type StaffRole } from "@/lib/staff/types";
 
 /**
  * Staff sign-in with the personal code alone. Wrong codes are counted per network address:
@@ -27,11 +27,14 @@ export type StaffLoginResult =
   | { status: 200; body: { ok: true; name: string; role: StaffRole }; session: { staffId: string; sessionVersion: number } }
   | { status: 400; body: { ok: false; code: "INVALID" } }
   | { status: 401; body: { ok: false; code: "WRONG_PIN"; attemptsLeft: number } }
+  /** A right code of the other role (waiter code at the couriers' QR, or the reverse): not signed in, not counted. */
+  | { status: 403; body: { ok: false; code: "WRONG_ROLE"; role: StaffRole } }
   | { status: 429; body: { ok: false; code: "BLOCKED"; retryAfterSeconds: number } };
 
 export async function handleStaffLogin(body: unknown, ip: string, deps: StaffLoginDeps): Promise<StaffLoginResult> {
   const pin = (body && typeof body === "object" ? (body as { pin?: unknown }).pin : undefined) ?? null;
   if (!isValidPinFormat(pin)) return { status: 400, body: { ok: false, code: "INVALID" } };
+  const audience = staffAudience((body as { for?: unknown }).for);
 
   const wait = await deps.blockedFor(ip);
   if (wait !== null) return { status: 429, body: { ok: false, code: "BLOCKED", retryAfterSeconds: wait } };
@@ -45,6 +48,9 @@ export async function handleStaffLogin(body: unknown, ip: string, deps: StaffLog
     }
     return { status: 401, body: { ok: false, code: "WRONG_PIN", attemptsLeft } };
   }
+
+  // Each QR signs in its own role only. The code is right, so it is not counted as a wrong try.
+  if (member.role !== audience) return { status: 403, body: { ok: false, code: "WRONG_ROLE", role: member.role } };
 
   await deps.clearFailures(ip);
   return {

@@ -11,6 +11,7 @@ import {
   type ServerOrderDraft,
 } from "@/lib/orders/server-order";
 import { CouponUnavailableError, isPersonalCouponCode } from "@/lib/loyalty/coupons";
+import type { ProductBuilderConfig } from "@/types/modifiers";
 
 /**
  * POST /api/orders/create, without the HTTP and Firebase wiring (injected), so it can be tested
@@ -21,6 +22,8 @@ export type CreateOrderDeps = {
   now: () => Date;
   loadProducts: (ids: string[]) => Promise<ReadonlyMap<string, CatalogProduct | undefined>>;
   loadContext: () => Promise<{ fulfillment: FulfillmentSettings; openingHours: OpeningHours }>;
+  /** The products' add-on groups from the database: add-on prices are taken only from here. */
+  loadModifierConfigs: (productIds: string[]) => Promise<ReadonlyMap<string, ProductBuilderConfig>>;
   /** Returns true when under the limit. */
   rateLimit: (key: string, windowSeconds: number, limit: number) => Promise<boolean>;
   saveOrder: (draft: ServerOrderDraft) => Promise<string>;
@@ -86,9 +89,11 @@ export async function handleCreateOrder(
     const ipOk = !ip || (await deps.rateLimit(`create-order|ip|${ip}`, perIp.windowSeconds, perIp.limit));
     if (!phoneOk || !ipOk) return { status: 429, body: { ok: false, code: "RATE_LIMITED" } };
 
-    const [products, context] = await Promise.all([
-      deps.loadProducts(request.items.map((i) => i.productId)),
+    const productIds = request.items.map((i) => i.productId);
+    const [products, context, modifierConfigs] = await Promise.all([
+      deps.loadProducts(productIds),
       deps.loadContext(),
+      deps.loadModifierConfigs(productIds),
     ]);
     const now = deps.now();
     // Club member from the signed session (never from the request body).
@@ -107,6 +112,7 @@ export async function handleCreateOrder(
 
     const built = buildServerOrder(request, {
       products,
+      modifierConfigs,
       fulfillment: context.fulfillment,
       openingHours: context.openingHours,
       now,

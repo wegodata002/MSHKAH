@@ -314,6 +314,7 @@ function orderDeps(memberId: string | null, now = NOW) {
   return {
     now: () => now,
     loadProducts: async (ids: string[]) => new Map(ids.map((id) => [id, PRODUCTS.get(id)])),
+    loadModifierConfigs: async () => new Map(),
     loadContext: async () => ({ fulfillment: DEFAULT_FULFILLMENT, openingHours: DEFAULT_OPENING_HOURS }),
     rateLimit: async () => true,
     saveOrder: async () => {

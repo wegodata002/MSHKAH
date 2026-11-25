@@ -7,7 +7,7 @@ import { AppLogo } from "@/components/brand/app-logo";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
-import type { StaffRole } from "@/lib/staff/types";
+import { staffAudience, type StaffRole } from "@/lib/staff/types";
 import { CourierDeliveries } from "@/features/staff/courier-deliveries";
 import { WaiterTables } from "@/features/staff/waiter-tables";
 
@@ -17,11 +17,14 @@ type State = { kind: "checking" } | { kind: "pin" } | { kind: "pair" } | { kind:
 const PIN_LENGTH = 4;
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"] as const;
 
-function PinPad({ onSignedIn }: { onSignedIn: (member: Member) => void }) {
+/** "This code belongs to a waiter. Use the waiters' QR." (and the reverse). */
+const WRONG_ROLE_KEY: Record<StaffRole, string> = { waiter: "staff.wrongRole.waiter", courier: "staff.wrongRole.courier" };
+
+function PinPad({ audience, notice, onSignedIn }: { audience: StaffRole; notice?: string | null; onSignedIn: (member: Member) => void }) {
   const t = useT();
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(notice ?? null);
 
   const submit = useCallback(
     async (code: string) => {
@@ -31,7 +34,7 @@ function PinPad({ onSignedIn }: { onSignedIn: (member: Member) => void }) {
         const res = await fetch("/api/staff/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pin: code }),
+          body: JSON.stringify({ pin: code, for: audience }),
         });
         const data = (await res.json().catch(() => null)) as
           | { ok?: boolean; name?: string; role?: StaffRole; code?: string; attemptsLeft?: number; retryAfterSeconds?: number }
@@ -41,7 +44,8 @@ function PinPad({ onSignedIn }: { onSignedIn: (member: Member) => void }) {
           onSignedIn(me?.member ?? { name: data.name, role: data.role, worksToday: false });
           return;
         }
-        if (data?.code === "WRONG_PIN") setError(t("staff.wrongPin").replace("{n}", String(data.attemptsLeft ?? 0)));
+        if (data?.code === "WRONG_ROLE" && data.role) setError(t(WRONG_ROLE_KEY[data.role]));
+        else if (data?.code === "WRONG_PIN") setError(t("staff.wrongPin").replace("{n}", String(data.attemptsLeft ?? 0)));
         else if (data?.code === "BLOCKED") setError(t("staff.blocked").replace("{min}", String(Math.max(1, Math.ceil((data.retryAfterSeconds ?? 900) / 60)))));
         else setError(t("staff.error"));
       } catch {
@@ -51,7 +55,7 @@ function PinPad({ onSignedIn }: { onSignedIn: (member: Member) => void }) {
         setBusy(false);
       }
     },
-    [onSignedIn, t]
+    [audience, onSignedIn, t]
   );
 
   // The typed digits also live in a ref: the code is sent from here, never from inside a state
@@ -223,8 +227,12 @@ export function StaffScreen() {
   const t = useT();
   const { dir } = useLocale();
   const params = useSearchParams();
-  const audience = params.get("for");
+  const forParam = params.get("for");
+  // /staff and /staff?for=courier: the couriers' QR; /staff?for=waiter: the waiters' QR.
+  const audience = staffAudience(forParam);
   const [state, setState] = useState<State>({ kind: "checking" });
+  /** Signed in here as the other role: shown above the keypad instead of opening the other screen. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -232,17 +240,20 @@ export function StaffScreen() {
       .then(async (res) => (res.ok ? ((await res.json()) as { member?: Member; device?: { name: string } }) : null))
       .then((data) => {
         if (cancelled) return;
-        if (data?.member) setState({ kind: "in", member: data.member });
-        else if (data?.device) setState({ kind: "device", name: data.device.name });
-        else setState({ kind: "pin" });
+        if (data?.member && data.member.role === audience) setState({ kind: "in", member: data.member });
+        else if (data?.device && audience === "waiter") setState({ kind: "device", name: data.device.name });
+        else {
+          if (data?.member) setNotice(t(WRONG_ROLE_KEY[data.member.role]));
+          setState({ kind: "pin" });
+        }
       })
       .catch(() => !cancelled && setState({ kind: "pin" }));
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [audience, t]);
 
-  const title = t(audience === "courier" ? "staff.title.courier" : audience === "waiter" ? "staff.title.waiter" : "staff.title.any");
+  const title = t(audience === "waiter" ? "staff.title.waiter" : "staff.title.courier");
   const fullScreen = state.kind === "device" || state.kind === "in";
 
   return (
@@ -271,7 +282,14 @@ export function StaffScreen() {
           <PairDevice onPaired={(name) => setState({ kind: "device", name })} onBack={() => setState({ kind: "pin" })} />
         ) : (
           <div className="flex flex-col items-center">
-            <PinPad onSignedIn={(member) => setState({ kind: "in", member })} />
+            <PinPad
+              audience={audience}
+              notice={notice}
+              onSignedIn={(member) => {
+                setNotice(null);
+                setState({ kind: "in", member });
+              }}
+            />
             {audience === "waiter" && (
               <button type="button" onClick={() => setState({ kind: "pair" })} className="mt-8 inline-flex items-center gap-1.5 text-sm font-medium text-turquoise underline" data-pair-link>
                 <Tablet className="h-4 w-4" />
