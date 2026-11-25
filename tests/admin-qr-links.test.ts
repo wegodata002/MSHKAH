@@ -3,22 +3,17 @@ import { getAdminQrLinks } from "@/lib/admin-qr-links";
 import { createQrPngDataUrl } from "@/lib/admin-qr-image";
 
 describe("admin QR links", () => {
-  it("exposes the public links (menu, order, join the club) from a single config", () => {
+  it("exposes two public links (menu, join the club) from a single config", () => {
     const links = getAdminQrLinks();
-    expect(links).toHaveLength(3);
-    expect(links[2]?.id).toBe("club");
-    expect(links[2]?.filename).toBe("mishkah-qr-club.png");
-    expect(links[2]?.url).toBe(`${links[1]?.url}/club`);
-    expect(links[0]?.id).toBe("menu");
-    expect(links[1]?.id).toBe("order");
-    expect(links[0]?.filename).toBe("mishkah-qr-menu.png");
-    expect(links[1]?.filename).toBe("mishkah-qr-order.png");
-    expect(links[0]?.url).toMatch(/^https:\/\//);
-    expect(links[1]?.url).toMatch(/^https:\/\//);
-    expect(links[0]?.url).not.toBe(links[1]?.url);
+    expect(links.map((l) => l.id)).toEqual(["menu", "club"]);
+    const [menu, club] = links;
+    expect(menu?.nameKey).toBe("admin.qr.menuPageName");
+    expect(menu?.filename).toBe("mishkah-qr-menu.png");
+    expect(club?.filename).toBe("mishkah-qr-club.png");
     // Menu QR → the storefront's one-page menu, never the view-only menu domain.
-    expect(links[0]?.url).toBe(`${links[1]?.url}/catalog`);
-    expect(links[0]?.url).not.toMatch(/\/\/menu\./);
+    expect(menu?.url).toMatch(/^https:\/\/[^/]+\/catalog$/);
+    expect(menu?.url).not.toMatch(/\/\/menu\./);
+    expect(club?.url).toBe(menu?.url.replace(/\/catalog$/, "/club"));
   });
 
   it("builds a PNG from the live URL", async () => {

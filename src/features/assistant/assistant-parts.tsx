@@ -11,6 +11,7 @@ import { useT } from "@/components/providers/locale-provider";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useAssistantCart } from "@/features/assistant/assistant-context";
 import { getProductImage } from "@/lib/menu/placeholders";
+import { EditLineButton, useCartLineEditor } from "@/features/cart/cart-line-editor";
 import type { AssistantProduct } from "@/lib/assistant/types";
 import type { Product } from "@/types";
 
@@ -193,6 +194,8 @@ function CartLine({ item }: { item: import("@/types").CartItem }) {
   const t = useT();
   const localized = useLocalizedProduct(item.product);
   const { removeItem, updateQuantity } = useAssistantCart();
+  // Pen: edit the line (add-ons, quantity, note) in the product window, as in the cart.
+  const { edit, editor } = useCartLineEditor();
   const imageSrc = getProductImage(item.product.image, item.product.categoryId);
 
   return (
@@ -234,16 +237,18 @@ function CartLine({ item }: { item: import("@/types").CartItem }) {
           >
             <Plus className="h-3 w-3" strokeWidth={1.75} />
           </button>
+          <EditLineButton item={item} onEdit={edit} className="ms-auto h-7 w-7 rounded-lg hover:bg-beige/60" />
           <button
             type="button"
             onClick={() => removeItem(item.lineId)}
-            className="ms-auto flex h-7 w-7 items-center justify-center rounded-lg text-coffee/45 hover:text-coffee"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-coffee/45 hover:text-coffee"
             aria-label={t("cart.remove")}
           >
             <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
           </button>
         </div>
       </div>
+      {editor}
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Heart, Minus, Plus, ShoppingBag, X, Share2, Sparkles, ImageIcon } from "lucide-react";
+import { Check, Heart, Minus, Plus, ShoppingBag, X, Share2, Sparkles, ImageIcon } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -30,13 +30,16 @@ import {
 } from "@/lib/product-builder/engine";
 import { AddonsWizard } from "@/features/catalog/addons-wizard";
 import { ProductCard } from "./product-card";
-import type { Product } from "@/types";
+import type { CartItem, Product } from "@/types";
+import type { SelectedModifier } from "@/types/modifiers";
 
 interface ProductDetailDrawerProps {
   product: Product | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelectProduct?: (product: Product) => void;
+  /** Edit a line already in the cart: opens with its quantity, note and add-ons; "Save changes". */
+  editItem?: CartItem | null;
 }
 
 function ProductDetailContent({
@@ -44,34 +47,61 @@ function ProductDetailContent({
   onOpenChange,
   onSelectProduct,
   layout = "stack",
+  editItem,
 }: {
   product: Product;
   onOpenChange: (open: boolean) => void;
   onSelectProduct?: (product: Product) => void;
   /** stack = phone/tablet vertical; split = desktop side-by-side */
   layout?: "stack" | "split";
+  editItem?: CartItem | null;
 }) {
   const t = useT();
   const { locale } = useLocale();
   const localized = useLocalizedProduct(product);
-  const { addItem } = useCart();
+  const { addItem, updateConfiguredItem } = useCart();
   const { isFavorite, toggleFavorite } = useFavorites();
-  const { products } = useProducts({ active: true });
+  const { products, loading: productsLoading } = useProducts({ active: true });
   const { config, loading: configLoading } = useProductBuilderConfig(product.id);
-  const [quantity, setQuantity] = useState(1);
-  const [notes, setNotes] = useState("");
+  const isEdit = !!editItem;
+  const [quantity, setQuantity] = useState(editItem?.quantity ?? 1);
+  const [notes, setNotes] = useState(editItem?.notes ?? "");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [zoomed, setZoomed] = useState(false);
 
   const hasBuilder = config ? productHasBuilder(config) : false;
-  const suggestions = config ? getSuggestedProducts(config, products, locale) : [];
+  // Editing: the cart keeps a copy of the product from when it was added; use today's menu data
+  // (price, availability). Gone from the menu or unavailable → cannot be saved (delete still works).
+  const liveProduct = isEdit ? products.find((p) => p.id === product.id) : product;
+  const available = isEdit ? !productsLoading && !!liveProduct?.available : product.available;
+  const basePrice = liveProduct?.price ?? product.price;
+  // Edit without an add-ons step: add-ons kept from before stay at their price.
+  const editUnitPrice = editItem && editItem.selections.length > 0 ? editItem.unitPrice : basePrice;
+  const suggestions = config && !isEdit ? getSuggestedProducts(config, products, locale) : [];
   const imageSrc = getProductImage(product.image, product.categoryId);
   const isSplit = layout === "split";
 
+  const saveEdit = (selections: SelectedModifier[], unitPrice: number) => {
+    if (!editItem) return;
+    updateConfiguredItem(editItem.lineId, {
+      selections,
+      unitPrice,
+      quantity,
+      notes: notes.trim() || undefined,
+    });
+    setWizardOpen(false);
+    onOpenChange(false);
+  };
+
   const handleAdd = () => {
-    if (!product.available || configLoading) return;
+    if (!available || configLoading) return;
     if (hasBuilder && config) {
       setWizardOpen(true);
+      return;
+    }
+    if (editItem) {
+      // No add-ons to choose (any kept from before stay as they were).
+      saveEdit(editItem.selections, editUnitPrice);
       return;
     }
     addItem(product, {
@@ -89,9 +119,13 @@ function ProductDetailContent({
     selections,
     unitPrice,
   }: {
-    selections: import("@/types/modifiers").SelectedModifier[];
+    selections: SelectedModifier[];
     unitPrice: number;
   }) => {
+    if (editItem) {
+      saveEdit(selections, unitPrice);
+      return;
+    }
     addItem(product, {
       selections,
       unitPrice,
@@ -210,7 +244,10 @@ function ProductDetailContent({
               <h2 className="font-display text-2xl font-bold sm:text-[1.75rem]" dir={localized.dir}>
                 {localized.name}
               </h2>
-              <p className="text-2xl font-bold text-turquoise">{formatPrice(product.price)}</p>
+              <p className="text-2xl font-bold text-turquoise">{formatPrice(basePrice)}</p>
+              {isEdit && !productsLoading && !available && (
+                <p className="text-sm font-medium text-red-600">{t("catalog.unavailable")}</p>
+              )}
             </div>
 
             {localized.description && (
@@ -283,10 +320,21 @@ function ProductDetailContent({
               size="lg"
               className="h-12 w-full rounded-xl shadow-soft"
               onClick={handleAdd}
-              disabled={!product.available || configLoading}
+              disabled={!available || configLoading}
             >
-              <ShoppingBag className="h-4 w-4" strokeWidth={1.75} />
-              {t("catalog.addToCart")} · {formatPrice(calculateLineTotal(product.price, quantity))}
+              {isEdit ? (
+                <>
+                  <Check className="h-4 w-4" strokeWidth={2} />
+                  {t("builder.saveChanges")}
+                  {/* With add-ons the price is set in the next step. */}
+                  {!hasBuilder && ` · ${formatPrice(calculateLineTotal(editUnitPrice, quantity))}`}
+                </>
+              ) : (
+                <>
+                  <ShoppingBag className="h-4 w-4" strokeWidth={1.75} />
+                  {t("catalog.addToCart")} · {formatPrice(calculateLineTotal(product.price, quantity))}
+                </>
+              )}
             </Button>
           </div>
         </div>
@@ -299,6 +347,8 @@ function ProductDetailContent({
           product={product}
           config={config}
           quantity={quantity}
+          initialSelections={editItem?.selections}
+          mode={isEdit ? "edit" : "add"}
           onConfirm={handleConfiguredAdd}
         />
       )}
@@ -311,6 +361,7 @@ export function ProductDetailDrawer({
   open,
   onOpenChange,
   onSelectProduct,
+  editItem,
 }: ProductDetailDrawerProps) {
   const isPhone = useIsMobile(768);
 
@@ -323,11 +374,12 @@ export function ProductDetailDrawer({
         </DialogDescription>
       </DialogHeader>
       <ProductDetailContent
-        key={product.id}
+        key={editItem?.lineId ?? product.id}
         product={product}
         onOpenChange={onOpenChange}
         onSelectProduct={onSelectProduct}
         layout={isPhone ? "stack" : "split"}
+        editItem={editItem}
       />
     </>
   ) : null;

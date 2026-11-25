@@ -30,6 +30,7 @@ import { getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
 import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
 import { couponMessageKey } from "@/lib/orders/coupons";
 import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
+import { EditLineButton, useCartLineEditor } from "@/features/cart/cart-line-editor";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
 import { formatPrice, cn } from "@/lib/utils";
 import { calculateLineTotal } from "@/lib/product-builder/engine";
@@ -46,7 +47,15 @@ import {
   type ZoneChoice,
 } from "@/features/checkout/checkout-fulfillment";
 
-function OrderLineItem({ item, onRemove }: { item: import("@/types").CartItem; onRemove: () => void }) {
+function OrderLineItem({
+  item,
+  onRemove,
+  onEdit,
+}: {
+  item: import("@/types").CartItem;
+  onRemove: () => void;
+  onEdit: (item: import("@/types").CartItem) => void;
+}) {
   const t = useT();
   const localized = useLocalizedProduct(item.product);
   return (
@@ -56,6 +65,8 @@ function OrderLineItem({ item, onRemove }: { item: import("@/types").CartItem; o
           {item.quantity}× {localized.name}
         </span>
         <span>{formatPrice(calculateLineTotal(item.unitPrice, item.quantity))}</span>
+        {/* Pen: change add-ons, quantity or note in the product window. */}
+        <EditLineButton item={item} onEdit={onEdit} className="h-11 w-11 rounded-full hover:bg-beige/50" iconClassName="h-4 w-4" />
         {/* Same as the cart: remove right away, no confirmation. */}
         <button
           type="button"
@@ -72,6 +83,11 @@ function OrderLineItem({ item, onRemove }: { item: import("@/types").CartItem; o
           + {s.optionName}
         </p>
       ))}
+      {item.notes && (
+        <p className="ps-3 text-xs text-coffee/45">
+          {t("builder.notes")}: {item.notes}
+        </p>
+      )}
     </div>
   );
 }
@@ -86,6 +102,8 @@ export default function CheckoutPage() {
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
+  // Pen in the order summary: edit a line (add-ons, quantity, note) in the product window.
+  const { edit: editLine, editor: lineEditor } = useCartLineEditor();
 
   // Same logic as the cart panel (shared coupon table in cart-context).
   const handleCoupon = async () => {
@@ -498,7 +516,7 @@ export default function CheckoutPage() {
                     <h2 className="text-sm font-semibold">{t("checkout.orderSummary")}</h2>
                     <div className="mt-4 space-y-2">
                       {items.map((item) => (
-                        <OrderLineItem key={item.lineId} item={item} onRemove={() => removeItem(item.lineId)} />
+                        <OrderLineItem key={item.lineId} item={item} onRemove={() => removeItem(item.lineId)} onEdit={editLine} />
                       ))}
                     </div>
                     {/* Coupon field — same look as the cart. Inside the order <form>, so the
@@ -593,6 +611,7 @@ export default function CheckoutPage() {
           )}
         </AnimatePresence>
       </div>
+      {lineEditor}
     </>
   );
 }

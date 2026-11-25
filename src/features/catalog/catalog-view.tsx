@@ -190,8 +190,9 @@ export function CatalogView() {
       <div className="mx-auto max-w-[1280px] px-4 md:px-8 lg:px-10">
         {/* The footer below keeps the room for the phone's bottom bar and the cart button. */}
         <div className="mt-4 min-w-0 pb-8 md:mt-6 lg:pb-12">
-          {/* What can be ordered now: one short line under the banner, above the categories. */}
-          {isHome && <AvailabilityPill />}
+          {/* What can be ordered now: one short line above the categories (under the banner on the home page). */}
+          {/* Shown on the home page and on /catalog. */}
+          <AvailabilityPill />
           {/* Sticky catalog bar: categories (+ mobile icons) and the desktop search/filter row. */}
           <div
             ref={stickyRef}
