@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AdminPageHeader } from "@/features/admin/components/admin-page-header";
+import { StaffDevicesSection } from "@/features/admin/staff-devices-section";
 import {
   AdminModal,
   AdminModalBody,
@@ -246,6 +247,9 @@ export function StaffAdmin() {
           })}
         </ul>
       )}
+
+      {/* Cafe tablets that stay signed in to the waiter screen. */}
+      <StaffDevicesSection />
 
       <AdminModal open={!!dialog} onOpenChange={(next) => !saving && !next && setDialog(null)} size="sm">
         <AdminModalHeader onClose={() => setDialog(null)}>

@@ -203,6 +203,11 @@ export function OrderCard({
                 {t("admin.orders.pickupAt").replace("{time}", order.pickupTime)}
               </span>
             ) : null}
+            {order.orderType === "dine_in" && order.servedBy ? (
+              <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700" data-served-by>
+                {t("admin.orders.servedBy").replace("{name}", order.servedBy)}
+              </span>
+            ) : null}
             {order.orderType === "dine_in" && order.tableArea && order.tableNumber ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-turquoise px-2 py-0.5 text-[11px] font-bold text-warm-white" data-table-chip>
                 <UtensilsCrossed className="h-3 w-3" />
@@ -319,6 +324,12 @@ export function OrderCard({
               {(order.paidVia === "courier_cash" || order.paidVia === "courier_card") && (
                 <p className="font-medium text-emerald-800" data-paid-via-courier>
                   {t(order.paidVia === "courier_card" ? "admin.payment.paidCourierCard" : "admin.payment.paidCourierCash")}
+                </p>
+              )}
+              {(order.paidVia === "waiter_cash" || order.paidVia === "waiter_card") && (
+                <p className="font-medium text-emerald-800" data-paid-via-waiter>
+                  {t(order.paidVia === "waiter_card" ? "admin.payment.paidWaiterCard" : "admin.payment.paidWaiterCash")}
+                  {order.paidBy ? ` · ${order.paidBy}` : ""}
                 </p>
               )}
               {onMarkCashPaid && (

@@ -137,7 +137,11 @@ export interface Order {
   courierId?: string;
   courierName?: string;
   courierAssignedAt?: string | null;
-  paidVia?: "cash_counter" | "courier_cash" | "courier_card";
+  paidVia?: "cash_counter" | "courier_cash" | "courier_card" | "waiter_cash" | "waiter_card";
+  /** Who confirmed the payment (staff email, courier or waiter name). */
+  paidBy?: string;
+  /** Dine-in: who marked it served. */
+  servedBy?: string;
   deliveredAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;
