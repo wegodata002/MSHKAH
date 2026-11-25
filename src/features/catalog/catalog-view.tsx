@@ -15,6 +15,8 @@ import { ProductDetailDrawer } from "@/features/catalog/product-detail-drawer";
 import { CatalogModifierPreviewProvider } from "@/features/catalog/catalog-modifier-preview-context";
 import { Input } from "@/components/ui/input";
 import { useAllProducts, useCategories } from "@/hooks/useProducts";
+import { topPopular, usePopularProducts } from "@/hooks/usePopularity";
+import { ProductCarousel } from "@/features/catalog/catalog-sections";
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { buildCatalogSections } from "@/lib/menu/category-tree";
 import { cn } from "@/lib/utils";
@@ -39,7 +41,10 @@ export function CatalogView() {
   const deepLinkApplied = useRef(false);
 
   const { categories } = useCategories();
-  const { products: allProducts, loading } = useAllProducts();
+  const { products: rawProducts, loading } = useAllProducts();
+  // "Popular" from real sales (server ranking) plus the manual pins: badge, filter and sort.
+  const allProducts = usePopularProducts(rawProducts);
+  const popularRow = useMemo(() => (isHome ? topPopular(allProducts, 8) : []), [allProducts, isHome]);
 
   const sections = useMemo(
     () => buildCatalogSections(allProducts, categories, filters, locale, searchQuery),
@@ -187,6 +192,13 @@ export function CatalogView() {
       <SiteHeader />
 
       {isHome && <HeroBanner />}
+
+      {/* Home page: the best sellers (real sales; manual pins after them). */}
+      {isHome && popularRow.length > 0 && (
+        <div className="mx-auto max-w-[1280px] md:px-4 lg:px-4" data-popular-row>
+          <ProductCarousel iconKey="popular" titleKey="catalog.popularTitle" subtitleKey="catalog.popularSubtitle" products={popularRow} onProductClick={setSelectedProduct} />
+        </div>
+      )}
 
       <div className="mx-auto max-w-[1280px] px-4 md:px-8 lg:px-10">
         {/* The footer below keeps the room for the phone's bottom bar and the cart button. */}

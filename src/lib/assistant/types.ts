@@ -191,6 +191,8 @@ export interface AssistantProduct {
   available: boolean;
   isPopular: boolean;
   isNew: boolean;
+  /** Place in "most popular" (0 = best seller; pinned products after the sellers); none = not popular. */
+  popularRank?: number;
   searchText?: string;
 }
 

@@ -183,6 +183,10 @@ export function applyDisplayFilters(
     case "newest":
       return [...result].sort((a, b) => createdAtMs(b) - createdAtMs(a) || bySortOrder(a, b));
     case "popular":
+      // Best sellers first (real sales, then manual pins), the rest in menu order.
+      return [...result].sort(
+        (a, b) => (a.popularRank ?? Number.MAX_SAFE_INTEGER) - (b.popularRank ?? Number.MAX_SAFE_INTEGER) || bySortOrder(a, b)
+      );
     default:
       return sortProducts(result);
   }

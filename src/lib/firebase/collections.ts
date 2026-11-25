@@ -79,6 +79,8 @@ export const COLLECTIONS = {
   staffDevices: "staffDevices",
   /** One-time pairing codes for fixed devices, by hash (server only). */
   staffDevicePairings: "staffDevicePairings",
+  /** Server-only computed figures (e.g. "popularity": best sellers). */
+  stats: "stats",
 } as const;
 
 export const DEFAULT_STORE_ID = "mishkah";

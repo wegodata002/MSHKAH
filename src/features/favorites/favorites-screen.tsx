@@ -7,6 +7,7 @@ import { ProductGridSkeleton } from "@/components/ui/skeleton";
 import { useT } from "@/components/providers/locale-provider";
 import { useProducts } from "@/hooks/useProducts";
 import { useFavorites } from "@/hooks/useFavorites";
+import { usePopularProducts } from "@/hooks/usePopularity";
 import { ProductCard } from "@/features/catalog/product-card";
 import { ProductDetailDrawer } from "@/features/catalog/product-detail-drawer";
 import { CatalogModifierPreviewProvider } from "@/features/catalog/catalog-modifier-preview-context";
@@ -18,7 +19,9 @@ import type { Product } from "@/types";
 export function FavoritesScreen() {
   const t = useT();
   const { favorites } = useFavorites();
-  const { products, loading } = useProducts({ active: true });
+  const { products: raw, loading } = useProducts({ active: true });
+  // Same "popular" badge as the menu (real sales + manual pins).
+  const products = usePopularProducts(raw);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
 
   // Products removed or hidden from the menu since they were marked simply drop out of the list.

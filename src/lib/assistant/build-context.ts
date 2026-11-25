@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/i18n/types";
+import { mergePopular, popularIdSet } from "@/lib/catalog/popularity";
 import {
   getCategoryDisplayName,
   getLocalizedDescription,
@@ -28,7 +29,12 @@ export type AssistantStoreInfo = {
   openingHours: OpeningHours;
 };
 
-function localizeProduct(p: Product, locale: Locale, categoryName?: string): AssistantProduct {
+function localizeProduct(
+  p: Product,
+  locale: Locale,
+  categoryName: string | undefined,
+  popular: { set: ReadonlySet<string>; rank: ReadonlyMap<string, number> }
+): AssistantProduct {
   return {
     id: p.id,
     name: getProductDisplayName(p, locale),
@@ -38,7 +44,8 @@ function localizeProduct(p: Product, locale: Locale, categoryName?: string): Ass
     categoryId: p.categoryId,
     categoryName,
     available: p.available,
-    isPopular: p.isPopular,
+    isPopular: popular.set.has(p.id),
+    popularRank: popular.rank.get(p.id),
     isNew: p.isNew,
     searchText: [p.name_he, p.name_ar, p.name_en, p.description_he, p.description_ar, p.description_en]
       .filter(Boolean)
@@ -54,15 +61,23 @@ export function buildAssistantContext(input: {
   store: AssistantStoreInfo;
   banners: { title: string; subtitle: string }[];
   now?: Date;
+  /** Best sellers first (server ranking); manual "popular" pins follow. Omitted = manual pins only. */
+  popularRanking?: string[];
 }): AssistantContext {
   const { locale } = input;
   const products = input.products.filter((p) => p.active !== false);
   const categories = input.categories.filter((c) => c.active !== false);
   const categoryMap = new Map(categories.map((c) => [c.id, getCategoryDisplayName(c, locale)]));
+  const pinned = products.filter((p) => p.isPopular).map((p) => p.id);
+  const ranking = input.popularRanking ?? [];
+  const popular = {
+    set: popularIdSet(ranking, pinned),
+    rank: new Map(mergePopular(ranking, pinned).map((id, i) => [id, i])),
+  };
 
   return {
     locale,
-    products: products.map((p) => localizeProduct(p, locale, categoryMap.get(p.categoryId))),
+    products: products.map((p) => localizeProduct(p, locale, categoryMap.get(p.categoryId), popular)),
     categories: categories.map((c) => ({
       id: c.id,
       name: getCategoryDisplayName(c, locale),

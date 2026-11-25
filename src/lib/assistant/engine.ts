@@ -122,10 +122,11 @@ function available(ctx: AssistantContext): AssistantProduct[] {
   return ctx.products.filter((p) => p.available);
 }
 
+const rankOf = (p: AssistantProduct) => p.popularRank ?? Number.MAX_SAFE_INTEGER;
+
+/** Best sellers first (real sales, then manual pins), then by name. */
 function top(products: AssistantProduct[], limit = 8): AssistantProduct[] {
-  return [...products]
-    .sort((a, b) => Number(b.isPopular) - Number(a.isPopular) || a.name.localeCompare(b.name))
-    .slice(0, limit);
+  return [...products].sort((a, b) => rankOf(a) - rankOf(b) || a.name.localeCompare(b.name)).slice(0, limit);
 }
 
 /**
@@ -371,7 +372,10 @@ function runQuickAction(action: AssistantQuickAction, ctx: AssistantContext, req
     }
     case "offers": {
       const items = ctx.config.featuredProductIds.length
-        ? available(ctx).filter((p) => ctx.config.featuredProductIds.includes(p.id))
+        ? // In the order set in the admin (▲▼).
+          available(ctx)
+            .filter((p) => ctx.config.featuredProductIds.includes(p.id))
+            .sort((a, b) => ctx.config.featuredProductIds.indexOf(a.id) - ctx.config.featuredProductIds.indexOf(b.id))
         : top(available(ctx).filter((p) => p.isPopular || p.isNew), 8);
       const intro =
         ctx.banners.length > 0

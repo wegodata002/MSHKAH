@@ -75,8 +75,8 @@ describe("menu", () => {
     const header = read("src/components/layout/header.tsx");
     expect(header).toContain('href: "/favorites", labelKey: "nav.favorites", count: "favorites"');
     expect(header).toContain('href: "/orders", labelKey: "nav.orders", count: "orders"');
-    expect(header).toContain('href: OFFERS_HREF, labelKey: "nav.offers", neverActive: true');
-    expect(read("src/lib/customer-nav.ts")).toContain('OFFERS_HREF = "/catalog"');
+    expect(header).toContain('href: OFFERS_HREF, labelKey: "nav.offers"');
+    expect(read("src/lib/customer-nav.ts")).toContain('OFFERS_HREF = "/offers"');
     expect(header).not.toContain('"nav.contact"');
     expect(header).toContain("onClick={() => scrollToAbout()}");
     expect(header).toContain("count > 0 &&");
