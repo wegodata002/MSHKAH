@@ -1,6 +1,6 @@
 import { getPublicStoreOrigin } from "@/lib/domains/host-routing";
 
-export type AdminQrLinkId = "menu" | "club";
+export type AdminQrLinkId = "menu" | "club" | "couriers" | "waiters";
 
 export type AdminQrLink = {
   id: AdminQrLinkId;
@@ -29,7 +29,7 @@ function readQrLink(envName: string, fallback: string): string {
 }
 
 /**
- * Single source for Admin QR cards: "Menu" and "Join the club". Override the store link with
+ * Single source for Admin QR cards: "Menu", "Join the club", and the staff sign-in QRs "Couriers" / "Waiters". Override the store link with
  * NEXT_PUBLIC_QR_LINK_2 (menu = /catalog, club = /club). The old "Order" card (store home page) was
  * dropped: it opened the same menu; printed copies keep working since the home page stays.
  */
@@ -51,6 +51,19 @@ export function getAdminQrLinks(): AdminQrLink[] {
       nameKey: "admin.qr.clubName",
       url: `${store}/club`,
       filename: "mishkah-qr-club.png",
+    },
+    {
+      // Staff only: opens the personal-code keypad; nothing is shown without a valid code.
+      id: "couriers",
+      nameKey: "admin.qr.couriersName",
+      url: `${store}/staff?for=courier`,
+      filename: "mishkah-qr-couriers.png",
+    },
+    {
+      id: "waiters",
+      nameKey: "admin.qr.waitersName",
+      url: `${store}/staff?for=waiter`,
+      filename: "mishkah-qr-waiters.png",
     },
   ];
 }

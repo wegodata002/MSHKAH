@@ -11,6 +11,7 @@ import {
   isPortalHost,
   isViewOnlyMenuSurface,
   shouldHideCustomerChrome,
+  isStaffPath,
   type AdminSurface,
 } from "@/lib/domains/host-routing";
 
@@ -60,7 +61,7 @@ export function useHideCustomerChrome(): boolean {
   const pathname = usePathname();
   return useMemo(() => {
     if (typeof window === "undefined") {
-      return pathname.startsWith("/admin") || pathname.startsWith("/menu-display");
+      return pathname.startsWith("/admin") || pathname.startsWith("/menu-display") || isStaffPath(pathname);
     }
     return shouldHideCustomerChrome(pathname, window.location.hostname);
   }, [pathname]);
