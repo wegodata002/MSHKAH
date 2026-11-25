@@ -7,9 +7,12 @@ export type StaffAdminRequest =
   | { action: "list" }
   | { action: "create"; name: string; phone: string; role: StaffRole; pin: string }
   | { action: "update"; id: string; name?: string; phone?: string; role?: StaffRole; active?: boolean; worksToday?: boolean }
-  | { action: "set-pin"; id: string; pin: string };
+  | { action: "set-pin"; id: string; pin: string }
+  | { action: "devices" }
+  | { action: "pair-device"; deviceName: string }
+  | { action: "revoke-device"; deviceId: string };
 
-export type StaffInputError = "NAME" | "PHONE" | "ROLE" | "PIN_FORMAT" | "PIN_WEAK" | "ID" | "ACTION";
+export type StaffInputError = "NAME" | "PHONE" | "ROLE" | "PIN_FORMAT" | "PIN_WEAK" | "ID" | "ACTION" | "DEVICE_NAME";
 
 function cleanName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -66,6 +69,17 @@ export function parseStaffAdminRequest(body: unknown): { ok: true; request: Staf
       if (typeof input.active === "boolean") request.active = input.active;
       if (typeof input.worksToday === "boolean") request.worksToday = input.worksToday;
       return { ok: true, request };
+    }
+    case "devices":
+      return { ok: true, request: { action: "devices" } };
+    case "pair-device": {
+      const deviceName = cleanName(input.deviceName);
+      if (!deviceName || deviceName.length > 40) return { ok: false, error: "DEVICE_NAME" };
+      return { ok: true, request: { action: "pair-device", deviceName } };
+    }
+    case "revoke-device": {
+      if (typeof input.deviceId !== "string" || !ID.test(input.deviceId)) return { ok: false, error: "ID" };
+      return { ok: true, request: { action: "revoke-device", deviceId: input.deviceId } };
     }
     case "set-pin": {
       if (typeof input.id !== "string" || !ID.test(input.id)) return { ok: false, error: "ID" };

@@ -137,7 +137,11 @@ export interface FirestoreOrder {
   /** Staff member who confirmed a cash payment at the counter. */
   paidBy?: string;
   /** Where an unpaid (cash) order was paid: at the counter, or to the courier in cash / by card. */
-  paidVia?: "cash_counter" | "courier_cash" | "courier_card";
+  paidVia?: "cash_counter" | "courier_cash" | "courier_card" | "waiter_cash" | "waiter_card";
+  /** Dine-in: who marked it served ("רנא" or "רנא · טאבלט בר"). */
+  servedBy?: string;
+  /** Dine-in: "YYYY-MM-DD" (Jerusalem) the order was placed; the waiter screen lists today's. */
+  serviceDate?: string;
   /** Delivery: the courier (staffMembers id) and a copy of the name for the admin. Never sent to the customer. */
   courierId?: string;
   courierName?: string;

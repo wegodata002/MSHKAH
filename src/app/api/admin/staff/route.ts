@@ -3,6 +3,7 @@ import { requireAdminOnly } from "@/lib/auth/verify-admin";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { parseStaffAdminRequest } from "@/lib/staff/admin-input";
 import { createStaff, listStaff, setStaffPin, updateStaff } from "@/lib/staff/admin/store";
+import { createPairing, listDevices, revokeDevice } from "@/lib/staff/admin/devices";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,6 +23,13 @@ export async function POST(request: NextRequest) {
     const actor = auth.email || auth.uid;
     const req = parsed.request;
     if (req.action === "list") return Response.json({ ok: true, staff: await listStaff(db) });
+    // Fixed devices (cafe tablets on the waiter screen).
+    if (req.action === "devices") return Response.json({ ok: true, devices: await listDevices(db) });
+    if (req.action === "pair-device") return Response.json({ ok: true, pairing: await createPairing(db, { deviceName: req.deviceName, actor }) });
+    if (req.action === "revoke-device") {
+      const done = await revokeDevice(db, req.deviceId);
+      return done ? Response.json({ ok: true }) : Response.json({ error: "NOT_FOUND", code: "NOT_FOUND" }, { status: 404 });
+    }
     const result =
       req.action === "create"
         ? await createStaff(db, { ...req, actor })

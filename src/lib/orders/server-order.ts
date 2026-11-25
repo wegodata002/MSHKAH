@@ -12,6 +12,7 @@ import {
   quoteDelivery,
 } from "@/lib/fulfillment/availability";
 import { zoneName, type FulfillmentSettings } from "@/lib/fulfillment/settings";
+import { jerusalemDate } from "@/lib/staff/types";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import type { SelectedModifier } from "@/types/modifiers";
 
@@ -153,6 +154,8 @@ export type ServerOrderDraft = {
   tableId?: string;
   tableArea?: "inside" | "outside";
   tableNumber?: number;
+  /** Dine-in: "YYYY-MM-DD" (Jerusalem) of the order, for the waiter screen. */
+  serviceDate?: string;
   deliveryAddress?: string;
   deliveryZoneId?: string;
   deliveryZoneName?: string;
@@ -338,6 +341,8 @@ export function buildServerOrder(
     typeFields.tableId = table.id;
     typeFields.tableArea = table.area;
     typeFields.tableNumber = table.number;
+    // The waiter screen lists today's table orders by this (no extra database index needed).
+    typeFields.serviceDate = jerusalemDate(ctx.now);
   }
 
   const total = Math.max(money(subtotal - discount + delivery), 0.01);

@@ -75,6 +75,10 @@ export const COLLECTIONS = {
   loyaltyCoffeeLedger: "loyaltyCoffeeLedger",
   /** Couriers and waiters who sign in with a personal 4-digit code (server only; no client rule). */
   staffMembers: "staffMembers",
+  /** Fixed cafe tablets signed in to the waiter screen (server only). */
+  staffDevices: "staffDevices",
+  /** One-time pairing codes for fixed devices, by hash (server only). */
+  staffDevicePairings: "staffDevicePairings",
 } as const;
 
 export const DEFAULT_STORE_ID = "mishkah";
