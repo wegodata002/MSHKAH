@@ -73,6 +73,8 @@ export const COLLECTIONS = {
   loyaltyEmailIndex: "loyaltyEmailIndex",
   /** Coffee card actions at the counter (cups, free cup, 10% used, undo) — server only. */
   loyaltyCoffeeLedger: "loyaltyCoffeeLedger",
+  /** Couriers and waiters who sign in with a personal 4-digit code (server only; no client rule). */
+  staffMembers: "staffMembers",
 } as const;
 
 export const DEFAULT_STORE_ID = "mishkah";

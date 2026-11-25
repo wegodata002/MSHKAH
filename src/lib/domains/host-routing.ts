@@ -139,7 +139,7 @@ export function getAdminSurface(host: string | null | undefined): AdminSurface {
  * - dev (localhost): /admin/products
  */
 export function adminPath(
-  segment: "" | "login" | "products" | "categories" | "modifier-groups" | "product-builder" | "business-rules" | "orders" | "customers" | "banners" | "menu-builder" | "qr" | "assistant" | "printer" | "printer-test" | "users" | "settings" | "media" | "ai-assistant" | "costing" | "reports" | "club" | "club-scan",
+  segment: "" | "login" | "products" | "categories" | "modifier-groups" | "product-builder" | "business-rules" | "orders" | "customers" | "banners" | "menu-builder" | "qr" | "assistant" | "printer" | "printer-test" | "users" | "settings" | "media" | "ai-assistant" | "costing" | "reports" | "club" | "club-scan" | "staff",
   surface: AdminSurface = "dev"
 ): string {
   if (segment === "login") {
@@ -194,7 +194,13 @@ export function shouldHideCustomerChrome(
 ): boolean {
   if (isPortalHost(host) || isMenuHost(host)) return true;
   if (pathname.startsWith("/menu-display")) return true;
+  // Staff sign-in (couriers / waiters): a full-screen tool, no shop header, footer or buttons.
+  if (isStaffPath(pathname)) return true;
   return pathname.startsWith("/admin");
+}
+
+export function isStaffPath(pathname: string): boolean {
+  return pathname === "/staff" || pathname.startsWith("/staff/");
 }
 
 export function isViewOnlyMenuSurface(

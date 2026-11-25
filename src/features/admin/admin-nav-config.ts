@@ -19,6 +19,7 @@ import {
   BarChart3,
   Sparkles,
   ScanLine,
+  IdCard,
 } from "lucide-react";
 import { adminPath, toInternalAdminPath } from "@/lib/domains/host-routing";
 import type { AdminSurface } from "@/lib/domains/host-routing";
@@ -61,6 +62,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { segment: "club", labelKey: "admin.club.title", icon: Sparkles, adminOnly: true },
       // Counter: every staff member (Admin / Manager / Employee).
       { segment: "club-scan", labelKey: "club3.scan.title", icon: ScanLine },
+      // Couriers and waiters with a personal code (Admin only).
+      { segment: "staff", labelKey: "admin.staff.title", icon: IdCard, adminOnly: true },
       { segment: "costing", labelKey: "admin.costing", icon: Calculator, adminOnly: true },
       { segment: "reports", labelKey: "admin.reports", icon: BarChart3, adminOnly: true },
     ],
@@ -115,6 +118,7 @@ export const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/admin/settings": "admin.settings.title",
   "/admin/club": "admin.club.title",
   "/admin/club-scan": "club3.scan.title",
+  "/admin/staff": "admin.staff.title",
 };
 
 export function getAdminPageTitleKey(pathname: string): string {

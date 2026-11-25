@@ -132,7 +132,7 @@ export default function RootLayout({
       <head>
         <LocaleHtmlScript />
       </head>
-      <body className="flex min-h-dvh flex-col overflow-x-hidden bg-cream pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+12px)] has-[[data-admin]]:pb-0 has-[[data-menu-display]]:pb-0 lg:pb-0 max-lg:has-[[data-cart-fab]]:pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+4.75rem)] lg:has-[[data-cart-fab]]:pb-24">
+      <body className="flex min-h-dvh flex-col overflow-x-hidden bg-cream pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+12px)] has-[[data-admin]]:pb-0 has-[[data-menu-display]]:pb-0 has-[[data-staff]]:pb-0 lg:pb-0 max-lg:has-[[data-cart-fab]]:pb-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+4.75rem)] lg:has-[[data-cart-fab]]:pb-24">
         <BrandSplash />
         <ThemeProvider>
           <AccessibilityProvider>
