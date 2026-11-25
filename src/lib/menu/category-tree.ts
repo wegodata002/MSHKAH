@@ -103,25 +103,32 @@ export function filterMenuProducts(
   return active.filter((p) => p.categoryId === categoryId && !p.subcategoryId);
 }
 
-/** Digital menu display: show ALL products for a root category (including subcategories). */
+/**
+ * Digital menu display: ALL products for a root category (including subcategories), or for every
+ * root when no category is picked ("All"). Same visibility as the storefront catalog
+ * (buildCatalogSections): a product shows only under a visible root category or a visible
+ * subcategory of one, so hiding a category in the admin hides its products here too.
+ */
 export function filterMenuDisplayProducts(
   products: Product[],
   categoryId: string | null,
   categories: Category[]
 ): Product[] {
-  const active = products.filter(isPublicMenuProduct);
-  if (!categoryId) return sortProducts(active);
-
+  const roots = getRootCategories(categories).filter((root) => !categoryId || root.id === categoryId);
+  const rootIds = new Set(roots.map((root) => root.id));
   const childIds = new Set(
-    categories.filter((c) => c.parentId === categoryId && c.active).map((c) => c.id)
+    categories
+      .filter((c) => c.parentId != null && rootIds.has(c.parentId) && isPublicMenuCategory(c))
+      .map((c) => c.id)
   );
 
   return sortProducts(
-    active.filter(
+    products.filter(
       (p) =>
-        p.categoryId === categoryId ||
-        childIds.has(p.categoryId) ||
-        (p.subcategoryId != null && childIds.has(p.subcategoryId))
+        isPublicMenuProduct(p) &&
+        (rootIds.has(p.categoryId) ||
+          childIds.has(p.categoryId) ||
+          (p.subcategoryId != null && childIds.has(p.subcategoryId)))
     )
   );
 }

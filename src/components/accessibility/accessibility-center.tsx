@@ -23,7 +23,9 @@ import {
   Plus,
   Palette,
 } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { useAccessibility } from "@/components/providers/accessibility-provider";
+import { useFooterInView } from "@/hooks/useFooterInView";
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import type { SpacingLevel, ThemePreference } from "@/lib/accessibility/types";
@@ -150,6 +152,9 @@ export function AccessibilityCenter() {
   } = useAccessibility();
   const panelRef = useRef<HTMLDivElement>(null);
   const fabRef = useRef<HTMLButtonElement>(null);
+  const pathname = usePathname();
+  const footerInView = useFooterInView();
+  const compact = pathname.startsWith("/cart") || pathname.startsWith("/checkout");
 
   useEffect(() => {
     if (!panelOpen) return;
@@ -197,20 +202,29 @@ export function AccessibilityCenter() {
         aria-expanded={panelOpen}
         aria-controls="a11y-panel"
         aria-label={t("a11y.openMenu")}
+        // Fades out while the site footer is on screen, so it never covers the footer's text.
+        aria-hidden={footerInView || undefined}
+        tabIndex={footerInView ? -1 : undefined}
         className={cn(
           "a11y-fab print:hidden fixed z-40 flex h-14 w-14 items-center justify-center rounded-full",
           "glass shadow-premium border border-white/30",
           "text-turquoise transition-transform hover:scale-105 active:scale-95",
           // Bottom row, right next to the assistant on the end side (checkout button: start corner).
           "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.75rem)] end-20 lg:bottom-6 lg:end-24",
+          // Cart / checkout (phones, tablets): smaller, next to the smaller assistant button.
+          compact && "max-lg:h-11 max-lg:w-11 max-lg:end-[4.25rem]",
           // Pages without the bottom nav (e.g. admin login): no space to reserve for it.
           "max-lg:[body:not(:has(.mobile-bottom-nav))_&]:bottom-[calc(env(safe-area-inset-bottom,0px)+1rem)]",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-turquoise focus-visible:ring-offset-2",
-          panelOpen && "scale-0 opacity-0 pointer-events-none"
+          (panelOpen || footerInView) && "pointer-events-none",
+          panelOpen && "scale-0 opacity-0"
         )}
         whileTap={{ scale: 0.92 }}
         initial={{ opacity: 0, scale: 0.8 }}
-        animate={{ opacity: panelOpen ? 0 : 1, scale: panelOpen ? 0.8 : 1 }}
+        animate={{
+          opacity: panelOpen || footerInView ? 0 : 1,
+          scale: panelOpen || footerInView ? 0.8 : 1,
+        }}
         transition={{ type: "spring", stiffness: 400, damping: 25 }}
       >
         <Accessibility className="h-6 w-6" strokeWidth={2.25} />

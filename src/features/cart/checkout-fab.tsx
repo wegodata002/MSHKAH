@@ -6,6 +6,7 @@ import { ArrowRight, ShoppingBag } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useHideCustomerChrome } from "@/hooks/useAdminPath";
 import { useCart } from "@/features/cart/cart-context";
+import { useFooterInView } from "@/hooks/useFooterInView";
 import { useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 
@@ -19,6 +20,7 @@ export function CheckoutFab() {
   const pathname = usePathname();
   const hideChrome = useHideCustomerChrome();
   const t = useT();
+  const footerInView = useFooterInView();
 
   if (hideChrome || pathname.startsWith("/checkout")) return null;
 
@@ -34,16 +36,20 @@ export function CheckoutFab() {
           key="checkout-fab"
           data-cart-fab
           initial={{ opacity: 0, scale: 0.8 }}
-          animate={{ opacity: 1, scale: 1 }}
+          // Fades out while the site footer is on screen, so it never covers the footer's text.
+          animate={{ opacity: footerInView ? 0 : 1, scale: footerInView ? 0.8 : 1 }}
           exit={{ opacity: 0, scale: 0.8 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
+          aria-hidden={footerInView || undefined}
           className={cn(
             "fixed z-[60] print:hidden",
-            "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.75rem)] start-4 lg:bottom-6 lg:start-6"
+            "bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.75rem)] start-4 lg:bottom-6 lg:start-6",
+            footerInView && "pointer-events-none"
           )}
         >
           <Link
             href="/checkout"
+            tabIndex={footerInView ? -1 : undefined}
             aria-label={label}
             title={label}
             className={cn(

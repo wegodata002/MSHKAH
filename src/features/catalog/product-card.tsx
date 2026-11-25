@@ -60,7 +60,8 @@ export function ProductCard({ product, index = 0, onClick }: ProductCardProps) {
         !product.available && "opacity-55"
       )}
     >
-      <div className="relative aspect-square w-full overflow-hidden bg-beige/35 md:aspect-[4/3]">
+      {/* 4:3 everywhere: on phones a square photo made the card too tall. */}
+      <div className="relative aspect-[4/3] w-full overflow-hidden bg-beige/35">
         <ProductImage
           image={product.image}
           categoryId={product.categoryId}
@@ -105,7 +106,7 @@ export function ProductCard({ product, index = 0, onClick }: ProductCardProps) {
         </h3>
         {localized.description && (
           <p
-            className="text-description mt-1 line-clamp-2 text-[11px] leading-snug sm:text-[13px] sm:leading-relaxed md:text-sm"
+            className="text-description mt-1 line-clamp-1 text-[11px] leading-snug md:line-clamp-2 sm:text-[13px] sm:leading-relaxed md:text-sm"
             dir={localized.dir}
           >
             {localized.description}

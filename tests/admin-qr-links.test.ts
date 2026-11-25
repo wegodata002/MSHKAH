@@ -16,6 +16,9 @@ describe("admin QR links", () => {
     expect(links[0]?.url).toMatch(/^https:\/\//);
     expect(links[1]?.url).toMatch(/^https:\/\//);
     expect(links[0]?.url).not.toBe(links[1]?.url);
+    // Menu QR → the storefront's one-page menu, never the view-only menu domain.
+    expect(links[0]?.url).toBe(`${links[1]?.url}/catalog`);
+    expect(links[0]?.url).not.toMatch(/\/\/menu\./);
   });
 
   it("builds a PNG from the live URL", async () => {
