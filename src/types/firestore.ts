@@ -133,7 +133,14 @@ export interface FirestoreOrder {
   paidAt?: Timestamp | null;
   /** Staff member who confirmed a cash payment at the counter. */
   paidBy?: string;
-  paidVia?: "cash_counter";
+  /** Where an unpaid (cash) order was paid: at the counter, or to the courier in cash / by card. */
+  paidVia?: "cash_counter" | "courier_cash" | "courier_card";
+  /** Delivery: the courier (staffMembers id) and a copy of the name for the admin. Never sent to the customer. */
+  courierId?: string;
+  courierName?: string;
+  courierAssignedAt?: Timestamp | null;
+  /** "YYYY-MM-DD" (Jerusalem) of the assignment: the courier's list shows today's. */
+  courierAssignedDate?: string;
   alerts?: {
     receivedCritical?: FirestoreOrderAlert;
     preparingCritical?: FirestoreOrderAlert;

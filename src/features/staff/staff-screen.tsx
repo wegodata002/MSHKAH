@@ -8,6 +8,7 @@ import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import type { StaffRole } from "@/lib/staff/types";
+import { CourierDeliveries } from "@/features/staff/courier-deliveries";
 
 type Member = { name: string; role: StaffRole; worksToday: boolean };
 type State = { kind: "checking" } | { kind: "pin" } | { kind: "in"; member: Member };
@@ -209,9 +210,17 @@ export function StaffScreen() {
         </div>
         <LanguageSwitcher compact />
       </header>
-      <main className="flex flex-1 flex-col items-center justify-center px-4 py-8">
+      <main
+        className={cn(
+          "flex flex-1 flex-col items-center px-4 py-8",
+          // The courier's list starts at the top; the keypad and the waiter screen sit in the middle.
+          state.kind === "in" && state.member.role === "courier" ? "justify-start py-4" : "justify-center"
+        )}
+      >
         {state.kind === "checking" ? (
           <Loader2 className="h-8 w-8 animate-spin text-turquoise" aria-label={t("staff.checking")} />
+        ) : state.kind === "in" && state.member.role === "courier" ? (
+          <CourierDeliveries name={state.member.name} onSignedOut={() => setState({ kind: "pin" })} />
         ) : state.kind === "in" ? (
           <SignedIn member={state.member} onSignOut={() => void signOut()} />
         ) : (
