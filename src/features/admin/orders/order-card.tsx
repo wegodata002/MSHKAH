@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Banknote, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, Bike, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -105,6 +105,7 @@ export function OrderCard({
   onEditItem,
   onPermanentDelete,
   onMarkCashPaid,
+  onMarkOutForDelivery,
   isClubMember,
 }: {
   order: Order;
@@ -124,6 +125,8 @@ export function OrderCard({
   onPermanentDelete?: () => void;
   /** Present only while the order waits for a cash payment. */
   onMarkCashPaid?: () => void;
+  /** Delivery orders: stamp "out for delivery" (shown on the customer's tracking page). */
+  onMarkOutForDelivery?: () => void;
   isClubMember?: boolean;
 }) {
   const t = useT();
@@ -219,6 +222,22 @@ export function OrderCard({
             {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
             {t(`admin.orders.next.${status}`)}
           </Button>
+        )}
+        {/* Delivery, ready: "out for delivery" first (customer tracking), then "delivered". */}
+        {order.orderType === "delivery" && status === "ready" && !order.outForDeliveryAt && onMarkOutForDelivery && (
+          <Button type="button" size="sm" variant="outline" className="rounded-lg" onClick={onMarkOutForDelivery} data-out-for-delivery>
+            <Bike className="h-3.5 w-3.5" />
+            {t("admin.orders.markOutForDelivery")}
+          </Button>
+        )}
+        {order.orderType === "delivery" && status === "ready" && order.outForDeliveryAt && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-turquoise/10 px-2 py-0.5 text-[11px] font-semibold text-turquoise">
+            <Bike className="h-3 w-3" />
+            {t("admin.orders.outForDeliveryAt").replace(
+              "{time}",
+              new Date(order.outForDeliveryAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            )}
+          </span>
         )}
         <button
           type="button"

@@ -9,6 +9,7 @@ import { CLUB_COOKIE_NAME } from "@/lib/loyalty/session";
 import { readSessionMember } from "@/lib/loyalty/admin/session-member";
 import { checkCouponForMember, saveOrderWithCoupon } from "@/lib/loyalty/admin/coupons";
 import type { LoyaltyMember } from "@/lib/loyalty/types";
+import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -56,5 +57,9 @@ export async function POST(request: NextRequest) {
       return ref.id;
     },
   });
-  return NextResponse.json(result.body, { status: result.status });
+  // The customer's tracking link ("Track your order" on the confirmation screen).
+  // The order is saved by now: a tracking-link problem must not turn this into an error.
+  const trackingToken = result.body.ok ? tryCreateTrackingToken(result.body.id) : null;
+  const responseBody = result.body.ok && trackingToken ? { ...result.body, trackingToken } : result.body;
+  return NextResponse.json(responseBody, { status: result.status });
 }

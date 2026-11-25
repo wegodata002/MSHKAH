@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { requireServerSecret } from "@/lib/server-secrets";
 
 /**
  * Minimal signed-cookie session for verified club members.
@@ -18,8 +19,12 @@ export function clubSecret(): string {
   return secret();
 }
 
+/**
+ * Signs the club login cookie, the member card QR and the customer order-tracking links.
+ * Production: LOYALTY_SESSION_SECRET must be set (no fallback; see server-secrets.ts).
+ */
 function secret(): string {
-  return process.env.LOYALTY_SESSION_SECRET || process.env.LOYALTY_TOKEN_PEPPER || "mishkah-dev-session";
+  return requireServerSecret("LOYALTY_SESSION_SECRET", "mishkah-dev-session");
 }
 
 export function signClubSession(input: { emailHash: string; ttlSeconds?: number }): {

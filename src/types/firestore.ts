@@ -125,6 +125,8 @@ export interface FirestoreOrder {
   confirmedAt?: Timestamp | null;
   preparationStartedAt?: Timestamp | null;
   readyAt?: Timestamp | null;
+  /** Delivery: left the cafe with the courier (set by the manager, later also by the courier). */
+  outForDeliveryAt?: Timestamp | null;
   deliveredAt?: Timestamp | null;
   completedAt?: Timestamp | null;
   cancelledAt?: Timestamp | null;

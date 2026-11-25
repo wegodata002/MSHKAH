@@ -127,6 +127,8 @@ export interface Order {
   confirmedAt?: string | null;
   preparationStartedAt?: string | null;
   readyAt?: string | null;
+  /** Delivery: left the cafe with the courier. A time stamp on a ready order, not a status. */
+  outForDeliveryAt?: string | null;
   deliveredAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;

@@ -17,6 +17,8 @@ import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import { paymentAudit } from "@/lib/payments/hyp/audit";
 import type { FirestoreOrder } from "@/types/firestore";
 import type { NotifyResult } from "@/lib/email/notifications/new-order";
+import { getPublicSiteUrl } from "@/lib/email/config";
+import { trackingPath, tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 
 const SUCCESS_FIELD = "customerConfirmationEmail";
 const FAILURE_FIELD = "customerFailureEmail";
@@ -49,9 +51,11 @@ export async function notifyCustomerPaymentSuccess(
     return { status: "in_progress" };
   }
 
+  const trackingToken = tryCreateTrackingToken(orderId);
   const content = renderCustomerPaymentSuccessEmail(
     firestoreOrderToEmailPayload(orderId, data),
-    localeOf(data)
+    localeOf(data),
+    trackingToken ? `${getPublicSiteUrl()}${trackingPath(trackingToken)}` : undefined
   );
   const result = await sendMishkahEmail({
     to: email,

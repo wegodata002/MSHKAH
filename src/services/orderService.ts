@@ -376,6 +376,26 @@ export async function updateOrderStatus(
 }
 
 /**
+ * A delivery order left the cafe with the courier: stamps `outForDeliveryAt` once (a time stamp on a
+ * ready order, not a status, so printing, emails and reports keep working). The customer's tracking
+ * page then shows "Out for delivery". Set by the manager here; the courier screen sets it later too.
+ */
+export async function markOrderOutForDelivery(id: string): Promise<ServiceResult<void>> {
+  try {
+    const ref = doc(getDb(), COLLECTIONS.orders, id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) return failure(new ServiceError("Order not found", "NOT_FOUND"));
+    const current = snap.data() as FirestoreOrder;
+    if (current.orderType !== "delivery") return failure(new ServiceError("Not a delivery order", "NOT_DELIVERY"));
+    if (!current.outForDeliveryAt) await updateDoc(ref, { outForDeliveryAt: serverTimestamp() });
+    return success(undefined);
+  } catch (error) {
+    console.error("[markOrderOutForDelivery] failed:", error);
+    return failure(new ServiceError("Out-for-delivery update failed", ORDER_SAVE_FAILED_CODE));
+  }
+}
+
+/**
  * Staff confirm that a cash / pay-at-pickup order was paid at the counter.
  * Card (HYP) orders are never marked here; their status comes from the payment provider.
  */
