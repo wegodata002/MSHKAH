@@ -161,6 +161,9 @@ export function mapOrder(doc: FirestoreDoc<FirestoreOrder>): Order {
         ? doc.notifications.newOrderEmail.status
         : undefined,
     orderType: doc.orderType,
+    tableId: doc.tableId || undefined,
+    tableArea: doc.tableArea,
+    tableNumber: typeof doc.tableNumber === "number" ? doc.tableNumber : undefined,
     deliveryAddress: doc.deliveryAddress,
     pickupTime: doc.pickupTime,
     deliveryZoneName: doc.deliveryZoneName,

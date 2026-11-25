@@ -104,8 +104,11 @@ export interface FirestoreOrder {
   customerPhone?: string;
   customerEmail?: string;
   customerFullName?: string;
-  /** Dine-in ("dine_in") is added in PR 11, together with its print / email / admin labels. */
-  orderType?: "pickup" | "delivery";
+  orderType?: "pickup" | "delivery" | "dine_in";
+  /** Dine-in: the table (id as in its QR link) and its area / number when the order was placed. */
+  tableId?: string;
+  tableArea?: "inside" | "outside";
+  tableNumber?: number;
   deliveryAddress?: string;
   /** Set by POST /api/orders/create (optional on older orders). */
   deliveryZoneId?: string;

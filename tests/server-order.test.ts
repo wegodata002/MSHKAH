@@ -305,9 +305,9 @@ describe("server order: order types and payment", () => {
     expect(result).toEqual({ ok: false, error: { code: "UNKNOWN_ZONE" } });
   });
 
-  it("dine-in is not accepted yet (PR 11)", () => {
-    const result = build(request({ payment: "table", fulfillment: { type: "dine_in", tableId: "inside-1" } }));
-    expect(result).toEqual({ ok: false, error: { code: "DINE_IN_UNAVAILABLE" } });
+  it("dine-in while \"Dine-in active\" is off is refused (details: tests/dine-in.test.ts)", () => {
+    const result = build(request({ payment: "table", fulfillment: { type: "dine_in", tableId: "inside-4" } }));
+    expect(result).toEqual({ ok: false, error: { code: "DINE_IN_UNAVAILABLE", reason: "disabled", nextAt: null } });
   });
 });
 

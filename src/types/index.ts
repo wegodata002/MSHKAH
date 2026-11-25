@@ -112,7 +112,11 @@ export interface Order {
   customerFullName?: string;
   adminNotificationStatus?: "SENDING" | "SENT" | "FAILED";
   customerConfirmationStatus?: "SENDING" | "SENT" | "FAILED";
-  orderType?: "pickup" | "delivery";
+  orderType?: "pickup" | "delivery" | "dine_in";
+  /** Dine-in: the table (id as in its QR link) and its area / number. */
+  tableId?: string;
+  tableArea?: "inside" | "outside";
+  tableNumber?: number;
   deliveryAddress?: string;
   /** "HH:MM" chosen pickup time (orders from the server checkout). */
   pickupTime?: string;

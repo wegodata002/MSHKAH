@@ -41,6 +41,20 @@ export function makeTable(area: TableArea, number: number): DineInTable {
   return { id: tableId(area, number), area, number };
 }
 
+const TABLE_WORD: Record<keyof LocalizedName, string> = { he: "שולחן", ar: "طاولة", en: "Table" };
+
+/** "שולחן 3 · פנים" / "طاولة 3 · داخل" / "Table 3 · Inside": how a table order is shown everywhere. */
+export function tableDisplayName(table: Pick<DineInTable, "area" | "number">, locale: keyof LocalizedName): string {
+  return `${TABLE_WORD[locale] ?? TABLE_WORD.en} ${table.number} · ${tableAreaName(table.area, locale)}`;
+}
+
+/** Tables as saved in the settings, grouped by area (inside first) and sorted by number. */
+export function tablesByArea(tables: DineInTable[]): { area: TableArea; tables: DineInTable[] }[] {
+  return (["inside", "outside"] as const)
+    .map((area) => ({ area, tables: tables.filter((t) => t.area === area).sort((x, y) => x.number - y.number) }))
+    .filter((group) => group.tables.length > 0);
+}
+
 /** "חוץ 1" / "خارج 1" / "Outside 1". */
 export function tableLabel(table: Pick<DineInTable, "area" | "number">, locale: keyof LocalizedName): string {
   return `${(TABLE_AREA_NAMES[locale] ?? TABLE_AREA_NAMES.en)[table.area]} ${table.number}`;

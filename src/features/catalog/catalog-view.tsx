@@ -6,6 +6,7 @@ import { Search, X } from "lucide-react";
 import { SiteHeader } from "@/components/layout/header";
 import { HeroBanner } from "@/features/catalog/hero-banner";
 import { AvailabilityPill } from "@/features/catalog/availability-pill";
+import { TableBanner } from "@/features/dine-in/table-banner";
 import { CategoryNav } from "@/features/catalog/category-nav";
 import { CategoryProductSection } from "@/features/catalog/category-product-section";
 import { FilterSortButton, FilterSortPanel } from "@/features/catalog/product-filters-bar";
@@ -191,6 +192,8 @@ export function CatalogView() {
         {/* The footer below keeps the room for the phone's bottom bar and the cart button. */}
         <div className="mt-4 min-w-0 pb-8 md:mt-6 lg:pb-12">
           {/* What can be ordered now: one short line above the categories (under the banner on the home page). */}
+          {/* After scanning a table QR: "Ordering to Table 4 · Inside". */}
+          <TableBanner />
           {/* Shown on the home page and on /catalog. */}
           <AvailabilityPill />
           {/* Sticky catalog bar: categories (+ mobile icons) and the desktop search/filter row. */}

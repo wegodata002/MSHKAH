@@ -5,6 +5,8 @@ import { collectKitchenNotes } from "@/lib/product-builder/engine";
 import {
   acceptedPickupTime,
   deliveryAvailability,
+  dineInAvailability,
+  findTable,
   formatLocalTime,
   pickupAvailability,
   quoteDelivery,
@@ -50,7 +52,8 @@ export const createOrderRequestSchema = z.object({
   customer: z.object({
     id: z.string().trim().max(200).optional(),
     name: z.string().trim().min(1).max(120),
-    phone: z.string().trim().min(1).max(40),
+    /** Required, except for a table order (dine-in: name only). */
+    phone: z.string().trim().max(40).default(""),
     email: z.string().trim().max(200).optional(),
   }),
   /** Order notes as composed by the checkout (customer note, phone line, fulfillment line). */
@@ -75,6 +78,10 @@ export const createOrderRequestSchema = z.object({
       tableId: z.string().trim().min(1).max(100),
     }),
   ]),
+}).superRefine((request, ctx) => {
+  if (request.fulfillment.type !== "dine_in" && !request.customer.phone) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customer", "phone"], message: "phone required" });
+  }
 });
 
 export type CreateOrderRequest = z.infer<typeof createOrderRequestSchema>;
@@ -109,7 +116,8 @@ export type OrderBuildError =
   | { code: "DELIVERY_UNAVAILABLE"; reason: "disabled" | "no_zones" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_ZONE" }
   | { code: "BELOW_MINIMUM"; minOrder: number }
-  | { code: "DINE_IN_UNAVAILABLE" }
+  | { code: "DINE_IN_UNAVAILABLE"; reason: "disabled" | "no_tables" | "closed"; nextAt: string | null }
+  | { code: "UNKNOWN_TABLE" }
   | { code: "COUPON_INVALID"; reason: "login_required" | "invalid" | "used" | "expired" };
 
 /** The order document without timestamps (the route adds createdAt / receivedAt). */
@@ -139,8 +147,12 @@ export type ServerOrderDraft = {
   paymentMethod: "cash" | "card";
   paymentStatus: "pending";
   paymentCollection: PaymentCollection;
-  orderType: "pickup" | "delivery";
+  orderType: "pickup" | "delivery" | "dine_in";
   pickupTime?: string;
+  /** Dine-in: the table from the settings (id as in its QR link, plus area and number as they were). */
+  tableId?: string;
+  tableArea?: "inside" | "outside";
+  tableNumber?: number;
   deliveryAddress?: string;
   deliveryZoneId?: string;
   deliveryZoneName?: string;
@@ -309,8 +321,23 @@ export function buildServerOrder(
     typeFields.deliveryZoneId = quote.zone.id;
     typeFields.deliveryZoneName = zoneName(quote.zone, locale ?? "he");
   } else {
-    // Dine-in orders are accepted from PR 11 (table QR, waiter screen, print / email labels).
-    return { ok: false, error: { code: "DINE_IN_UNAVAILABLE" } };
+    // Dine-in: "Dine-in active" on, a table saved in the settings, and the cafe open now.
+    const availability = dineInAvailability(ctx.fulfillment, ctx.openingHours, ctx.now);
+    if (!availability.available) {
+      return {
+        ok: false,
+        error: {
+          code: "DINE_IN_UNAVAILABLE",
+          reason: availability.reason,
+          nextAt: availability.nextAt ? availability.nextAt.toISOString() : null,
+        },
+      };
+    }
+    const table = findTable(ctx.fulfillment, fulfillment.tableId.trim());
+    if (!table) return { ok: false, error: { code: "UNKNOWN_TABLE" } };
+    typeFields.tableId = table.id;
+    typeFields.tableArea = table.area;
+    typeFields.tableNumber = table.number;
   }
 
   const total = Math.max(money(subtotal - discount + delivery), 0.01);

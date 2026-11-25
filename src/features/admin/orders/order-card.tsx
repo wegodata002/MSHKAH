@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Banknote, Bike, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, Bike, UtensilsCrossed, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer, Wallet } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -10,7 +10,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useT } from "@/components/providers/locale-provider";
+import { useLocale, useT } from "@/components/providers/locale-provider";
+import { tableDisplayName } from "@/lib/fulfillment/settings";
 import { effectivePaymentStatus } from "@/lib/orders/operations";
 import {
   OPERATIONAL_FILTERS,
@@ -138,6 +139,7 @@ export function OrderCard({
   isClubMember?: boolean;
 }) {
   const t = useT();
+  const { locale } = useLocale();
   const status = operationalStatusOf(order);
   const next = nextOperationalStatus(status);
   const ageMs = orderAgeMs(order, now);
@@ -163,7 +165,8 @@ export function OrderCard({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-bold text-dark-brown dark:text-warm-white">{order.orderNumber}</span>
             <Badge variant="outline" className={STATUS_STYLE[status]}>
-              {t(`admin.status.${status}`)}
+              {/* A table order is "served", not "delivered". */}
+              {t(order.orderType === "dine_in" && status === "delivered" ? "admin.status.served" : `admin.status.${status}`)}
             </Badge>
             {delay !== "normal" && (
               <span
@@ -200,6 +203,12 @@ export function OrderCard({
                 {t("admin.orders.pickupAt").replace("{time}", order.pickupTime)}
               </span>
             ) : null}
+            {order.orderType === "dine_in" && order.tableArea && order.tableNumber ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-turquoise px-2 py-0.5 text-[11px] font-bold text-warm-white" data-table-chip>
+                <UtensilsCrossed className="h-3 w-3" />
+                {tableDisplayName({ area: order.tableArea, number: order.tableNumber }, locale)}
+              </span>
+            ) : null}
             {order.orderType === "delivery" ? (
               <span className="rounded-full bg-turquoise/10 px-1.5 py-0.5 text-[11px] font-semibold text-turquoise">
                 {order.deliveryZoneName
@@ -234,7 +243,7 @@ export function OrderCard({
             onClick={() => onStatusChange(toStoredOrderStatus(next))}
           >
             {updating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-            {t(`admin.orders.next.${status}`)}
+            {t(order.orderType === "dine_in" && status === "ready" ? "admin.orders.next.readyDineIn" : `admin.orders.next.${status}`)}
           </Button>
         )}
         {/* Delivery, ready: "out for delivery" first (customer tracking), then "delivered". */}

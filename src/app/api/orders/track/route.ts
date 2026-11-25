@@ -22,9 +22,7 @@ export async function GET(request: NextRequest) {
     if (!orderId) return Response.json({ ok: false, code: "NOT_FOUND" }, { status: 404, headers: NO_STORE });
     const snap = await getAdminDb().collection(COLLECTIONS.orders).doc(orderId).get();
     if (!snap.exists) return Response.json({ ok: false, code: "NOT_FOUND" }, { status: 404, headers: NO_STORE });
-    const order = mapOrder({ id: snap.id, ...(snap.data() as FirestoreOrder) });
-    const tableId = (snap.get("tableId") as unknown) ?? null;
-    const view = buildTrackingView({ ...order, tableId: typeof tableId === "string" ? tableId : null });
+    const view = buildTrackingView(mapOrder({ id: snap.id, ...(snap.data() as FirestoreOrder) }));
     return Response.json({ ok: true, order: view }, { headers: NO_STORE });
   } catch (error) {
     console.error("[orders/track] failed:", error instanceof Error ? error.message : error);

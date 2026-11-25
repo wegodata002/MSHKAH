@@ -68,6 +68,11 @@ export function getAdminQrLinks(): AdminQrLink[] {
   ];
 }
 
+/** A table's QR link: <store>/t/<tableId> (the id exactly as saved in the settings, e.g. inside-4). */
+export function tableQrUrl(tableId: string): string {
+  return `${readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin())}/t/${encodeURIComponent(tableId)}`;
+}
+
 export const ADMIN_QR_PREVIEW_PX = 360;
 export const ADMIN_QR_DOWNLOAD_PX = 2048;
 export const ADMIN_QR_COLORS = { dark: "#1A1410", light: "#FFFFFF" } as const;

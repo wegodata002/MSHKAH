@@ -1,5 +1,6 @@
 import type { Order } from "@/types";
 import { formatPrice } from "@/lib/utils";
+import { tableDisplayName } from "@/lib/fulfillment/settings";
 
 function escapeHtml(value: string): string {
   return value
@@ -36,6 +37,12 @@ function orderTypeLabel(order: Order): string {
     if (locale === "ar") return "استلام ذاتي";
     if (locale === "en") return "Pickup";
     return "איסוף עצמי · استلام ذاتي";
+  }
+  if (order.orderType === "dine_in" && order.tableArea && order.tableNumber) {
+    // The table is what the kitchen and the waiter need: "שולחן 3 · פנים".
+    const table = { area: order.tableArea, number: order.tableNumber };
+    if (locale === "ar" || locale === "en") return tableDisplayName(table, locale);
+    return `${tableDisplayName(table, "he")} · ${tableDisplayName(table, "ar")}`;
   }
   return "";
 }

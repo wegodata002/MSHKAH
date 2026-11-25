@@ -22,6 +22,7 @@ export const CUSTOMER_ONLY_PATH_PREFIXES = [
   "/payment",
   "/account",
   "/favorites",
+  "/t",
   "/offline",
   "/pdf-smoke",
 ] as const;
@@ -33,6 +34,7 @@ export const ORDERING_PATH_PREFIXES = [
   "/orders",
   "/account",
   "/favorites",
+  "/t",
   "/catalog",
   "/admin",
 ] as const;

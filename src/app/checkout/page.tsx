@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { rememberMyOrder } from "@/lib/orders/my-orders";
@@ -42,12 +42,16 @@ import { zoneName } from "@/lib/fulfillment/settings";
 import { useFulfillmentAvailability, describeNext } from "@/features/checkout/use-fulfillment-availability";
 import {
   DeliveryZonePicker,
+  DineInTableCard,
   OrderTypePicker,
   PickupTimeSelect,
   StoreContact,
+  resolveOrderType,
   type CheckoutOrderType,
   type ZoneChoice,
 } from "@/features/checkout/checkout-fulfillment";
+import { rememberTable, useScannedTable } from "@/lib/dine-in/scanned-table";
+import { tableDisplayName } from "@/lib/fulfillment/settings";
 
 function OrderLineItem({
   item,
@@ -138,21 +142,35 @@ export default function CheckoutPage() {
   const [address, setAddress] = useState("");
   const pickupOk = availability.pickup.available;
   const deliveryOk = availability.delivery?.available === true;
+  // "At the table": only after scanning a table QR (3 hours), for a table still in the settings.
+  const scanned = useScannedTable();
+  const table = scanned ? availability.tables.find((tb) => tb.id === scanned.tableId) ?? null : null;
+  const dineInOk = Boolean(table) && availability.dineIn?.available === true;
+  // Scanned a table: start on "At the table" (once; the customer can still switch).
+  const tablePreselected = useRef(false);
+  useEffect(() => {
+    if (table && !tablePreselected.current) {
+      tablePreselected.current = true;
+      setOrderType("dine_in");
+    }
+  }, [table]);
   // A type that is not available falls back to the one that is.
-  const orderType: CheckoutOrderType =
-    orderTypeChoice === "delivery"
-      ? deliveryOk ? "delivery" : "pickup"
-      : !pickupOk && deliveryOk ? "delivery" : "pickup";
+  const orderType: CheckoutOrderType = resolveOrderType(orderTypeChoice, { pickup: pickupOk, delivery: deliveryOk, dineIn: dineInOk });
+  const isDineIn = orderType === "dine_in";
   const slotTimes = availability.pickup.available ? availability.pickup.slots.map((s) => formatLocalTime(s)) : [];
   // A chosen time that has passed falls back to the earliest one.
   const pickupTime = slotTimes.includes(pickupTimeChoice) ? pickupTimeChoice : slotTimes[0] ?? "";
   const deliveryZone = availability.zones.find((z) => z.id === zoneChoice);
   const deliveryFee = orderType === "delivery" && deliveryZone ? deliveryZone.fee : 0;
   const belowMinimum = Boolean(deliveryZone && deliveryZone.minOrder > 0 && subtotal < deliveryZone.minOrder);
-  const nothingAvailable = !availability.loading && !pickupOk && !deliveryOk;
+  const nothingAvailable = !availability.loading && !pickupOk && !deliveryOk && !dineInOk;
   const canOrder =
     !availability.loading &&
-    (orderType === "pickup" ? pickupOk && Boolean(pickupTime) : deliveryOk && Boolean(deliveryZone) && !belowMinimum);
+    (orderType === "dine_in"
+      ? dineInOk
+      : orderType === "pickup"
+        ? pickupOk && Boolean(pickupTime)
+        : deliveryOk && Boolean(deliveryZone) && !belowMinimum);
   const displayTotal = total + deliveryFee;
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [hypAvailability, setHypAvailability] = useState<"unknown" | "enabled" | "disabled">("unknown");
@@ -193,6 +211,11 @@ export default function CheckoutPage() {
     if (hypAvailability === "disabled" && payment === "card") setPayment("cash");
   }, [hypAvailability, payment]);
 
+  // At the table: no payment on the site; it is paid at the end, to the waiter or at the counter.
+  useEffect(() => {
+    if (isDineIn && payment === "card") setPayment("cash");
+  }, [isDineIn, payment]);
+
   // A card order that was created but not paid (the payment page failed to open) is reused on the
   // next try — but only while nothing changed. Any change to the cart, coupon, order type, area,
   // address, pickup time or payment method needs a new order, so forget the old one.
@@ -200,7 +223,7 @@ export default function CheckoutPage() {
     items,
     couponCode,
     orderType,
-    zoneId: orderType === "delivery" ? deliveryZone?.id ?? "" : "",
+    zoneId: orderType === "delivery" ? deliveryZone?.id ?? "" : orderType === "dine_in" ? table?.id ?? "" : "",
     address: orderType === "delivery" ? address.trim() : "",
     pickupTime: orderType === "pickup" ? pickupTime : "",
     payment,
@@ -245,6 +268,13 @@ export default function CheckoutPage() {
         : t(result.code === "PICKUP_CLOSED" ? "checkout.pickupUnavailable" : "checkout.deliveryUnavailable");
     }
     if (result.code === "UNKNOWN_ZONE") return t("checkout.unknownZone");
+    if (result.code === "UNKNOWN_TABLE") return t("checkout.unknownTable");
+    if (result.code === "DINE_IN_UNAVAILABLE") {
+      const next = result.nextAt ? new Date(result.nextAt) : null;
+      return next && !Number.isNaN(next.getTime())
+        ? t("checkout.closedNow").replace("{when}", describeNext(t, locale, next, new Date(), "at"))
+        : t("checkout.dineInUnavailable");
+    }
     if (result.code === "COUPON_INVALID") {
       const reason = result.reason;
       return t(
@@ -259,7 +289,8 @@ export default function CheckoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !phone) { setError(t("validation.required")); return; }
+    // Phone: required, except at the table (name only).
+    if (!name.trim() || (!isDineIn && !phone.trim())) { setError(t("validation.required")); return; }
     if (!canOrder) return;
     if (orderType === "delivery" && !address.trim()) { setError(t("validation.required")); return; }
 
@@ -267,11 +298,14 @@ export default function CheckoutPage() {
     setError(null);
     try {
       void getOrCreateGuestCustomer();
-      const customerResponse = await fetch("/api/checkout/customer", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), phone: phone.trim() }),
-      }).catch(() => null);
+      // Customers are kept by phone: a table order without a phone stays a guest order.
+      const customerResponse = phone.trim()
+        ? await fetch("/api/checkout/customer", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name: name.trim(), phone: phone.trim() }),
+          }).catch(() => null)
+        : null;
       const customerData = customerResponse?.ok
         ? ((await customerResponse.json()) as { customerId?: string })
         : null;
@@ -281,7 +315,11 @@ export default function CheckoutPage() {
       const orderNotes = [
         notes.trim(),
         phone.trim() ? `${t("checkout.phone")}: ${phone.trim()}` : "",
-        orderType === "delivery" ? t("checkout.delivery") : t("checkout.pickupFromStore", "איסוף עצמי מהעסק"),
+        orderType === "delivery"
+          ? t("checkout.delivery")
+          : orderType === "dine_in" && table
+            ? `${t("checkout.dineIn")} · ${tableDisplayName(table, locale)}`
+            : t("checkout.pickupFromStore", "איסוף עצמי מהעסק"),
         orderType === "delivery" ? `${t("checkout.address")}: ${address.trim()}` : "",
       ]
         .filter(Boolean)
@@ -300,11 +338,13 @@ export default function CheckoutPage() {
           notes: orderNotes || undefined,
           locale,
           couponCode: couponCode || undefined,
-          payment: payment === "card" ? "online" : orderType === "delivery" ? "courier" : "counter",
+          payment: orderType === "dine_in" ? "table" : payment === "card" ? "online" : orderType === "delivery" ? "courier" : "counter",
           fulfillment:
-            orderType === "delivery" && deliveryZone
-              ? { type: "delivery", zoneId: deliveryZone.id, address: address.trim() }
-              : { type: "pickup", pickupTime: pickupTime || undefined },
+            orderType === "dine_in" && table
+              ? { type: "dine_in", tableId: table.id }
+              : orderType === "delivery" && deliveryZone
+                ? { type: "delivery", zoneId: deliveryZone.id, address: address.trim() }
+                : { type: "pickup", pickupTime: pickupTime || undefined },
         });
         if (!result.ok) {
           console.error("[checkout] order failed:", result.code, result.status);
@@ -412,7 +452,7 @@ export default function CheckoutPage() {
                     </div>
                   ) : (
                     <>
-                      <OrderTypePicker value={orderType} onChange={setOrderType} availability={availability} />
+                      <OrderTypePicker value={orderType} onChange={setOrderType} availability={availability} table={table} />
                       {nothingAvailable ? (
                         <StoreContact
                           message={
@@ -425,6 +465,8 @@ export default function CheckoutPage() {
                           }
                           phone={availability.storePhone}
                         />
+                      ) : orderType === "dine_in" && table ? (
+                        <DineInTableCard table={table} tables={availability.tables} onChange={(id) => rememberTable(id)} />
                       ) : orderType === "pickup" ? (
                         <PickupTimeSelect slots={availability.pickup.available ? availability.pickup.slots : []} value={pickupTime} onChange={setPickupTime} />
                       ) : (
@@ -456,8 +498,11 @@ export default function CheckoutPage() {
                         />
                       </div>
                       <div>
-                        <Label className="flex items-center gap-1"><Phone className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.phone")}</Label>
-                        <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="mt-1" required />
+                        <Label className="flex items-center gap-1">
+                          <Phone className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.phone")}
+                          {isDineIn ? <span className="text-coffee/50">({t("checkout.optional")})</span> : null}
+                        </Label>
+                        <Input value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" className="mt-1" required={!isDineIn} data-phone-optional={isDineIn ? "" : undefined} />
                       </div>
                       <div>
                         <Label className="flex items-center gap-1"><MessageSquare className="h-3.5 w-3.5" strokeWidth={1.75} /> {t("checkout.notes")}</Label>
@@ -466,6 +511,15 @@ export default function CheckoutPage() {
                     </div>
                   </div>
 
+                  {isDineIn ? (
+                    <div className="rounded-2xl bg-warm-white p-5 shadow-soft" data-pay-at-end>
+                      <h2 className="text-sm font-semibold">{t("checkout.payment")}</h2>
+                      <p className="mt-3 flex items-center gap-2 rounded-2xl border-2 border-turquoise bg-turquoise/5 px-4 py-4 font-semibold">
+                        <Banknote className="h-5 w-5 shrink-0" strokeWidth={1.75} />
+                        {t("checkout.dineInPayAtEnd")}
+                      </p>
+                    </div>
+                  ) : (
                   <div className="rounded-2xl bg-warm-white p-5 shadow-soft">
                     <h2 className="text-sm font-semibold">{t("checkout.payment")}</h2>
                     <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -527,6 +581,7 @@ export default function CheckoutPage() {
                       <p className="mt-3 text-sm text-coffee/60">{t("checkout.hypRedirectHint")}</p>
                     )}
                   </div>
+                  )}
                 </div>
 
                 <div className="lg:col-span-2">

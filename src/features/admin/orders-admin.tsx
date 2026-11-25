@@ -76,7 +76,7 @@ export function OrdersAdmin() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [now, setNow] = useState(() => Date.now());
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | "all">("all");
-  const [typeFilter, setTypeFilter] = useState<"pickup" | "delivery" | "all">("all");
+  const [typeFilter, setTypeFilter] = useState<"pickup" | "delivery" | "dine_in" | "all">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [optimistic, setOptimistic] = useState<Record<string, OrderStatus>>({});
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
@@ -560,6 +560,7 @@ export function OrdersAdmin() {
             <SelectItem value="all">{t("admin.orders.allTypes")}</SelectItem>
             <SelectItem value="pickup">{t("admin.orders.type.pickup")}</SelectItem>
             <SelectItem value="delivery">{t("admin.orders.type.delivery")}</SelectItem>
+            <SelectItem value="dine_in">{t("admin.orders.type.dine_in")}</SelectItem>
           </SelectContent>
         </Select>
       </div>

@@ -1,17 +1,34 @@
 "use client";
 
 import { useEffect, useId, useRef, useState } from "react";
-import { Check, CheckCircle2, ChevronDown, Clock, MapPin, Phone, Store, Truck } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Clock, MapPin, Phone, Store, Truck, UtensilsCrossed } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn, formatPrice } from "@/lib/utils";
 import { formatLocalTime } from "@/lib/fulfillment/availability";
-import { zoneName, type DeliveryZone } from "@/lib/fulfillment/settings";
+import { tableAreaName, tableDisplayName, tablesByArea, zoneName, type DeliveryZone, type DineInTable, type TableArea } from "@/lib/fulfillment/settings";
 import { describeNext, type FulfillmentNow } from "./use-fulfillment-availability";
 import { PICKUP_TIMES_PAGE, initialVisibleTimes, moreVisibleTimes } from "./pickup-time-list";
 
-export type CheckoutOrderType = "pickup" | "delivery";
+export type CheckoutOrderType = "pickup" | "delivery" | "dine_in";
+
+/**
+ * The order type actually used: the chosen one when it can be ordered now, else the first that can
+ * (pickup, then delivery, then the table). "At the table" only exists after scanning a table QR.
+ */
+export function resolveOrderType(
+  choice: CheckoutOrderType,
+  ok: { pickup: boolean; delivery: boolean; dineIn: boolean }
+): CheckoutOrderType {
+  if (choice === "dine_in" && ok.dineIn) return "dine_in";
+  if (choice === "delivery" && ok.delivery) return "delivery";
+  if (choice === "pickup" && ok.pickup) return "pickup";
+  if (ok.pickup) return "pickup";
+  if (ok.delivery) return "delivery";
+  if (ok.dineIn) return "dine_in";
+  return "pickup";
+}
 /** A real area id, "other" (contact the store), or "" (nothing chosen yet). */
 export type ZoneChoice = string;
 export const OTHER_ZONE = "other";
@@ -52,10 +69,13 @@ export function OrderTypePicker({
   value,
   onChange,
   availability,
+  table = null,
 }: {
   value: CheckoutOrderType;
   onChange: (next: CheckoutOrderType) => void;
   availability: FulfillmentNow;
+  /** The table from a scanned table QR (still in the settings): adds "At the table". */
+  table?: DineInTable | null;
 }) {
   const t = useT();
   const { locale } = useLocale();
@@ -73,9 +93,22 @@ export function OrderTypePicker({
         : t("checkout.deliveryUnavailable")
       : null;
 
-  const options: { type: CheckoutOrderType; label: string; icon: typeof Store; enabled: boolean; note: string | null }[] = [
-    { type: "pickup", label: t("checkout.pickup"), icon: Store, enabled: pickup.available, note: pickupNote },
-  ];
+  const options: { type: CheckoutOrderType; label: string; icon: typeof Store; enabled: boolean; note: string | null }[] = [];
+  const dineIn = availability.dineIn;
+  if (table && dineIn) {
+    options.push({
+      type: "dine_in",
+      label: t("checkout.dineIn"),
+      icon: UtensilsCrossed,
+      enabled: dineIn.available,
+      note: dineIn.available
+        ? tableDisplayName(table, locale)
+        : dineIn.nextAt
+          ? t("checkout.closedNow").replace("{when}", describeNext(t, locale, dineIn.nextAt, now, "at"))
+          : t("checkout.dineInUnavailable"),
+    });
+  }
+  options.push({ type: "pickup", label: t("checkout.pickup"), icon: Store, enabled: pickup.available, note: pickupNote });
   if (delivery) {
     options.push({ type: "delivery", label: t("checkout.delivery"), icon: Truck, enabled: delivery.available, note: deliveryNote });
   }
@@ -83,7 +116,7 @@ export function OrderTypePicker({
   return (
     <div className={card}>
       <h2 className="text-sm font-semibold">{t("checkout.orderType")}</h2>
-      <div className={cn("mt-3 grid grid-cols-1 gap-3", options.length > 1 && "sm:grid-cols-2")}>
+      <div className={cn("mt-3 grid grid-cols-1 gap-3", options.length === 2 && "sm:grid-cols-2", options.length > 2 && "sm:grid-cols-3")}>
         {options.map(({ type, label, icon: Icon, enabled, note }) => {
           const selected = enabled && value === type;
           return (
@@ -377,5 +410,105 @@ function ZoneOption({
         <span className="text-xs text-coffee/60">{t("checkout.zoneMinimum").replace("{min}", formatPrice(zone.minOrder))}</span>
       ) : null}
     </button>
+  );
+}
+
+/**
+ * "Your order goes to Table 4 · Inside" with "Not your table? Change". The change window lists only
+ * the tables saved in the settings, by area (read only); the choice is remembered like a scan.
+ */
+export function DineInTableCard({
+  table,
+  tables,
+  onChange,
+}: {
+  table: DineInTable;
+  tables: DineInTable[];
+  onChange: (tableId: string) => void;
+}) {
+  const t = useT();
+  const { locale } = useLocale();
+  const groups = tablesByArea(tables);
+  const [open, setOpen] = useState(false);
+  const [area, setArea] = useState<TableArea>(table.area);
+  const [picked, setPicked] = useState(table.id);
+
+  useEffect(() => {
+    if (!open) return;
+    setArea(table.area);
+    setPicked(table.id);
+  }, [open, table.area, table.id]);
+
+  const shown = groups.find((g) => g.area === area)?.tables ?? groups[0]?.tables ?? [];
+
+  return (
+    <div className={cn(card, "text-center")} data-dine-in-table={table.id}>
+      <p className="text-xs text-coffee/60">{t("checkout.dineInTo")}</p>
+      <p className="mt-1 font-display text-2xl font-bold text-dark-brown">{tableDisplayName(table, locale)}</p>
+      <p className="mt-1 text-xs text-coffee/60">
+        {t("checkout.dineInNotYours")}{" "}
+        <button type="button" onClick={() => setOpen(true)} className="font-semibold text-turquoise underline" data-change-table>
+          {t("checkout.dineInChange")}
+        </button>
+      </p>
+
+      {open && (
+        // Above the bottom bar (z-100) and the floating buttons (z-60), below app dialogs (z-1000).
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-dark-brown/40 sm:items-center" role="dialog" aria-modal="true" data-table-sheet>
+          <div className="w-full max-w-md rounded-t-3xl bg-warm-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-start shadow-premium sm:rounded-3xl">
+            <p className="font-display text-lg font-bold text-dark-brown">{t("checkout.dineInWhichTable")}</p>
+            {groups.length > 1 && (
+              <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-beige/60 p-1" role="tablist">
+                {groups.map((g) => (
+                  <button
+                    key={g.area}
+                    type="button"
+                    role="tab"
+                    aria-selected={area === g.area}
+                    onClick={() => setArea(g.area)}
+                    data-table-area={g.area}
+                    className={cn("h-10 rounded-lg text-sm font-semibold", area === g.area ? "bg-warm-white text-turquoise shadow-soft" : "text-coffee/65")}
+                  >
+                    {tableAreaName(g.area, locale)}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="mt-4 grid grid-cols-5 gap-2" dir="ltr">
+              {shown.map((tb) => (
+                <button
+                  key={tb.id}
+                  type="button"
+                  onClick={() => setPicked(tb.id)}
+                  aria-pressed={picked === tb.id}
+                  aria-label={tableDisplayName(tb, locale)}
+                  data-table-option={tb.id}
+                  className={cn(
+                    "h-12 rounded-xl border-2 text-lg font-bold",
+                    picked === tb.id ? "border-turquoise bg-turquoise/10 text-turquoise" : "border-beige-dark/40 text-dark-brown"
+                  )}
+                >
+                  {tb.number}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onChange(picked);
+                setOpen(false);
+              }}
+              className="mt-5 flex h-12 w-full items-center justify-center rounded-xl bg-turquoise font-bold text-warm-white"
+              data-save-table
+            >
+              {t("checkout.dineInSave")}
+            </button>
+            <button type="button" onClick={() => setOpen(false)} className="mt-2 h-10 w-full text-sm text-coffee/60">
+              {t("courier.cancel")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
