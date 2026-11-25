@@ -2,6 +2,11 @@
 export const STAFF_ROLES = ["courier", "waiter"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
+/** Which entrance: /staff?for=waiter is the waiters' QR; /staff and /staff?for=courier the couriers'. */
+export function staffAudience(value: unknown): StaffRole {
+  return value === "waiter" ? "waiter" : "courier";
+}
+
 export function isStaffRole(value: unknown): value is StaffRole {
   return value === "courier" || value === "waiter";
 }

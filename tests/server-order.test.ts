@@ -11,6 +11,7 @@ import {
 } from "@/lib/orders/server-order";
 import { handleCreateOrder, type CreateOrderDeps } from "@/lib/orders/create-order-handler";
 import { chargeFromCatalogSum } from "@/lib/payments/hyp/amounts";
+import { buildProductBuilderConfig } from "@/lib/product-builder/engine";
 
 /** Pure, in-memory data — no Firebase, no network, no real clock. */
 
@@ -28,6 +29,25 @@ const PRODUCTS = new Map<string, CatalogProduct | undefined>([
   ["off", { price: 20, nameHe: "מאפה", nameAr: "معجنات", nameEn: "Pastry", available: false }],
   ["inactive", { price: 20, nameHe: "עוגה", nameAr: "كعكة", nameEn: "Cake", active: false }],
   ["hidden-test", { price: 2, nameHe: "בדיקה", nameEn: "Test", available: true, hidden: true, isTestProduct: true } as CatalogProduct],
+]);
+
+/** Latte add-ons as the server loads them: milk (one only): oat +3 (kitchen note), a test option −50. */
+const MILK_GROUP = { id: "milk", name_he: "חלב", name_ar: "حليب", name_en: "Milk", selectionType: "single" as const, requirement: "optional" as const, minSelections: 0, maxSelections: 1, displayType: "buttons" as const, sortOrder: 1, active: true, archived: false, createdAt: "", updatedAt: "" };
+const milkOption = (id: string, name: string, priceDelta: number, kitchenNote?: string) => ({ id, groupId: "milk", name_he: name, name_ar: name, name_en: name, priceDelta, cost: 0, sortOrder: 1, kitchenNote, active: true, archived: false, createdAt: "", updatedAt: "" });
+const MODIFIERS = new Map([
+  [
+    "latte",
+    buildProductBuilderConfig({
+      productId: "latte",
+      groups: [MILK_GROUP],
+      options: [milkOption("oat", "שיבולת שועל", 3, "oat milk"), milkOption("minus", "הנחה", -50)],
+      productGroups: [{ id: "latte-milk", productId: "latte", groupId: "milk", sortOrder: 1, active: true }],
+      productOptions: [],
+      rules: [],
+      suggestions: [],
+      inventory: [],
+    }),
+  ],
 ]);
 
 /** Delivery on with the two real areas (Ein Mahel 15 / min 50, Har Yona / Nof HaGalil 25 / min 50). */
@@ -68,6 +88,7 @@ function request(patch: Partial<CreateOrderRequest> = {}): CreateOrderRequest {
 function build(req: CreateOrderRequest, fulfillment: FulfillmentSettings = DEFAULT_FULFILLMENT, now = TUESDAY_NOON) {
   return buildServerOrder(req, {
     products: PRODUCTS,
+    modifierConfigs: MODIFIERS,
     fulfillment,
     openingHours: DEFAULT_OPENING_HOURS,
     now,
@@ -172,7 +193,7 @@ describe("server order: prices", () => {
     const result = build(
       request({
         items: [
-          { productId: "latte", quantity: 1, modifiers: [{ groupId: "g", groupName: "g", optionId: "o", optionName: "o", priceDelta: -50, quantity: 1 }] },
+          { productId: "latte", quantity: 1, modifiers: [{ groupId: "milk", groupName: "g", optionId: "minus", optionName: "o", priceDelta: 0, quantity: 1 }] },
         ],
       })
     );
@@ -331,6 +352,7 @@ describe("POST /api/orders/create handler (in-memory stand-ins)", () => {
     const d: CreateOrderDeps = {
       now: () => TUESDAY_NOON,
       loadProducts: async (ids) => new Map(ids.map((id) => [id, PRODUCTS.get(id)])),
+      loadModifierConfigs: async () => MODIFIERS,
       loadContext: async () => ({ fulfillment: DEFAULT_FULFILLMENT, openingHours: DEFAULT_OPENING_HOURS }),
       rateLimit: async () => true,
       saveOrder: async (draft) => {

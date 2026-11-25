@@ -99,6 +99,32 @@ describe("sign-in with the code", () => {
     expect(await handleStaffLogin({ pin: "4827" }, "ip", d)).toMatchObject({ status: 401, body: { code: "WRONG_PIN" } });
   });
 
+  it("each QR signs in its own role only: the other role's code is refused, not counted, not cleared", async () => {
+    const state = { failures: 2 };
+    const waiter = deps(state, { id: "StaffWait001", name: "רנא", role: "waiter", sessionVersion: 1 });
+    expect(await handleStaffLogin({ pin: "4827", for: "courier" }, "ip", waiter.d)).toEqual({ status: 403, body: { ok: false, code: "WRONG_ROLE", role: "waiter" } });
+    // No "for" = the plain /staff link = the couriers' entrance.
+    expect(await handleStaffLogin({ pin: "4827" }, "ip", waiter.d)).toMatchObject({ status: 403, body: { code: "WRONG_ROLE" } });
+    expect(waiter.calls).toEqual([]);
+    expect(state.failures).toBe(2);
+    expect(await handleStaffLogin({ pin: "4827", for: "waiter" }, "ip", waiter.d)).toMatchObject({ status: 200, body: { role: "waiter" } });
+
+    const courier = deps({ failures: 0 }, { id: "StaffCour001", name: "סמיר", role: "courier", sessionVersion: 1 });
+    expect(await handleStaffLogin({ pin: "4827", for: "waiter" }, "ip", courier.d)).toEqual({ status: 403, body: { ok: false, code: "WRONG_ROLE", role: "courier" } });
+    expect(await handleStaffLogin({ pin: "4827", for: "courier" }, "ip", courier.d)).toMatchObject({ status: 200 });
+    // A wrong code still counts at either entrance.
+    expect(await handleStaffLogin({ pin: "1111", for: "waiter" }, "ip", courier.d)).toMatchObject({ status: 401, body: { code: "WRONG_PIN" } });
+  });
+
+  it("the screen sends its entrance and shows the wrong-role message in three languages", () => {
+    const screen = readFileSync(resolve(process.cwd(), "src/features/staff/staff-screen.tsx"), "utf8");
+    expect(screen).toContain("JSON.stringify({ pin: code, for: audience })");
+    expect(screen).toContain('data.member.role === audience');
+    expect(screen).toContain('data?.device && audience === "waiter"');
+    const ui = readFileSync(resolve(process.cwd(), "src/data/ui-translations-seed.ts"), "utf8");
+    for (const key of ["staff.wrongRole.waiter", "staff.wrongRole.courier"]) expect(ui.split(`"${key}":`).length - 1).toBe(3);
+  });
+
   it("bad input is refused without counting or looking up", async () => {
     const { d, calls } = deps({ failures: 0 });
     for (const body of [{ pin: "12" }, { pin: 1234 }, null, "1234"]) {

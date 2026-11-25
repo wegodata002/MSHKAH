@@ -5,6 +5,7 @@ import { COLLECTIONS } from "@/lib/firebase/collections";
 import { consumeRateLimit, rateLimitKey } from "@/lib/loyalty/admin/rate-limit";
 import { handleCreateOrder } from "@/lib/orders/create-order-handler";
 import { loadCatalogProducts, loadFulfillmentContext } from "@/lib/orders/server-context";
+import { loadModifierConfigs } from "@/lib/orders/admin-modifier-config";
 import { CLUB_COOKIE_NAME } from "@/lib/loyalty/session";
 import { readSessionMember } from "@/lib/loyalty/admin/session-member";
 import { checkCouponForMember, saveOrderWithCoupon } from "@/lib/loyalty/admin/coupons";
@@ -32,6 +33,7 @@ export async function POST(request: NextRequest) {
     now: () => new Date(),
     loadProducts: (ids) => loadCatalogProducts(db, ids),
     loadContext: () => loadFulfillmentContext(db),
+    loadModifierConfigs: (ids) => loadModifierConfigs(db, ids),
     rateLimit: async (key, windowSeconds, limit) =>
       (await consumeRateLimit(db, { key: rateLimitKey([key]), windowSeconds, limit })).ok,
     findClubMember: async () => {

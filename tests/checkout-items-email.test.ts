@@ -28,6 +28,7 @@ function deps(findClubMember?: CreateOrderDeps["findClubMember"]) {
   const d: CreateOrderDeps = {
     now: () => TUE_NOON,
     loadProducts: async (ids) => new Map(ids.map((id) => [id, PRODUCTS.get(id)])),
+    loadModifierConfigs: async () => new Map(),
     loadContext: async () => ({ fulfillment: DEFAULT_FULFILLMENT, openingHours: DEFAULT_OPENING_HOURS }),
     rateLimit: async () => true,
     saveOrder: async (draft) => {
