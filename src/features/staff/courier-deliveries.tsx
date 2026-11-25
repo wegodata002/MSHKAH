@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Banknote, Bike, ChevronDown, CreditCard, Loader2, LogOut, MapPin, Navigation, Phone, PlayCircle, StopCircle } from "lucide-react";
 import { useT } from "@/components/providers/locale-provider";
 import { formatPrice, cn } from "@/lib/utils";
+import { newCourierWork } from "@/lib/staff/alerts";
+import { SoundButton } from "@/features/staff/sound-button";
+import { useSeenHighlight, useWorkAlerts } from "@/features/staff/use-work-alerts";
 import { googleMapsUrl, wazeUrl, type CourierDelivery, type CourierStage, type PaidWith } from "@/lib/couriers/deliveries";
 
 /** How often the courier screen asks for updates. */
@@ -23,45 +26,6 @@ function timeOf(iso: string | null): string {
   return new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jerusalem" });
 }
 
-/** A new delivery: vibrate, and a short beep when the browser allows sound (after a tap on the page). */
-function useNewDeliveryAlert() {
-  const audio = useRef<AudioContext | null>(null);
-  useEffect(() => {
-    const unlock = () => {
-      try {
-        const Ctor = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!audio.current && Ctor) audio.current = new Ctor();
-        void audio.current?.resume();
-      } catch {
-        // No sound on this browser; vibration and the highlight still work.
-      }
-    };
-    window.addEventListener("pointerdown", unlock);
-    return () => window.removeEventListener("pointerdown", unlock);
-  }, []);
-  return useCallback(() => {
-    try {
-      navigator.vibrate?.([200, 100, 200]);
-    } catch {
-      // ignore
-    }
-    const ctx = audio.current;
-    if (!ctx || ctx.state !== "running") return;
-    try {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.value = 880;
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.25, ctx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.4);
-    } catch {
-      // ignore
-    }
-  }, []);
-}
 
 function DeliveryCard({
   delivery,
@@ -244,11 +208,13 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
   const [busyId, setBusyId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<CourierDelivery | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [highlighted, setHighlighted] = useState<Set<string>>(new Set());
   const [shiftBusy, setShiftBusy] = useState(false);
   const [endAsk, setEndAsk] = useState(false);
   const known = useRef<Set<string> | null>(null);
-  const alert = useNewDeliveryAlert();
+  const alerts = useWorkAlerts();
+  const { notify } = alerts;
+  // New deliveries stay highlighted while the screen is in the background, then 4 seconds once seen.
+  const { keys: highlighted, add: highlight } = useSeenHighlight(alerts.visible, 4000);
 
   const load = useCallback(async () => {
     try {
@@ -260,14 +226,11 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
       const data = (await res.json()) as { ok?: boolean; deliveries?: CourierDelivery[]; worksToday?: boolean };
       if (!res.ok || !data.ok || !data.deliveries) throw new Error("load");
       const list = data.deliveries;
-      // New active deliveries since the last check (not on the first load): alert + highlight.
-      if (known.current) {
-        const fresh = list.filter((d) => !known.current!.has(d.id) && d.stage !== "delivered" && d.stage !== "cancelled").map((d) => d.id);
-        if (fresh.length) {
-          alert();
-          setHighlighted(new Set(fresh));
-          window.setTimeout(() => setHighlighted(new Set()), 4000);
-        }
+      // Deliveries assigned since the last check (not on the first load): sound, vibration, title, highlight.
+      const fresh = newCourierWork(known.current, list);
+      if (fresh.length) {
+        notify(fresh.length);
+        highlight(fresh);
       }
       known.current = new Set(list.map((d) => d.id));
       setDeliveries(list);
@@ -276,13 +239,12 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
     } catch {
       setOffline(true);
     }
-  }, [alert, onSignedOut]);
+  }, [highlight, notify, onSignedOut]);
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void load();
-    }, COURIER_POLL_MS);
+    // Also in the background, so new work still alerts (the browser may slow this to about once a minute).
+    const timer = window.setInterval(() => void load(), COURIER_POLL_MS);
     const onVisible = () => document.visibilityState === "visible" && void load();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -381,6 +343,8 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
           </button>
         </div>
       </div>
+
+      {!alerts.soundReady && <SoundButton onEnable={alerts.enableSound} />}
 
       {error && (
         <p className="mb-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert" data-courier-error>

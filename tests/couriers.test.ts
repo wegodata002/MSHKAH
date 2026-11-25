@@ -197,8 +197,11 @@ describe("wiring", () => {
     expect(read("src/features/admin/orders/order-card.tsx")).toMatch(/<OrderCourierPicker/);
     const screen = read("src/features/staff/courier-deliveries.tsx");
     expect(screen).toMatch(/COURIER_POLL_MS = 10_000/);
-    expect(screen).toMatch(/navigator\.vibrate/);
-    expect(screen).toMatch(/createOscillator/);
+    // The alert (vibration + beep + tab title) is shared with the waiter screen.
+    expect(screen).toContain("useWorkAlerts()");
+    const alerts = read("src/features/staff/use-work-alerts.ts");
+    expect(alerts).toMatch(/navigator\.vibrate/);
+    expect(alerts).toMatch(/createOscillator/);
   });
 
   it("translations in three languages", () => {
