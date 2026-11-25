@@ -179,6 +179,10 @@ export function mapOrder(doc: FirestoreDoc<FirestoreOrder>): Order {
     completedAt: doc.completedAt ? timestampToIso(doc.completedAt) : null,
     cancelledAt: doc.cancelledAt ? timestampToIso(doc.cancelledAt) : null,
     paidAt: doc.paidAt ? timestampToIso(doc.paidAt) : null,
+    paidVia: doc.paidVia,
+    courierId: doc.courierId || undefined,
+    courierName: doc.courierName || undefined,
+    courierAssignedAt: doc.courierAssignedAt ? timestampToIso(doc.courierAssignedAt) : null,
     cancelReason: doc.cancelReason,
     cancelledBy: doc.cancelledBy,
     alerts: doc.alerts

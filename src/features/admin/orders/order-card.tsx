@@ -25,6 +25,7 @@ import { orderAgeMs, overdueLevel, stageAgeMs } from "@/lib/orders/overdue";
 import { formatDate, formatPrice, cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/types";
 import { ClubMemberBadge } from "@/features/admin/club-member-badge";
+import { OrderCourierPicker, type CourierOption } from "@/features/admin/orders/order-courier-picker";
 
 const STATUS_STYLE: Record<OperationalOrderStatus, string> = {
   received: "border-amber-300 bg-amber-50 text-amber-800",
@@ -106,6 +107,9 @@ export function OrderCard({
   onPermanentDelete,
   onMarkCashPaid,
   onMarkOutForDelivery,
+  couriers,
+  courierSaving = false,
+  onAssignCourier,
   isClubMember,
 }: {
   order: Order;
@@ -127,6 +131,10 @@ export function OrderCard({
   onMarkCashPaid?: () => void;
   /** Delivery orders: stamp "out for delivery" (shown on the customer's tracking page). */
   onMarkOutForDelivery?: () => void;
+  /** Delivery orders: couriers working today (null while loading) and assigning one. */
+  couriers?: CourierOption[] | null;
+  courierSaving?: boolean;
+  onAssignCourier?: (courierId: string | null) => void;
   isClubMember?: boolean;
 }) {
   const t = useT();
@@ -199,6 +207,12 @@ export function OrderCard({
                   : t("admin.orders.type.delivery")}
               </span>
             ) : null}
+            {order.orderType === "delivery" && order.courierName ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-turquoise/10 px-1.5 py-0.5 text-[11px] font-semibold text-turquoise" data-courier-chip>
+                <Bike className="h-3 w-3" />
+                {order.courierName}
+              </span>
+            ) : null}
             <span className="inline-flex items-center gap-1" title={formatJerusalemDateTime(order.createdAt)}>
               <Clock className="h-3 w-3" />
               {ageIsAtLeastOneDay(ageMs)
@@ -250,6 +264,9 @@ export function OrderCard({
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} />
         </button>
       </div>
+      {onAssignCourier && (
+        <OrderCourierPicker order={order} couriers={couriers ?? null} saving={courierSaving} onAssign={onAssignCourier} />
+      )}
 
       {expanded && (
         <div className="mt-3 space-y-3 border-t border-beige-dark/15 pt-3">
@@ -289,6 +306,11 @@ export function OrderCard({
               )}
               {paymentStatus === "paid" && (
                 <p>{t("admin.payment.paidAmount")}: {formatPrice(order.total)}</p>
+              )}
+              {(order.paidVia === "courier_cash" || order.paidVia === "courier_card") && (
+                <p className="font-medium text-emerald-800" data-paid-via-courier>
+                  {t(order.paidVia === "courier_card" ? "admin.payment.paidCourierCard" : "admin.payment.paidCourierCash")}
+                </p>
               )}
               {onMarkCashPaid && (
                 <Button type="button" size="sm" variant="outline" className="mt-1 border-emerald-300 text-emerald-800" onClick={onMarkCashPaid}>

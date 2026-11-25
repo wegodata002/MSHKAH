@@ -129,6 +129,11 @@ export interface Order {
   readyAt?: string | null;
   /** Delivery: left the cafe with the courier. A time stamp on a ready order, not a status. */
   outForDeliveryAt?: string | null;
+  /** Delivery: assigned courier (admin only; never sent to the customer). */
+  courierId?: string;
+  courierName?: string;
+  courierAssignedAt?: string | null;
+  paidVia?: "cash_counter" | "courier_cash" | "courier_card";
   deliveredAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;

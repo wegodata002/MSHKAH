@@ -9,6 +9,7 @@ import { markOrderCashPaid, markOrderOutForDelivery, subscribeToPaymentFacts } f
 import { useAuth } from "@/components/providers/auth-provider";
 import { OrderItemExtrasDialog } from "@/features/admin/orders/order-item-extras-dialog";
 import { OrderCard } from "@/features/admin/orders/order-card";
+import type { CourierOption } from "@/features/admin/orders/order-courier-picker";
 import { CancelOrderDialog } from "@/features/admin/orders/cancel-order-dialog";
 import { PaymentReceivedDialog } from "@/features/admin/orders/payment-received-dialog";
 import { PermanentDeleteOrderDialog } from "@/features/admin/orders/permanent-delete-dialog";
@@ -86,6 +87,9 @@ export function OrdersAdmin() {
   const [kitchenOpen, setKitchenOpen] = useState(false);
   const [toasts, setToasts] = useState<AdminToast[]>([]);
   const [extrasDialog, setExtrasDialog] = useState<{ order: Order; itemIndex: number } | null>(null);
+  /** Couriers marked "working today" (for the courier field on delivery orders); null while loading. */
+  const [couriers, setCouriers] = useState<CourierOption[] | null>(null);
+  const [courierSavingId, setCourierSavingId] = useState<string | null>(null);
   const knownOrderIds = useRef<Set<string>>(new Set());
   const realtimeReady = useRef(false);
   const updatesInFlight = useRef<Set<string>>(new Set());
@@ -99,6 +103,33 @@ export function OrdersAdmin() {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
+
+  // Who works today: on open, every minute, and when the window gets focus again (after marking on Staff).
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      void clientAdminFetch<{ couriers: CourierOption[] }>("/api/admin/couriers", { action: "list" }).then((result) => {
+        if (!cancelled && result.ok && result.data) setCouriers(result.data.couriers);
+      });
+    load();
+    const timer = setInterval(load, 60_000);
+    window.addEventListener("focus", load);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+      window.removeEventListener("focus", load);
+    };
+  }, []);
+
+  const assignCourier = async (order: Order, courierId: string | null) => {
+    setCourierSavingId(order.id);
+    const result = await clientAdminFetch("/api/admin/couriers", { action: "assign", orderId: order.id, courierId });
+    setCourierSavingId(null);
+    pushToast(
+      t(result.ok ? "admin.orders.courier.saved" : result.code === "COURIER_NOT_AVAILABLE" ? "admin.orders.courier.notAvailable" : "admin.orders.statusError"),
+      result.ok ? "success" : "error"
+    );
+  };
 
   useEffect(() => {
     return subscribeToPaymentFacts(
@@ -573,6 +604,9 @@ export function OrdersAdmin() {
               onToggle={() => setExpanded((current) => (current === order.id ? null : order.id))}
               onStatusChange={(status) => requestStatus(order, status)}
               onMarkCashPaid={isAwaitingCashPayment(order) ? () => void recordCashPayment(order) : undefined}
+              couriers={couriers}
+              courierSaving={courierSavingId === order.id}
+              onAssignCourier={order.orderType === "delivery" ? (courierId) => void assignCourier(order, courierId) : undefined}
               onMarkOutForDelivery={
                 order.orderType === "delivery"
                   ? () =>
