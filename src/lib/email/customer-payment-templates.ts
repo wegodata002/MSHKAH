@@ -49,7 +49,7 @@ function copy(locale: MailLocale) {
     };
   }
   return {
-    successSubject: (n: string) => `ההזמנה ממשכאת אושרה — #${n}`,
+    successSubject: (n: string) => `ההזמנה ממשקאת אושרה — #${n}`,
     successTitle: "תודה על ההזמנה",
       successLead: "התשלום בוצע בהצלחה ✓",
       paymentMethod: "אשראי",
@@ -58,7 +58,7 @@ function copy(locale: MailLocale) {
     failTitle: "התשלום לא הושלם",
     failLead: "לא נרשם אישור הצלחה. אפשר לנסות שוב בבטחה.",
     retry: "נסה לשלם שוב",
-    pickup: "איסוף עצמי ממשכאת",
+    pickup: "איסוף עצמי ממשקאת",
     total: "סכום ששולם",
     payment: "תשלום",
     track: "מעקב אחרי ההזמנה",

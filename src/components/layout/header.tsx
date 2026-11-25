@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { CreditCard, ShoppingBag, Sparkles, User } from "lucide-react";
+import { CreditCard, Heart, Menu, ShoppingBag, Sparkles, User } from "lucide-react";
 import { motion, useScroll, useMotionValueEvent } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useHideCustomerChrome } from "@/hooks/useAdminPath";
 import { Logo } from "@/components/brand/logo";
@@ -12,14 +12,28 @@ import { useCart } from "@/features/cart/cart-context";
 import { useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import { hasClubHint } from "@/lib/loyalty/club-hint";
+import { useFavorites } from "@/hooks/useFavorites";
+import { useActiveOrderCount } from "@/lib/orders/my-order-views";
+import { scrollToAbout } from "@/lib/scroll-to-about";
+import { OFFERS_HREF } from "@/lib/customer-nav";
+import { MobileMenuDrawer } from "@/components/layout/mobile-menu-drawer";
 
+/** Desktop top menu. "Contact" lives in the footer and on the account page (person icon). */
 const NAV_LINKS = [
   { href: "/", labelKey: "nav.home", exact: true },
   { href: "/catalog", labelKey: "nav.catalog" },
-  { href: "/#offers", labelKey: "nav.offers" },
-  { href: "/#about", labelKey: "nav.about" },
-  { href: "/account", labelKey: "nav.contact" },
+  // Until the offers branch: the menu. Never shown as the current page (it shares the menu link).
+  { href: OFFERS_HREF, labelKey: "nav.offers", neverActive: true },
+  { href: "/favorites", labelKey: "nav.favorites", count: "favorites" },
+  { href: "/orders", labelKey: "nav.orders", count: "orders" },
 ] as const;
+
+const ICON_BUTTON =
+  "relative flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-beige-dark/25 bg-cream/50 text-coffee transition-colors hover:border-turquoise/40 hover:text-turquoise";
+const COUNT_BADGE =
+  "absolute -top-1 -end-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-turquoise px-1 text-[10px] font-bold text-warm-white";
+
+const NAV_LINK_CLASS = "inline-flex items-center rounded-lg px-4 py-2 text-sm font-medium transition-colors";
 
 export function SiteHeader() {
   const { itemCount, openCart } = useCart();
@@ -31,6 +45,12 @@ export function SiteHeader() {
   // Logged in to the club on this device → "My card" instead of "Join the club".
   // Read after mount (cookie), again on every page change (login / logout navigate).
   const [clubMember, setClubMember] = useState(false);
+  // Phone and tablet: the ☰ side menu.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const closeMenu = useCallback(() => setMenuOpen(false), []);
+  const { count: favoritesCount } = useFavorites();
+  // Orders still in progress on this device (shown only when there is one).
+  const activeOrders = useActiveOrderCount();
   useEffect(() => {
     setClubMember(hasClubHint());
   }, [pathname]);
@@ -54,6 +74,17 @@ export function SiteHeader() {
     >
       <div className="mx-auto flex h-full max-w-[1400px] items-center gap-3 px-4 md:gap-4 md:px-6 lg:px-8">
         {/* Logo block — start (right in RTL) */}
+        {/* Phone and tablet: ☰ opens the side menu (every link, About, Contact, language). */}
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label={t("nav.openMenu")}
+          aria-expanded={menuOpen}
+          className="-ms-2 flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-coffee hover:bg-cream lg:hidden"
+          data-mobile-menu-open
+        >
+          <Menu className="h-5 w-5" strokeWidth={1.75} />
+        </button>
         <div className="shrink-0">
           <Logo
             size="sm"
@@ -67,24 +98,38 @@ export function SiteHeader() {
         <nav className="hidden flex-1 items-center justify-center gap-1 lg:flex" aria-label="Main">
           {NAV_LINKS.map((link) => {
             const isActive =
-              "exact" in link && link.exact
-                ? pathname === link.href
-                : pathname === link.href || pathname.startsWith(link.href.replace("/#", "/"));
+              "neverActive" in link
+                ? false
+                : "exact" in link && link.exact
+                  ? pathname === link.href
+                  : pathname === link.href || pathname.startsWith(`${link.href}/`);
+            const count = "count" in link ? (link.count === "favorites" ? favoritesCount : activeOrders) : 0;
             return (
               <Link
-                key={link.href}
+                key={link.labelKey}
                 href={link.href}
-                className={cn(
-                  "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
-                  isActive
-                    ? "text-turquoise"
-                    : "text-coffee/65 hover:bg-cream hover:text-dark-brown"
-                )}
+                aria-current={isActive ? "page" : undefined}
+                data-nav-link={link.labelKey}
+                className={cn(NAV_LINK_CLASS, isActive ? "text-turquoise" : "text-coffee/65 hover:bg-cream hover:text-dark-brown")}
               >
                 {t(link.labelKey)}
+                {count > 0 && (
+                  <span className="ms-1.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-turquoise px-1 text-[11px] font-bold leading-none text-warm-white" data-nav-count>
+                    {count}
+                  </span>
+                )}
               </Link>
             );
           })}
+          {/* About: the footer at the end of this page (hours, contact, info). */}
+          <button
+            type="button"
+            onClick={() => scrollToAbout()}
+            className={cn(NAV_LINK_CLASS, "text-coffee/65 hover:bg-cream hover:text-dark-brown")}
+            data-nav-link="nav.about"
+          >
+            {t("nav.about")}
+          </button>
         </nav>
 
         {/* Actions — end (left in RTL) */}
@@ -94,7 +139,8 @@ export function SiteHeader() {
             aria-label={t(clubMember ? "nav.myCard" : "nav.joinClub")}
             data-club-nav={clubMember ? "card" : "join"}
             className={cn(
-              "inline-flex h-10 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-turquoise px-3 text-xs font-semibold text-warm-white transition-colors hover:bg-turquoise/90 md:px-4 md:text-sm",
+              // Desktop only: on phones the club is in the side menu and on the account page.
+              "hidden h-10 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-turquoise px-3 text-xs font-semibold lg:inline-flex text-warm-white transition-colors hover:bg-turquoise/90 md:px-4 md:text-sm",
               pathname.startsWith("/club") && "ring-2 ring-turquoise/30"
             )}
           >
@@ -107,8 +153,14 @@ export function SiteHeader() {
             <span className="hidden min-[400px]:inline sm:hidden">{t(clubMember ? "nav.myCard" : "nav.joinClubShort")}</span>
             <span className="hidden sm:inline">{t(clubMember ? "nav.myCard" : "nav.joinClub")}</span>
           </Link>
-          <LanguageSwitcher variant="dropdown" className="min-w-0 sm:hidden" />
-          <LanguageSwitcher compact className="hidden sm:inline-flex" />
+          {/* Desktop only: on phones the language is chosen in the side menu. */}
+          <LanguageSwitcher compact className="hidden lg:inline-flex" />
+
+          {/* Phone and tablet: favourites (desktop has them in the top menu). */}
+          <Link href="/favorites" aria-label={t("nav.favorites")} className={cn(ICON_BUTTON, "lg:hidden")} data-header-favorites>
+            <Heart className="h-4 w-4" strokeWidth={1.75} />
+            {favoritesCount > 0 && <span className={COUNT_BADGE}>{favoritesCount}</span>}
+          </Link>
 
           <Link
             href="/account"
@@ -133,6 +185,7 @@ export function SiteHeader() {
           </button>
         </div>
       </div>
+      <MobileMenuDrawer open={menuOpen} onClose={closeMenu} />
     </motion.header>
   );
 }

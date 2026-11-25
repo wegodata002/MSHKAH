@@ -30,7 +30,7 @@ const COPY: Record<
   },
   he: {
     brand: "MISHKAT CAFE",
-    brandSecondary: "משכאת",
+    brandSecondary: "משקאת",
     headline: "הזמנה חדשה",
     cash: "מזומן",
     card: "כרטיס",

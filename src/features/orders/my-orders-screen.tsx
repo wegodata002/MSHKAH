@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronLeft, Loader2, Package, Search } from "lucide-react";
@@ -8,8 +8,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useLocale, useT } from "@/components/providers/locale-provider";
-import { rememberMyOrder, useMyOrders, type MyOrderEntry } from "@/lib/orders/my-orders";
-import { trackingHeadline, type OrderTrackingView } from "@/lib/orders/tracking-view";
+import { rememberMyOrder } from "@/lib/orders/my-orders";
+import {
+  countMyOrderTypes,
+  filterMyOrderType,
+  splitMyOrders,
+  useMyOrderItems,
+  type MyOrderItem,
+  type MyOrderTab,
+  type MyOrderType,
+} from "@/lib/orders/my-order-views";
+import { trackingHeadline } from "@/lib/orders/tracking-view";
 import { formatPrice, cn } from "@/lib/utils";
 import { formatTrackingDateTime, headlineTone, type HeadlineTone } from "./tracking-format";
 
@@ -20,23 +29,10 @@ const BADGE_TONE: Record<HeadlineTone, string> = {
   cancelled: "bg-red-50 text-red-700",
 };
 
-function OrderRow({ entry }: { entry: MyOrderEntry }) {
+function OrderRow({ item, loaded }: { item: MyOrderItem; loaded: boolean }) {
   const t = useT();
   const { locale } = useLocale();
-  const [view, setView] = useState<OrderTrackingView | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    fetch(`/api/orders/track?t=${encodeURIComponent(entry.token)}`, { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: { ok?: boolean; order?: OrderTrackingView } | null) => {
-        if (!cancelled && data?.ok && data.order) setView(data.order);
-      })
-      .catch(() => undefined);
-    return () => {
-      cancelled = true;
-    };
-  }, [entry.token]);
+  const { entry, view } = item;
 
   const headline = view ? trackingHeadline(view) : null;
   return (
@@ -62,7 +58,7 @@ function OrderRow({ entry }: { entry: MyOrderEntry }) {
           <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold", BADGE_TONE[headlineTone(headline)])}>
             {t(`tracking.headline.${headline}`)}
           </span>
-        ) : (
+        ) : loaded ? null : (
           <span className="h-6 w-20 shrink-0 animate-pulse rounded-full bg-beige/60" aria-hidden />
         )}
         <ChevronLeft className="h-4 w-4 shrink-0 text-coffee/35 ltr:rotate-180" strokeWidth={1.75} />
@@ -163,20 +159,84 @@ function FindOrderForm() {
   );
 }
 
-/** "Orders" in the bottom bar: orders from this device (30 days) + find an order by number and phone. */
+const TYPES: Exclude<MyOrderType, "all">[] = ["pickup", "delivery", "dine_in"];
+
+/**
+ * "My orders": the orders from this device (90 days), in two tabs (in progress / finished) with a
+ * filter by kind (pickup / delivery / table), plus finding an order by number and phone.
+ */
 export function MyOrdersScreen() {
   const t = useT();
-  const entries = useMyOrders();
+  const { items, loaded } = useMyOrderItems();
+  const [tab, setTab] = useState<MyOrderTab | null>(null);
+  const [type, setType] = useState<MyOrderType>("all");
+
+  const groups = useMemo(() => splitMyOrders(items), [items]);
+  // Opens on "In progress" when there is one, otherwise on "Finished".
+  const shownTab: MyOrderTab = tab ?? (loaded && groups.active.length === 0 && groups.done.length > 0 ? "done" : "active");
+  const inTab = loaded ? groups[shownTab] : items;
+  const typeCounts = useMemo(() => countMyOrderTypes(inTab), [inTab]);
+  const shown = filterMyOrderType(inTab, type);
 
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
       <h1 className="font-display text-2xl font-bold text-dark-brown md:text-3xl">{t("orders.title")}</h1>
-      {entries.length > 0 ? (
-        <ul className="mt-4 space-y-2.5" data-my-orders>
-          {entries.map((entry) => (
-            <OrderRow key={entry.token} entry={entry} />
-          ))}
-        </ul>
+      {items.length > 0 ? (
+        <>
+          <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-beige/60 p-1" role="tablist" data-orders-tabs>
+            {(["active", "done"] as const).map((key) => (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={shownTab === key}
+                onClick={() => {
+                  setTab(key);
+                  setType("all");
+                }}
+                className={cn("h-10 rounded-lg text-sm font-semibold", shownTab === key ? "bg-warm-white text-turquoise shadow-soft" : "text-coffee/65")}
+                data-orders-tab={key}
+              >
+                {t(`myOrders.tab.${key}`)}
+                {loaded ? <span className="ms-1.5 text-xs opacity-70">{groups[key].length}</span> : null}
+              </button>
+            ))}
+          </div>
+          {loaded && inTab.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-2" data-orders-types>
+              {(["all", ...TYPES] as const).map((key) =>
+                key !== "all" && typeCounts[key] === 0 ? null : (
+                  <button
+                    key={key}
+                    type="button"
+                    aria-pressed={type === key}
+                    onClick={() => setType(key)}
+                    className={cn(
+                      "h-8 rounded-full border px-3 text-xs font-semibold",
+                      type === key ? "border-turquoise bg-turquoise text-warm-white" : "border-beige-dark/40 bg-warm-white text-coffee/70"
+                    )}
+                    data-orders-type={key}
+                  >
+                    {key === "all" ? t("myOrders.type.all") : t(`tracking.type.${key}`)}
+                    {key !== "all" ? <span className="ms-1 opacity-70">{typeCounts[key]}</span> : null}
+                  </button>
+                )
+              )}
+            </div>
+          )}
+          {shown.length > 0 ? (
+            <ul className="mt-3 space-y-2.5" data-my-orders>
+              {shown.map((item) => (
+                <OrderRow key={item.entry.token} item={item} loaded={loaded} />
+              ))}
+            </ul>
+          ) : (
+            <p className="mt-4 rounded-2xl bg-warm-white p-5 text-center text-sm text-coffee/60 shadow-soft" data-orders-tab-empty>
+              {t(shownTab === "active" ? "myOrders.noActive" : "myOrders.noDone")}
+            </p>
+          )}
+          <p className="mt-3 text-center text-xs text-coffee/45">{t("myOrders.keptDays")}</p>
+        </>
       ) : (
         <div className="mt-4 rounded-3xl bg-warm-white p-6 text-center shadow-soft" data-my-orders-empty>
           <Package className="mx-auto h-10 w-10 text-turquoise/70" strokeWidth={1.5} />

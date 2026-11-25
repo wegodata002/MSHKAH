@@ -210,6 +210,7 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
   const [error, setError] = useState<string | null>(null);
   const [shiftBusy, setShiftBusy] = useState(false);
   const [endAsk, setEndAsk] = useState(false);
+  const [showDelivered, setShowDelivered] = useState(false);
   const known = useRef<Set<string> | null>(null);
   const alerts = useWorkAlerts();
   const { notify } = alerts;
@@ -383,9 +384,27 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
           {SECTIONS.map((stage) => {
             const items = deliveries.filter((d) => d.stage === stage);
             if (!items.length) return null;
+            // Delivered today: folded at the bottom with a count, opened on tap (keeps the work in front).
+            const folded = stage === "delivered" && !showDelivered;
             return (
               <section key={stage} data-section={stage}>
-                <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-coffee/55">{t(`courier.section.${stage}`)}</h2>
+                {stage === "delivered" ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowDelivered((v) => !v)}
+                    aria-expanded={showDelivered}
+                    className="mb-2 flex w-full items-center justify-between rounded-xl bg-warm-white px-3 py-2.5 text-sm font-bold text-coffee/70 shadow-soft"
+                    data-delivered-toggle
+                  >
+                    <span>
+                      {t("courier.section.delivered")} · {items.length}
+                    </span>
+                    <ChevronDown className={cn("h-4 w-4 transition-transform", showDelivered && "rotate-180")} />
+                  </button>
+                ) : (
+                  <h2 className="mb-2 text-xs font-bold uppercase tracking-wide text-coffee/55">{t(`courier.section.${stage}`)}</h2>
+                )}
+                {!folded && (
                 <ul className="space-y-3">
                   {items.map((delivery) => (
                     <DeliveryCard
@@ -398,6 +417,7 @@ export function CourierDeliveries({ name, onSignedOut }: { name: string; onSigne
                     />
                   ))}
                 </ul>
+                )}
               </section>
             );
           })}

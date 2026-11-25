@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bike, KeyRound, Loader2, Pencil, Plus, Shuffle, UtensilsCrossed } from "lucide-react";
 import { useT } from "@/components/providers/locale-provider";
+import { BidiText } from "@/components/ui/bidi-text";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -179,7 +180,14 @@ export function StaffAdmin() {
           </Button>
         }
       />
-      <p className="text-sm text-coffee/60">{t("admin.staff.loginHint")}</p>
+      {/* How staff sign in: three short lines; Latin words and numbers isolated so RTL reads in order. */}
+      <ul className="list-disc space-y-0.5 ps-5 text-sm text-coffee/60 marker:text-turquoise/70" data-staff-login-hint>
+        {(["how", "block", "session"] as const).map((k) => (
+          <li key={k}>
+            <BidiText text={t(`admin.staff.loginHint.${k}`)} />
+          </li>
+        ))}
+      </ul>
 
       {notice && (
         <p

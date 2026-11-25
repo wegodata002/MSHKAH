@@ -26,7 +26,11 @@ export function SiteFooter() {
   return (
     // Compact; reaches the very bottom of the page (it takes over the space kept under the page for
     // the phone's bottom bar, see globals.css "data-site-footer").
-    <footer className="mt-auto border-t border-beige-dark/15 bg-warm-white" data-site-footer>
+    <footer
+      id="about"
+      className="mt-auto scroll-mt-16 border-t border-beige-dark/15 bg-warm-white transition-shadow duration-500 data-[about-flash]:shadow-[inset_0_0_0_3px_rgba(0,122,128,0.35)] md:scroll-mt-20"
+      data-site-footer
+    >
       <div className="mx-auto max-w-[1400px] px-4 pb-3 pt-6 md:px-8 lg:px-10 lg:pt-8">
         {/* Phone: hours | links side by side, then contact, then the logo line. */}
         <div className="grid grid-cols-2 gap-x-4 gap-y-5 lg:grid-cols-4 lg:gap-8">

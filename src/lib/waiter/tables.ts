@@ -126,6 +126,11 @@ export function summarizeTable(table: DineInTable, orders: WaiterOrder[]): Table
   return { table, state, readyCount, openOrders, cancelledOrders, toPay };
 }
 
+/** A table the waiter has something to do at: an order in the kitchen, ready to serve, or to collect. */
+export function tableHasWork(summary: Pick<TableSummary, "state">): boolean {
+  return summary.state !== "free";
+}
+
 // ---- actions ----
 
 export type PaidWith = "cash" | "card";
