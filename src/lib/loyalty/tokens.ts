@@ -1,4 +1,5 @@
 import { createHash, randomInt, timingSafeEqual } from "node:crypto";
+import { requireServerSecret } from "@/lib/server-secrets";
 
 /**
  * Shared helpers for one-time enrollment codes.
@@ -46,7 +47,8 @@ export function hashEmail(email: string): string {
  * loyaltyEnrollmentTokens collection is not enough to brute-force codes.
  */
 export function hashCode(code: string, emailHash: string): string {
-  const pepper = process.env.LOYALTY_TOKEN_PEPPER || "mishkah-dev-pepper";
+  // Production: LOYALTY_TOKEN_PEPPER must be set (no fallback; see server-secrets.ts).
+  const pepper = requireServerSecret("LOYALTY_TOKEN_PEPPER", "mishkah-dev-pepper");
   return createHash("sha256").update(`${pepper}:${emailHash}:${code}`).digest("hex");
 }
 

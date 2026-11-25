@@ -174,6 +174,7 @@ export function mapOrder(doc: FirestoreDoc<FirestoreOrder>): Order {
       ? timestampToIso(doc.preparationStartedAt)
       : null,
     readyAt: doc.readyAt ? timestampToIso(doc.readyAt) : null,
+    outForDeliveryAt: doc.outForDeliveryAt ? timestampToIso(doc.outForDeliveryAt) : null,
     deliveredAt: doc.deliveredAt ? timestampToIso(doc.deliveredAt) : doc.completedAt ? timestampToIso(doc.completedAt) : null,
     completedAt: doc.completedAt ? timestampToIso(doc.completedAt) : null,
     cancelledAt: doc.cancelledAt ? timestampToIso(doc.cancelledAt) : null,

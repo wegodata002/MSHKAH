@@ -5,7 +5,7 @@ import { BadgeCheck, ChefHat, Inbox, PackageCheck, Search, Timer, Wallet } from 
 import { useOrders } from "@/hooks/useOrders";
 import { useClubMembers } from "@/hooks/useClubMembers";
 import { updateOrderStatus } from "@/services";
-import { markOrderCashPaid, subscribeToPaymentFacts } from "@/services/orderService";
+import { markOrderCashPaid, markOrderOutForDelivery, subscribeToPaymentFacts } from "@/services/orderService";
 import { useAuth } from "@/components/providers/auth-provider";
 import { OrderItemExtrasDialog } from "@/features/admin/orders/order-item-extras-dialog";
 import { OrderCard } from "@/features/admin/orders/order-card";
@@ -573,6 +573,14 @@ export function OrdersAdmin() {
               onToggle={() => setExpanded((current) => (current === order.id ? null : order.id))}
               onStatusChange={(status) => requestStatus(order, status)}
               onMarkCashPaid={isAwaitingCashPayment(order) ? () => void recordCashPayment(order) : undefined}
+              onMarkOutForDelivery={
+                order.orderType === "delivery"
+                  ? () =>
+                      void markOrderOutForDelivery(order.id).then((result) =>
+                        pushToast(t(result.success ? "admin.orders.statusSaved" : "admin.orders.statusError"), result.success ? "success" : "error")
+                      )
+                  : undefined
+              }
               onCancel={() => setCancelOrder(order)}
               onPrint={() => printKitchenTicket(order)}
               onThermalReprint={() => void reprintThermal(order)}

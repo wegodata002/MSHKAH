@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useT } from "@/components/providers/locale-provider";
 import { useCart } from "@/features/cart/cart-context";
 import { formatPrice } from "@/lib/utils";
+import { rememberMyOrder } from "@/lib/orders/my-orders";
 
 function PaymentSuccessContent() {
   const t = useT();
@@ -19,10 +20,17 @@ function PaymentSuccessContent() {
   const customerName = params.get("name")?.trim() || "";
   const amountRaw = Number(params.get("amount"));
   const amount = Number.isFinite(amountRaw) && amountRaw > 0 ? amountRaw : null;
+  // Tracking link token added by the server to the success redirect.
+  const trackingToken = params.get("t")?.trim() || "";
+  const trackingHref = trackingToken ? `/orders/${encodeURIComponent(trackingToken)}` : "/orders";
 
   useEffect(() => {
     clearCart();
   }, [clearCart]);
+
+  useEffect(() => {
+    if (trackingToken && orderNumber) rememberMyOrder({ token: trackingToken, orderNumber });
+  }, [trackingToken, orderNumber]);
 
   return (
     <>
@@ -60,7 +68,9 @@ function PaymentSuccessContent() {
           </div>
           <div className="mt-8 flex w-full flex-col gap-3 sm:flex-row">
             <Button asChild variant="turquoise" size="lg" className="flex-1">
-              <Link href="/orders">{t("checkout.backToOrder")}</Link>
+              <Link href={trackingHref} data-track-order>
+                {t(trackingToken ? "tracking.trackOrder" : "checkout.backToOrder")}
+              </Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="flex-1">
               <Link href="/">{t("checkout.backToSite")}</Link>

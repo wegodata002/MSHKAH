@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { rememberMyOrder } from "@/lib/orders/my-orders";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Loader2,
@@ -158,6 +160,8 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  // Tracking link of the order just placed ("Track your order" on the confirmation screen).
+  const [trackingHref, setTrackingHref] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -284,6 +288,7 @@ export default function CheckoutPage() {
         .join("\n");
 
       let orderId = pendingOrderId;
+      let tracking: { token: string; orderNumber: string } | null = null;
       if (!orderId) {
         const result = await submitOrder({
           items: cartToOrderItems(items),
@@ -313,6 +318,7 @@ export default function CheckoutPage() {
           return;
         }
         orderId = result.id;
+        if (result.trackingToken) tracking = { token: result.trackingToken, orderNumber: result.orderNumber };
         if (customerId !== GUEST_CUSTOMER_ID) {
           await fetch("/api/checkout/customer", {
             method: "POST",
@@ -345,9 +351,14 @@ export default function CheckoutPage() {
       requestNewOrderEmailNotification(orderId);
       requestNewOrderPrintJob(orderId);
 
+      // Cash: the order is final now. Keep it in "My orders" on this device and open its tracking page.
+      // (Card: kept once the payment succeeds, on the payment success page.)
+      const nextHref = tracking ? `/orders/${encodeURIComponent(tracking.token)}` : "/orders";
+      if (tracking) rememberMyOrder(tracking);
+      setTrackingHref(nextHref);
       setSuccess(true);
       clearCart();
-      setTimeout(() => router.push("/orders"), 2800);
+      setTimeout(() => router.push(nextHref), 2800);
     } catch (err) {
       console.error("[checkout] unexpected error:", err);
       requestCriticalCheckoutFailureNotification({
@@ -381,6 +392,13 @@ export default function CheckoutPage() {
               </div>
               <h2 className="mt-6 font-display text-2xl font-bold text-dark-brown">{t("checkout.success")}</h2>
               <p className="mt-2 text-sm text-coffee/60">{t("checkout.successHint")}</p>
+              {trackingHref && (
+                <Button asChild variant="turquoise" size="lg" className="mt-6">
+                  <Link href={trackingHref} data-track-order>
+                    {t("tracking.trackOrder")}
+                  </Link>
+                </Button>
+              )}
             </motion.div>
           ) : (
             <motion.div key="form" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

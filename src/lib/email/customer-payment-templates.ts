@@ -28,6 +28,7 @@ function copy(locale: MailLocale) {
       pickup: "استلام ذاتي من المحل",
       total: "المبلغ المدفوع",
       payment: "الدفع",
+      track: "تتبع الطلب",
     };
   }
   if (locale === "en") {
@@ -44,6 +45,7 @@ function copy(locale: MailLocale) {
       pickup: "Pickup at Mishkat",
       total: "Amount paid",
       payment: "Payment",
+      track: "Track your order",
     };
   }
   return {
@@ -59,6 +61,7 @@ function copy(locale: MailLocale) {
     pickup: "איסוף עצמי ממשכאת",
     total: "סכום ששולם",
     payment: "תשלום",
+    track: "מעקב אחרי ההזמנה",
   };
 }
 
@@ -88,7 +91,9 @@ function itemsHtml(items: OrderEmailBase["items"]): string {
 
 export function renderCustomerPaymentSuccessEmail(
   payload: OrderEmailBase,
-  locale: MailLocale = "he"
+  locale: MailLocale = "he",
+  /** Customer order-tracking page (button under the total). */
+  trackingUrl?: string
 ): { subject: string; html: string; text: string } {
   const t = copy(locale);
   const subject = t.successSubject(payload.orderNumber);
@@ -105,12 +110,17 @@ export function renderCustomerPaymentSuccessEmail(
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0">${itemsHtml(payload.items)}</table>
       <p style="margin:16px 0 0;text-align:center;font-size:13px;color:#6B5A52;">${t.pickup}</p>
       <p style="margin:8px 0 0;text-align:center;font-size:22px;font-weight:700;color:${COLORS.primary};">${t.total}: ${formatIls(payload.total)}</p>
+      ${
+        trackingUrl
+          ? `<p style="margin:22px 0 0;text-align:center;"><a href="${escapeHtml(trackingUrl)}" style="display:inline-block;padding:12px 22px;border-radius:999px;background:${COLORS.accent};color:#fff;text-decoration:none;font-weight:700;">${t.track}</a></p>`
+          : ""
+      }
     `,
   });
   return {
     subject,
     html,
-    text: `MISHKAT CAFE\n${t.successTitle}\n#${payload.orderNumber}\n${t.payment}: ${t.successLead}\n${itemsText(payload.items)}\n${t.total}: ${formatIls(payload.total)}\n${t.pickup}`,
+    text: `MISHKAT CAFE\n${t.successTitle}\n#${payload.orderNumber}\n${t.payment}: ${t.successLead}\n${itemsText(payload.items)}\n${t.total}: ${formatIls(payload.total)}\n${t.pickup}${trackingUrl ? `\n${t.track}: ${trackingUrl}` : ""}`,
   };
 }
 

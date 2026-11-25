@@ -19,6 +19,7 @@ import { loadFulfillmentContext } from "@/lib/orders/server-context";
 import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
+import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 
 export class HypPaymentError extends Error {
   constructor(
@@ -263,6 +264,10 @@ export async function handleHypReturn(rawQuery: string): Promise<{
   });
   const successName = (order.customerFullName || order.customerName || "").trim();
   if (successName) successParams.set("name", successName);
+  // Tracking link for the "Track your order" button on the success page (left out if it cannot be made:
+  // the payment is final by now and must not fail because of it).
+  const trackingToken = tryCreateTrackingToken(payment.orderId);
+  if (trackingToken) successParams.set("t", trackingToken);
   const successPath = `/payment/success?${successParams.toString()}`;
   paymentAudit("HYP_RETURN_RECEIVED", {
     orderId: payment.orderId,

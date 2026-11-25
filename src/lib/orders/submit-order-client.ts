@@ -4,7 +4,7 @@ import type { CreateOrderRequest } from "@/lib/orders/server-order";
 /** Browser side of POST /api/orders/create. The server prices the order; the browser only sends the cart. */
 
 export type SubmitOrderResult =
-  | { ok: true; id: string; orderNumber: string; total: number }
+  | { ok: true; id: string; orderNumber: string; total: number; trackingToken?: string }
   | {
       ok: false;
       status: number;
@@ -56,6 +56,7 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
         id?: string;
         orderNumber?: string;
         total?: number;
+        trackingToken?: string;
         code?: string;
         productNames?: string[];
         minOrder?: number;
@@ -64,7 +65,13 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
       }
     | null;
   if (res.ok && data?.ok && data.id) {
-    return { ok: true, id: data.id, orderNumber: data.orderNumber ?? "", total: Number(data.total) || 0 };
+    return {
+      ok: true,
+      id: data.id,
+      orderNumber: data.orderNumber ?? "",
+      total: Number(data.total) || 0,
+      trackingToken: typeof data.trackingToken === "string" ? data.trackingToken : undefined,
+    };
   }
   return {
     ok: false,
