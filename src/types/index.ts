@@ -120,6 +120,8 @@ export interface Order {
   tableArea?: "inside" | "outside";
   tableNumber?: number;
   deliveryAddress?: string;
+  /** Customer's Waze / Google Maps link (checked on the server). */
+  deliveryLocationUrl?: string;
   /** "HH:MM" chosen pickup time (orders from the server checkout). */
   pickupTime?: string;
   deliveryZoneName?: string;

@@ -187,7 +187,7 @@ describe("popular in the menu and on the home page", () => {
   it("wired into the catalog, home page and favourites", () => {
     const view = read("src/features/catalog/catalog-view.tsx");
     expect(view).toContain("usePopularProducts(rawProducts)");
-    expect(view).toContain('isHome && popularRow.length > 0');
+    expect(view).toContain("isHome && !searchQuery && popularRow.length > 0");
     expect(read("src/features/favorites/favorites-screen.tsx")).toContain("usePopularProducts(raw)");
   });
 });

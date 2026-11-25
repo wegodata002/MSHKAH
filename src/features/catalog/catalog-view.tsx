@@ -6,7 +6,7 @@ import { Search, X } from "lucide-react";
 import { SiteHeader } from "@/components/layout/header";
 import { HeroBanner } from "@/features/catalog/hero-banner";
 import { AvailabilityPill } from "@/features/catalog/availability-pill";
-import { TableBanner } from "@/features/dine-in/table-banner";
+import { TableBanner, useTableBannerTable } from "@/features/dine-in/table-banner";
 import { CategoryNav } from "@/features/catalog/category-nav";
 import { CategoryProductSection } from "@/features/catalog/category-product-section";
 import { FilterSortButton, FilterSortPanel } from "@/features/catalog/product-filters-bar";
@@ -44,6 +44,7 @@ export function CatalogView() {
   const { products: rawProducts, loading } = useAllProducts();
   // "Popular" from real sales (server ranking) plus the manual pins: badge, filter and sort.
   const allProducts = usePopularProducts(rawProducts);
+  const atTable = useTableBannerTable() !== null;
   const popularRow = useMemo(() => (isHome ? topPopular(allProducts, 8) : []), [allProducts, isHome]);
 
   const sections = useMemo(
@@ -193,21 +194,13 @@ export function CatalogView() {
 
       {isHome && <HeroBanner />}
 
-      {/* Home page: the best sellers (real sales; manual pins after them). */}
-      {isHome && popularRow.length > 0 && (
-        <div className="mx-auto max-w-[1280px] md:px-4 lg:px-4" data-popular-row>
-          <ProductCarousel iconKey="popular" titleKey="catalog.popularTitle" subtitleKey="catalog.popularSubtitle" products={popularRow} onProductClick={setSelectedProduct} />
-        </div>
-      )}
-
       <div className="mx-auto max-w-[1280px] px-4 md:px-8 lg:px-10">
         {/* The footer below keeps the room for the phone's bottom bar and the cart button. */}
         <div className="mt-4 min-w-0 pb-8 md:mt-6 lg:pb-12">
           {/* What can be ordered now: one short line above the categories (under the banner on the home page). */}
-          {/* After scanning a table QR: "Ordering to Table 4 · Inside". */}
-          <TableBanner />
-          {/* Shown on the home page and on /catalog. */}
-          <AvailabilityPill />
+          {/* After scanning a table QR: "Ordering to Table 4 · Inside" — instead of the status line,
+              so there are never two "closed" messages. Shown on the home page and on /catalog. */}
+          {atTable ? <TableBanner /> : <AvailabilityPill />}
           {/* Sticky catalog bar: categories (+ mobile icons) and the desktop search/filter row. */}
           <div
             ref={stickyRef}
@@ -259,6 +252,13 @@ export function CatalogView() {
               </div>
             )}
           </div>
+
+          {/* Home page: the best sellers (real sales; manual pins after them), under the categories and search. */}
+          {isHome && !searchQuery && popularRow.length > 0 && (
+            <div className="-mx-4 md:-mx-6" data-popular-row>
+              <ProductCarousel iconKey="popular" titleKey="catalog.popularTitle" subtitleKey="catalog.popularSubtitle" products={popularRow} onProductClick={setSelectedProduct} />
+            </div>
+          )}
 
           {loading && sections.length === 0 ? (
             <div className="pt-6">

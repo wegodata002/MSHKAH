@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { phoneKey } from "@/lib/customers/identity";
+import { normalizeIsraeliPhone } from "@/lib/customers/phone";
 import type { FulfillmentSettings } from "@/lib/fulfillment/settings";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import {
@@ -74,8 +74,9 @@ export async function handleWaiterOrder(body: unknown, actor: string, deps: Wait
   const input = parsed.data;
 
   // The phone is optional; one that is given must be a real number.
-  const phone = input.phone?.trim() ?? "";
-  if (phone && phoneKey(phone).length < 9) return { status: 400, body: { ok: false, code: "INVALID_PHONE" } };
+  const given = input.phone?.trim() ?? "";
+  const phone = given ? normalizeIsraeliPhone(given) : "";
+  if (phone === null) return { status: 400, body: { ok: false, code: "INVALID_PHONE" } };
 
   const request = createOrderRequestSchema.safeParse({
     items: input.items,

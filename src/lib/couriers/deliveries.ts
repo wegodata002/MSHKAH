@@ -1,4 +1,5 @@
 import { normalizeOrderStatus, toStoredOrderStatus, type OperationalOrderStatus } from "@/lib/orders/status";
+import { parseLocationLink } from "@/lib/fulfillment/location-link";
 
 /**
  * Courier screen logic (pure). What one delivery looks like to its courier, the order of the list
@@ -14,6 +15,8 @@ export type CourierDelivery = {
   customerName: string;
   customerPhone: string;
   address: string;
+  /** The customer's Waze / Google Maps link, when one was given (checked again here). */
+  locationUrl: string | null;
   zone: string;
   notes: string;
   items: { name: string; quantity: number; extras: string[] }[];
@@ -35,6 +38,7 @@ export type CourierOrderInput = {
   customerFullName?: string;
   customerPhone?: string;
   deliveryAddress?: string;
+  deliveryLocationUrl?: string;
   deliveryZoneName?: string;
   notes?: string;
   items?: { productName?: string; quantity?: number; modifiers?: { optionName?: string; quantity?: number }[] }[];
@@ -77,6 +81,7 @@ export function toCourierDelivery(order: CourierOrderInput): CourierDelivery {
     customerName: (order.customerFullName || order.customerName || "").trim(),
     customerPhone: (order.customerPhone || "").trim(),
     address: (order.deliveryAddress || "").trim(),
+    locationUrl: parseLocationLink(order.deliveryLocationUrl)?.url ?? null,
     zone: (order.deliveryZoneName || "").trim(),
     notes: (order.notes || "").trim(),
     items: (order.items ?? []).map((item) => ({
@@ -174,10 +179,20 @@ function destination(delivery: Pick<CourierDelivery, "address" | "zone">): strin
   return [delivery.address, delivery.zone].filter(Boolean).join(", ");
 }
 
-export function wazeUrl(delivery: Pick<CourierDelivery, "address" | "zone">): string {
+/** The customer's own link when it is of this kind (Waze / Google Maps), else none. */
+function ownLink(delivery: { locationUrl?: string | null }, kind: "waze" | "google"): string | null {
+  const link = parseLocationLink(delivery.locationUrl);
+  return link?.kind === kind ? link.url : null;
+}
+
+export function wazeUrl(delivery: Pick<CourierDelivery, "address" | "zone"> & { locationUrl?: string | null }): string {
+  const own = ownLink(delivery, "waze");
+  if (own) return own;
   return `https://waze.com/ul?q=${encodeURIComponent(destination(delivery))}&navigate=yes`;
 }
 
-export function googleMapsUrl(delivery: Pick<CourierDelivery, "address" | "zone">): string {
+export function googleMapsUrl(delivery: Pick<CourierDelivery, "address" | "zone"> & { locationUrl?: string | null }): string {
+  const own = ownLink(delivery, "google");
+  if (own) return own;
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(destination(delivery))}`;
 }

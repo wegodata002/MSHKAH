@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { normalizeIsraeliPhone } from "@/lib/customers/phone";
+import { parseLocationLink } from "@/lib/fulfillment/location-link";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { rememberMyOrder } from "@/lib/orders/my-orders";
@@ -140,6 +142,7 @@ export default function CheckoutPage() {
   const [pickupTimeChoice, setPickupTime] = useState("");
   const [zoneChoice, setZoneChoice] = useState<ZoneChoice>("");
   const [address, setAddress] = useState("");
+  const [locationLink, setLocationLink] = useState("");
   const pickupOk = availability.pickup.available;
   const deliveryOk = availability.delivery?.available === true;
   // "At the table": only after scanning a table QR (3 hours), for a table still in the settings.
@@ -224,7 +227,7 @@ export default function CheckoutPage() {
     couponCode,
     orderType,
     zoneId: orderType === "delivery" ? deliveryZone?.id ?? "" : orderType === "dine_in" ? table?.id ?? "" : "",
-    address: orderType === "delivery" ? address.trim() : "",
+    address: orderType === "delivery" ? `${address.trim()}|${locationLink.trim()}` : "",
     pickupTime: orderType === "pickup" ? pickupTime : "",
     payment,
   });
@@ -256,6 +259,8 @@ export default function CheckoutPage() {
     if (result.code === "PRODUCT_UNAVAILABLE" && result.productNames?.length) {
       return t("checkout.productUnavailable").replace("{items}", result.productNames.join(", "));
     }
+    if (result.code === "INVALID_PHONE") return t("checkout.phoneInvalid");
+    if (result.code === "INVALID_LOCATION_LINK") return t("checkout.locationLinkInvalid");
     if (result.code === "OPTIONS_UNAVAILABLE") {
       return t("checkout.optionsUnavailable").replace("{items}", (result.productNames ?? []).join(", "));
     }
@@ -294,19 +299,25 @@ export default function CheckoutPage() {
     e.preventDefault();
     // Phone: required, except at the table (name only).
     if (!name.trim() || (!isDineIn && !phone.trim())) { setError(t("validation.required")); return; }
+    // 9 or 10 digits starting with 0, or +972 (sent as 0…); the server checks the same rule.
+    const cleanPhone = phone.trim() ? normalizeIsraeliPhone(phone) : "";
+    if (cleanPhone === null) { setError(t("checkout.phoneInvalid")); return; }
     if (!canOrder) return;
     if (orderType === "delivery" && !address.trim()) { setError(t("validation.required")); return; }
+    // Optional location link: Waze / Google Maps only.
+    const location = orderType === "delivery" && locationLink.trim() ? parseLocationLink(locationLink) : undefined;
+    if (location === null) { setError(t("checkout.locationLinkInvalid")); return; }
 
     setLoading(true);
     setError(null);
     try {
       void getOrCreateGuestCustomer();
       // Customers are kept by phone: a table order without a phone stays a guest order.
-      const customerResponse = phone.trim()
+      const customerResponse = cleanPhone
         ? await fetch("/api/checkout/customer", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ name: name.trim(), phone: phone.trim() }),
+            body: JSON.stringify({ name: name.trim(), phone: cleanPhone }),
           }).catch(() => null)
         : null;
       const customerData = customerResponse?.ok
@@ -317,7 +328,7 @@ export default function CheckoutPage() {
       // Same notes text as before (the printout drops the pickup line).
       const orderNotes = [
         notes.trim(),
-        phone.trim() ? `${t("checkout.phone")}: ${phone.trim()}` : "",
+        cleanPhone ? `${t("checkout.phone")}: ${cleanPhone}` : "",
         orderType === "delivery"
           ? t("checkout.delivery")
           : orderType === "dine_in" && table
@@ -336,7 +347,7 @@ export default function CheckoutPage() {
           customer: {
             id: customerId,
             name: name.trim(),
-            phone: phone.trim(),
+            phone: cleanPhone,
           },
           notes: orderNotes || undefined,
           locale,
@@ -346,7 +357,7 @@ export default function CheckoutPage() {
             orderType === "dine_in" && table
               ? { type: "dine_in", tableId: table.id }
               : orderType === "delivery" && deliveryZone
-                ? { type: "delivery", zoneId: deliveryZone.id, address: address.trim() }
+                ? { type: "delivery", zoneId: deliveryZone.id, address: address.trim(), locationUrl: location?.url }
                 : { type: "pickup", pickupTime: pickupTime || undefined },
         });
         if (!result.ok) {
@@ -379,7 +390,7 @@ export default function CheckoutPage() {
           body: JSON.stringify({
             orderId,
             customerName: name.trim(),
-            customerPhone: phone.trim(),
+            customerPhone: cleanPhone,
           }),
         });
         const payData = (await payRes.json()) as { ok?: boolean; paymentUrl?: string };
@@ -479,6 +490,8 @@ export default function CheckoutPage() {
                           onChange={setZoneChoice}
                           address={address}
                           onAddressChange={setAddress}
+                          locationLink={locationLink}
+                          onLocationLinkChange={setLocationLink}
                           subtotal={subtotal}
                           storePhone={availability.storePhone}
                         />

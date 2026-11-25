@@ -60,7 +60,6 @@ export function BannerHero({
   if (image === "/store.jpg") image = "/meskahphoto.png";
   const x = mobile ? banner.mobilePositionX : banner.desktopPositionX;
   const y = mobile ? banner.mobilePositionY : banner.desktopPositionY;
-  const zoom = mobile ? banner.mobileZoom : banner.desktopZoom;
   const showButton = banner.ctaAction !== "none" && Boolean(content.button);
 
   const hero = (
@@ -71,18 +70,29 @@ export function BannerHero({
         className
       )}
     >
+      {/* Behind: the same picture, blurred, filling the strips at the sides (or top and bottom). */}
+      <Image
+        src={image}
+        alt=""
+        aria-hidden
+        fill
+        unoptimized={image.includes("firebasestorage")}
+        priority={!interactive}
+        className="scale-110 object-cover opacity-80 blur-2xl"
+        sizes={mobile ? "390px" : "(max-width: 1024px) 100vw, 1400px"}
+        data-banner-backdrop
+      />
+      {/* The picture itself, whole — never cropped. Position still applies; zoom is not used (it would crop). */}
       <Image
         src={image}
         alt={content.title}
         fill
         unoptimized={image.includes("firebasestorage")}
         priority={!interactive}
-        className="object-cover"
-        style={{
-          objectPosition: `${x ?? 50}% ${y ?? 50}%`,
-          transform: `scale(${zoom ?? 1})`,
-        }}
+        className="object-contain"
+        style={{ objectPosition: `${x ?? 50}% ${y ?? 50}%` }}
         sizes={mobile ? "390px" : "(max-width: 1024px) 100vw, 1400px"}
+        data-banner-image
       />
       <div className="absolute inset-0 bg-gradient-to-l from-dark-brown/80 via-dark-brown/30 to-transparent rtl:bg-gradient-to-r" />
       <div

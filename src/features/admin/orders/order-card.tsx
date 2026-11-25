@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Banknote, Bike, UtensilsCrossed, ChevronDown, Clock, Copy, FileText, Layers, Loader2, Printer, Wallet } from "lucide-react";
+import { parseLocationLink } from "@/lib/fulfillment/location-link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -310,6 +311,18 @@ export function OrderCard({
               {order.customerEmail && <p dir="ltr" className="text-start">{order.customerEmail}</p>}
               {order.deliveryZoneName && <p className="font-semibold">{order.deliveryZoneName}</p>}
               {order.deliveryAddress && <p>{order.deliveryAddress}</p>}
+              {/* Only a Waze / Google Maps link, checked again before it is shown as a link. */}
+              {parseLocationLink(order.deliveryLocationUrl) && (
+                <a
+                  href={parseLocationLink(order.deliveryLocationUrl)!.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-turquoise underline"
+                  data-order-location-link
+                >
+                  {t("admin.orders.locationLink")}
+                </a>
+              )}
             </div>
             <div className="space-y-1">
               <p className="font-semibold">{t("orders.date")}</p>

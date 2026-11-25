@@ -160,7 +160,11 @@ describe("new order from the waiter", () => {
     expect(calls).toEqual([]);
     const ok = deps();
     await handleWaiterOrder(body({ phone: "050-123-4567" }), "רנא", ok.d);
-    expect(ok.saved[0]!.customerPhone).toBe("050-123-4567");
+    // Saved in one form, like at checkout (+972 / hyphens → 0XXXXXXXXX).
+    expect(ok.saved[0]!.customerPhone).toBe("0501234567");
+    const intl = deps();
+    await handleWaiterOrder(body({ phone: "+972 52-765-4321" }), "רנא", intl.d);
+    expect(intl.saved[0]!.customerPhone).toBe("0527654321");
   });
 
   it("limited per waiter / tablet", async () => {

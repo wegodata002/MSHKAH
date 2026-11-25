@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import {
   Coffee,
@@ -20,6 +21,7 @@ import { ProductCard } from "@/features/catalog/product-card";
 import { CATALOG_GRID_CLASS } from "@/features/catalog/catalog-grid";
 import { useT } from "@/components/providers/locale-provider";
 import { useLocalizedCategory } from "@/hooks/useLocalizedContent";
+import { getCategoryHeroImage } from "@/lib/menu/placeholders";
 import type { CatalogSectionGroup } from "@/lib/menu/category-tree";
 import type { Category, Product } from "@/types";
 
@@ -64,6 +66,8 @@ export function CategoryProductSection({
   if (count === 0) return null;
 
   const Icon = iconMap[category.icon] ?? Coffee;
+  // The category image from the admin: a small, quiet strip above the heading. No image → nothing.
+  const stripImage = getCategoryHeroImage(category.image, category.id);
 
   return (
     <section
@@ -72,6 +76,21 @@ export function CategoryProductSection({
       aria-labelledby={`category-title-${category.id}`}
       className="pt-6 md:pt-8"
     >
+      {stripImage && (
+        <div className="relative mb-3 h-16 overflow-hidden rounded-2xl md:h-20" data-category-strip={category.id}>
+          <Image
+            src={stripImage}
+            alt=""
+            aria-hidden
+            fill
+            loading="lazy"
+            unoptimized={stripImage.includes("firebasestorage")}
+            className="object-cover"
+            sizes="(max-width: 1280px) 100vw, 1200px"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-cream/50 to-transparent" />
+        </div>
+      )}
       <div className="mb-3 flex items-center gap-3">
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
           <Icon className="h-5 w-5" strokeWidth={1.75} />

@@ -139,7 +139,8 @@ describe("catalog page", () => {
   it("status line on /catalog too; the big banner stays on the home page only", () => {
     const view = read("src/features/catalog/catalog-view.tsx");
     expect(view).toMatch(/\{isHome && <HeroBanner \/>\}/);
-    expect(view).toMatch(/^\s*<AvailabilityPill \/>/m);
+    // On every catalog page (home and /catalog); only the table strip takes its place.
+    expect(view).toContain("{atTable ? <TableBanner /> : <AvailabilityPill />}");
     expect(view).not.toMatch(/isHome && <AvailabilityPill/);
   });
 });
