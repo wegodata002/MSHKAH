@@ -142,6 +142,8 @@ export interface Order {
   paidBy?: string;
   /** Dine-in: who marked it served. */
   servedBy?: string;
+  /** Entered by a waiter for the guest ("רנא" / "רנא · טאבלט בר"). */
+  createdBy?: string;
   deliveredAt?: string | null;
   completedAt?: string | null;
   cancelledAt?: string | null;

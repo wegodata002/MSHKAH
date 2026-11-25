@@ -185,6 +185,7 @@ export function mapOrder(doc: FirestoreDoc<FirestoreOrder>): Order {
     paidVia: doc.paidVia,
     paidBy: doc.paidBy || undefined,
     servedBy: doc.servedBy || undefined,
+    createdBy: doc.createdBy || undefined,
     courierId: doc.courierId || undefined,
     courierName: doc.courierName || undefined,
     courierAssignedAt: doc.courierAssignedAt ? timestampToIso(doc.courierAssignedAt) : null,

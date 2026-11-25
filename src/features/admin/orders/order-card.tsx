@@ -203,6 +203,11 @@ export function OrderCard({
                 {t("admin.orders.pickupAt").replace("{time}", order.pickupTime)}
               </span>
             ) : null}
+            {order.createdBy ? (
+              <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[11px] font-semibold text-sky-800" data-created-by>
+                {t("admin.orders.createdBy").replace("{name}", order.createdBy)}
+              </span>
+            ) : null}
             {order.orderType === "dine_in" && order.servedBy ? (
               <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700" data-served-by>
                 {t("admin.orders.servedBy").replace("{name}", order.servedBy)}

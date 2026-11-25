@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Banknote, Check, CreditCard, Loader2, LogOut, Tablet, UserRound } from "lucide-react";
+import { ArrowRight, Banknote, Check, CreditCard, Loader2, LogOut, Plus, Tablet, UserRound } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { formatPrice, cn } from "@/lib/utils";
 import { tableAreaName, tableDisplayName, tablesByArea, type DineInTable, type TableArea } from "@/lib/fulfillment/settings";
+import { WaiterNewOrder } from "@/features/staff/waiter-new-order";
 import { summarizeTable, type PaidWith, type TableSummary, type WaiterOrder } from "@/lib/waiter/tables";
 
 /** How often the waiter screen asks for updates (all waiters see each other's changes). */
@@ -140,6 +141,11 @@ function OrderCard({
           <p className="text-xs text-coffee/50" dir="ltr">
             #{order.orderNumber} · {timeOf(order.createdAt)}
           </p>
+          {order.createdBy && (
+            <p className="text-xs text-sky-800" data-order-created-by>
+              {t("waiter.createdBy").replace("{name}", order.createdBy)}
+            </p>
+          )}
         </div>
         <span
           className={cn(
@@ -197,6 +203,10 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const [deviceWaiter, setDeviceWaiter] = useState<{ id: string; name: string } | null>(null);
   const [choosing, setChoosing] = useState(false);
+  /** "New order" open for this table. */
+  const [ordering, setOrdering] = useState<string | null>(null);
+  /** "Sent to the kitchen · #MC-…" after a new order. */
+  const [sentNotice, setSentNotice] = useState<string | null>(null);
 
   useEffect(() => setDeviceWaiter(readDeviceWaiter()), []);
 
@@ -349,16 +359,51 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
       )}
       {!data.dineInEnabled && <p className="mb-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{t("waiter.dineInOff")}</p>}
 
-      {selected ? (
+      {sentNotice && (
+        <p className="mb-3 rounded-xl bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800" role="status" data-order-sent>
+          {sentNotice}
+        </p>
+      )}
+
+      {selected && ordering === selected.table.id ? (
+        <WaiterNewOrder
+          table={selected.table}
+          waiterId={chosen?.id}
+          onBack={() => setOrdering(null)}
+          onSignedOut={onSignedOut}
+          onSent={(orderNumber) => {
+            setOrdering(null);
+            setSentNotice(t("waiter.newOrder.sent").replace("{number}", orderNumber));
+            void load();
+          }}
+        />
+      ) : selected ? (
         // One table: its open orders (and today's cancelled ones).
         <div data-table-view={selected.table.id}>
           <div className="mb-3 flex items-center justify-between gap-3">
-            <button type="button" onClick={() => setTableId(null)} className="inline-flex items-center gap-1 text-sm font-medium text-turquoise" data-back-to-tables>
+            <button type="button" onClick={() => {
+                setTableId(null);
+                setSentNotice(null);
+              }} className="inline-flex items-center gap-1 text-sm font-medium text-turquoise" data-back-to-tables>
               <ArrowRight className="h-4 w-4 ltr:rotate-180" />
               {t("waiter.allTables")}
             </button>
             <h2 className="font-display text-lg font-bold text-dark-brown">{tableDisplayName(selected.table, locale)}</h2>
           </div>
+          <button
+            type="button"
+            disabled={needWho || !data.dineInEnabled}
+            onClick={() => {
+              setSentNotice(null);
+              setError(null);
+              setOrdering(selected.table.id);
+            }}
+            className="mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-turquoise/60 font-bold text-turquoise disabled:opacity-50"
+            data-new-order-start
+          >
+            <Plus className="h-5 w-5" />
+            {t("waiter.newOrder.start")}
+          </button>
           {selected.openOrders.length === 0 && selected.cancelledOrders.length === 0 ? (
             <p className="rounded-2xl bg-warm-white p-6 text-center text-coffee/60 shadow-soft" data-table-free>
               {t("waiter.tableFree")}
@@ -416,7 +461,10 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
                 <li key={table.id}>
                   <button
                     type="button"
-                    onClick={() => setTableId(table.id)}
+                    onClick={() => {
+                      setTableId(table.id);
+                      setSentNotice(null);
+                    }}
                     data-table-tile={table.id}
                     data-state={s.state}
                     className={cn("relative flex h-24 w-full flex-col items-center justify-center gap-1 rounded-2xl border-2 bg-warm-white shadow-soft", TILE[s.state])}
