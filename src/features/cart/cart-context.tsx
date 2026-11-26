@@ -293,7 +293,7 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       const items = Array.isArray(action.state.items) ? action.state.items : state.items;
       if (isPersonalCouponCode(code)) {
         const rate = personalDisplayRate(action.state.couponDiscount);
-        return resetCouponIfEmpty({ ...state, items, ...NO_COUPON, couponCode: rate > 0 ? code : "", couponDiscount: rate, isOpen: false });
+        return resetCouponIfEmpty({ ...state, items, ...NO_COUPON, couponCode: rate > 0 ? code : "", couponDiscount: rate, isOpen: state.isOpen });
       }
       const terms = savedTerms(action.state);
       const rate = terms.discount || (terms.fixed ? 0 : couponRate(code));
@@ -303,7 +303,8 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         items,
         ...NO_COUPON,
         ...(applies ? { couponCode: code, couponDiscount: rate, couponFixed: terms.fixed, couponMinOrder: terms.minOrder, couponName: terms.name } : {}),
-        isOpen: false,
+        // Loading the saved cart never closes a cart already opened (e.g. by /cart a moment earlier).
+        isOpen: state.isOpen,
       });
     }
     case "CLEAR_CART":

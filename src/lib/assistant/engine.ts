@@ -1,5 +1,6 @@
 import type { Locale } from "@/lib/i18n/types";
 import { fuzzyScore, isRelevantMatch, matchesAny, normalizeText } from "@/lib/assistant/fuzzy";
+import { typoTextMatch } from "@/lib/search/typo";
 import {
   deliveryAnswer,
   hoursAnswer,
@@ -146,16 +147,19 @@ export function withProductSynonyms(message: string): string {
 }
 
 function search(ctx: AssistantContext, query: string, limit = 8): AssistantProduct[] {
-  return available(ctx)
-    .map((p) => {
-      const target = p.searchText ?? `${p.name} ${p.description}`;
-      return { p, target, score: fuzzyScore(query, target) };
-    })
+  const scored = available(ctx).map((p) => {
+    const target = p.searchText ?? `${p.name} ${p.description}`;
+    return { p, target, score: fuzzyScore(query, target) };
+  });
+  const found = scored
     // A sentence sharing one small word with a product is not a match ("מה מזג האוויר מחר?").
     .filter(({ score, target }) => score >= 0.35 && isRelevantMatch(query, target))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
     .map(({ p }) => p);
+  if (found.length > 0) return found;
+  // Nothing found: forgive a small typo ("לאטע" → "לאטה"), same rule as the menu search.
+  return scored.filter(({ target }) => typoTextMatch(query, target, "half")).slice(0, limit).map(({ p }) => p);
 }
 
 function searchByCategoryName(ctx: AssistantContext, query: string, limit = 8): AssistantProduct[] {

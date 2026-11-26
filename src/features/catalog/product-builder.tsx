@@ -107,7 +107,7 @@ function ModifierGroupRenderer({
 
       {group.displayType === "dropdown" ? (
         <select
-          className="w-full rounded-xl border border-beige-dark/30 bg-warm-white px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-beige-dark/30 bg-warm-white px-3 py-2 text-base lg:text-sm"
           value={selected[0]?.optionId ?? ""}
           onChange={(e) => selectSingle(e.target.value)}
         >

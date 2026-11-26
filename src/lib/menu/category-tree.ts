@@ -1,3 +1,4 @@
+import { typoTextMatch } from "@/lib/search/typo";
 import type { Category, Product, ProductFilters } from "@/types";
 import type { Locale } from "@/lib/i18n/types";
 import { getLocalizedName } from "@/lib/i18n/localized-content";
@@ -206,6 +207,23 @@ export function matchesCatalogSearch(product: Product, query: string): boolean {
   ].some((text) => (text ?? "").toLowerCase().includes(q));
 }
 
+function searchText(product: Product): string {
+  return [product.name_he, product.name_ar, product.name_en, product.description_he, product.description_ar, product.description_en]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * The menu search: exact (the text appears in a name or description). Only when that finds nothing,
+ * a search that forgives a small typo ("לאטע" → "לאטה") — so close matches never sit next to real
+ * ones. `fuzzy`: the results are close matches (the page says so).
+ */
+export function catalogSearchMatcher(products: readonly Product[], query: string): { match: (p: Product) => boolean; fuzzy: boolean } {
+  if (!query.trim()) return { match: () => true, fuzzy: false };
+  if (products.some((p) => matchesCatalogSearch(p, query))) return { match: (p) => matchesCatalogSearch(p, query), fuzzy: false };
+  return { match: (p) => typoTextMatch(query, searchText(p)), fuzzy: true };
+}
+
 export interface CatalogSectionGroup {
   /** null = products directly in the root category. */
   subcategory: Category | null;
@@ -230,9 +248,9 @@ export function buildCatalogSections(
   locale: Locale,
   search = ""
 ): CatalogSection[] {
-  const visible = products.filter(
-    (p) => isPublicMenuProduct(p) && matchesCatalogSearch(p, search)
-  );
+  const onMenu = products.filter(isPublicMenuProduct);
+  const { match } = catalogSearchMatcher(onMenu, search);
+  const visible = onMenu.filter(match);
 
   return getRootCategories(categories)
     .map((root) => {

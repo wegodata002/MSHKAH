@@ -40,7 +40,7 @@ export function SiteFooter() {
     // the phone's bottom bar, see globals.css "data-site-footer").
     <footer
       id="about"
-      className="mt-auto scroll-mt-16 border-t border-beige-dark/15 bg-warm-white transition-shadow duration-500 data-[about-flash]:shadow-[inset_0_0_0_3px_rgba(0,122,128,0.35)] md:scroll-mt-20"
+      className="mt-auto scroll-mt-16 border-t border-beige-dark/15 bg-warm-white transition-shadow duration-500 data-[about-flash]:shadow-[inset_0_0_0_3px_rgba(0,122,128,0.35)] lg:scroll-mt-20"
       data-site-footer
     >
       <div className="mx-auto max-w-[1400px] px-4 pb-3 pt-6 md:px-8 lg:px-10 lg:pt-8">

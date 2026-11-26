@@ -7,6 +7,14 @@
   --mobile-bottom-nav-height: 64px;
 }
 
+/* Tablet (768–1023px): a lower bottom bar. Everything placed above it (floating buttons, page
+   padding, the unsaved-changes bar) follows this variable. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  :root {
+    --mobile-bottom-nav-height: 56px;
+  }
+}
+
 @theme {
   --color-cream: #F8F3ED;
   --color-warm-white: #FFFEFB;
