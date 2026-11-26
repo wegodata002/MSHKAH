@@ -24,6 +24,7 @@ import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
 import { readOrderCouponRecord, readStoreCoupon } from "@/lib/coupons/admin/store";
 import { couponStatus, normalizeStoreCode } from "@/lib/coupons/store-coupons";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
+import { priceNow } from "@/lib/sales/sale-price";
 
 export class HypPaymentError extends Error {
   constructor(
@@ -62,7 +63,9 @@ async function trustedChargeAmount(
     if (!snap.exists) {
       throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
     }
-    const catalogPrice = Number(snap.data()?.price);
+    // The product's price now, from the catalog: the sale price while a sale is on (Admin → Sales),
+    // exactly as the order route priced it. Never a price written on the order.
+    const catalogPrice = priceNow({ price: snap.data()?.price, sales: snap.data()?.sales }, new Date()).price;
     if (!Number.isFinite(catalogPrice) || catalogPrice < 0) {
       throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
     }
