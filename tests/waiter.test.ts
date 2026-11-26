@@ -12,15 +12,7 @@ import {
   waiterStage,
   type WaiterOrderInput,
 } from "@/lib/waiter/tables";
-import {
-  checkPairing,
-  DEVICE_SESSION_TTL_SECONDS,
-  newPairingCode,
-  PAIRING_CODE_PATTERN,
-  pairingCodeHash,
-  readDeviceSession,
-  signDeviceSession,
-} from "@/lib/staff/device";
+import { DEVICE_SESSION_TTL_SECONDS, readDeviceSession, signDeviceSession } from "@/lib/staff/device";
 import { parseStaffAdminRequest } from "@/lib/staff/admin-input";
 import { makeTable, normalizeFulfillmentSettings, DEFAULT_FULFILLMENT } from "@/lib/fulfillment/settings";
 import { localToDate } from "@/lib/fulfillment/availability";
@@ -145,30 +137,13 @@ describe("waiter: Paid", () => {
   });
 });
 
-describe("fixed device", () => {
+describe("waiter device", () => {
   const NOW = Date.UTC(2026, 10, 24, 10, 0, 0);
 
-  it("pairing codes are 6 digits and stored only as a keyed hash", () => {
-    for (let i = 0; i < 50; i++) expect(newPairingCode()).toMatch(PAIRING_CODE_PATTERN);
-    const hash = pairingCodeHash("123456");
-    expect(hash).toMatch(/^[0-9a-f]{64}$/);
-    expect(hash).not.toContain("123456");
-    expect(pairingCodeHash("123456")).toBe(hash);
-    expect(pairingCodeHash("123457")).not.toBe(hash);
-  });
-
-  it("a pairing code works once, for 10 minutes", () => {
-    const doc = { deviceName: "טאבלט בר", createdAt: "", createdBy: "admin", expiresAtMs: NOW + 1000, used: false };
-    expect(checkPairing(doc, NOW)).toEqual({ ok: true });
-    expect(checkPairing(undefined, NOW)).toEqual({ ok: false, code: "INVALID_CODE" });
-    expect(checkPairing({ ...doc, used: true }, NOW)).toEqual({ ok: false, code: "USED" });
-    expect(checkPairing(doc, NOW + 1000)).toEqual({ ok: false, code: "EXPIRED" });
-  });
-
-  it("the device sign-in lasts 30 days and can't be forged", () => {
+  it("the device sign-in lasts 90 days and can't be forged", () => {
     const session = signDeviceSession({ deviceId: "Device00000001", sessionVersion: 3, now: NOW });
     expect(session.maxAgeSeconds).toBe(DEVICE_SESSION_TTL_SECONDS);
-    expect(DEVICE_SESSION_TTL_SECONDS).toBe(30 * 24 * 60 * 60);
+    expect(DEVICE_SESSION_TTL_SECONDS).toBe(90 * 24 * 60 * 60);
     expect(readDeviceSession(session.value, NOW + 1000)).toEqual({ deviceId: "Device00000001", sessionVersion: 3 });
     expect(readDeviceSession(session.value, NOW + DEVICE_SESSION_TTL_SECONDS * 1000)).toBeNull();
 
@@ -179,13 +154,21 @@ describe("fixed device", () => {
     for (const forged of [otherDevice, olderVersion, longer, "", "v1.x.1.1.y", undefined, null]) expect(readDeviceSession(forged, NOW)).toBeNull();
   });
 
-  it("admin requests for devices are checked", () => {
+  it("admin requests for devices and the waiters' QR are checked", () => {
     expect(parseStaffAdminRequest({ action: "devices" })).toEqual({ ok: true, request: { action: "devices" } });
-    expect(parseStaffAdminRequest({ action: "pair-device", deviceName: "  טאבלט בר  " })).toEqual({ ok: true, request: { action: "pair-device", deviceName: "טאבלט בר" } });
-    expect(parseStaffAdminRequest({ action: "pair-device", deviceName: "" })).toEqual({ ok: false, error: "DEVICE_NAME" });
-    expect(parseStaffAdminRequest({ action: "pair-device", deviceName: "x".repeat(41) })).toMatchObject({ ok: false });
+    expect(parseStaffAdminRequest({ action: "waiter-qr" })).toEqual({ ok: true, request: { action: "waiter-qr" } });
+    expect(parseStaffAdminRequest({ action: "rotate-waiter-qr" })).toEqual({ ok: true, request: { action: "rotate-waiter-qr" } });
+    expect(parseStaffAdminRequest({ action: "rename-device", deviceId: "Device00000001", name: "  טאבלט בר  " })).toEqual({
+      ok: true,
+      request: { action: "rename-device", deviceId: "Device00000001", name: "טאבלט בר" },
+    });
+    expect(parseStaffAdminRequest({ action: "rename-device", deviceId: "Device00000001", name: "" })).toEqual({ ok: false, error: "DEVICE_NAME" });
+    expect(parseStaffAdminRequest({ action: "rename-device", deviceId: "Device00000001", name: "x".repeat(41) })).toMatchObject({ ok: false });
+    expect(parseStaffAdminRequest({ action: "rename-device", deviceId: "../x", name: "a" })).toEqual({ ok: false, error: "ID" });
     expect(parseStaffAdminRequest({ action: "revoke-device", deviceId: "Device00000001" })).toEqual({ ok: true, request: { action: "revoke-device", deviceId: "Device00000001" } });
     expect(parseStaffAdminRequest({ action: "revoke-device", deviceId: "../x" })).toEqual({ ok: false, error: "ID" });
+    // The old 6-digit pairing is gone.
+    expect(parseStaffAdminRequest({ action: "pair-device", deviceName: "טאבלט" })).toEqual({ ok: false, error: "ACTION" });
   });
 });
 
@@ -208,10 +191,12 @@ describe("table orders carry the service day", () => {
 });
 
 describe("wiring", () => {
-  it("the waiter API needs a waiter sign-in or a fixed device, and only reads today's table orders", () => {
+  it("the waiter API needs a connected device, and only reads today's table orders", () => {
     const route = read("src/app/api/staff/tables/route.ts");
     expect(route).toContain("readWaiterContext");
-    expect(route).toMatch(/CHOOSE_WAITER/);
+    expect(route).toContain("actorFor(ctx)");
+    expect(route).not.toMatch(/CHOOSE_WAITER|waiterId|listActiveWaiters/);
+    expect(read("src/lib/waiter/admin/context.ts")).not.toContain("STAFF_COOKIE_NAME");
     const store = read("src/lib/waiter/admin/store.ts");
     expect(store).toMatch(/where\("orderType", "==", "dine_in"\)/);
     expect(store).toMatch(/where\("serviceDate", "==", /);
@@ -219,19 +204,24 @@ describe("wiring", () => {
     expect(store).toContain("awardLoyaltyPointsForOrder");
   });
 
-  it("pairing is rate limited, and device admin is admin-only", () => {
-    expect(read("src/app/api/staff/device/pair/route.ts")).toContain("consumeRateLimit");
+  it("joining is rate limited and POST only; the QR and devices are admin-only", () => {
+    const join = read("src/app/api/staff/device/join/route.ts");
+    expect(join).toContain("consumeRateLimit");
+    expect(join).toContain("export async function POST");
+    expect(join).not.toContain("export async function GET");
     const admin = read("src/app/api/admin/staff/route.ts");
-    expect(admin).toContain("pair-device");
-    expect(admin).toContain("revoke-device");
     expect(admin).toContain("requireAdminOnly");
+    for (const action of ["waiter-qr", "rotate-waiter-qr", "rename-device", "revoke-device"]) expect(admin).toContain(`"${action}"`);
+    expect(admin).not.toContain("pair-device");
   });
 
-  it("the staff screen opens the waiter screen for waiters and fixed devices", () => {
+  it("the staff screen opens the waiter screen for a connected device; others are asked to scan the QR", () => {
     const screen = read("src/features/staff/staff-screen.tsx");
     expect(screen).toContain("<WaiterTables");
     expect(screen).toContain('kind: "device"');
-    expect(screen).toContain("data-pair-link");
+    expect(screen).toContain("<ScanWaiterQr />");
+    expect(screen).toContain('<PinPad audience="courier"');
+    expect(screen).not.toMatch(/PairDevice|data-pair-link/);
     expect(read("src/features/admin/staff-admin.tsx")).toContain("<StaffDevicesSection");
   });
 

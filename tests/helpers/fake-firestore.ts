@@ -95,7 +95,8 @@ export function createFakeFirestore() {
   const db = {
     collection(name: string) {
       return {
-        doc: (id?: string) => docRef(name, id ?? `auto-${++autoId}`),
+        // Auto ids look like real ones (letters and digits, 20 characters).
+        doc: (id?: string) => docRef(name, id ?? `auto${String(++autoId).padStart(16, "0")}`),
         ...query(name, [], null, null),
       };
     },
@@ -110,10 +111,30 @@ export function createFakeFirestore() {
           assertNoUndefined(data, "");
           writes.push(() => ref.set(data, options));
         },
+        update: (ref: Ref, data: Data) => {
+          assertNoUndefined(data, "");
+          writes.push(() => ref.update(data));
+        },
       };
       const result = await fn(tx);
       for (const write of writes) await write();
       return result;
+    },
+    batch() {
+      const writes: Array<() => Promise<void>> = [];
+      return {
+        update: (ref: Ref, data: Data) => {
+          assertNoUndefined(data, "");
+          writes.push(() => ref.update(data));
+        },
+        set: (ref: Ref, data: Data, options?: { merge?: boolean }) => {
+          assertNoUndefined(data, "");
+          writes.push(() => ref.set(data, options));
+        },
+        async commit() {
+          for (const write of writes) await write();
+        },
+      };
     },
   };
 

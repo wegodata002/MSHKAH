@@ -125,8 +125,8 @@ describe("sign-in with the code", () => {
   it("the screen sends its entrance and never names the other role", () => {
     const screen = readFileSync(resolve(process.cwd(), "src/features/staff/staff-screen.tsx"), "utf8");
     expect(screen).toContain("JSON.stringify({ pin: code, for: audience })");
-    expect(screen).toContain("data.member.role === audience");
-    expect(screen).toContain('data?.device && audience === "waiter"');
+    expect(screen).toContain('audience === "courier" && data?.member?.role === "courier"');
+    expect(screen).toContain('audience === "waiter" && data?.device');
     expect(screen).not.toMatch(/WRONG_ROLE|wrongRole/);
     const ui = readFileSync(resolve(process.cwd(), "src/data/ui-translations-seed.ts"), "utf8");
     expect(ui).not.toContain("staff.wrongRole");

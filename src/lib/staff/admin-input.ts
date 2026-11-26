@@ -5,12 +5,15 @@ import { isValidPinFormat, isWeakPin } from "@/lib/staff/pin";
 /** Admin "Staff" page requests (POST /api/admin/staff). */
 export type StaffAdminRequest =
   | { action: "list" }
-  | { action: "create"; name: string; phone: string; role: StaffRole; pin: string }
+  | { action: "create"; name: string; phone: string; role: StaffRole; pin?: string }
   | { action: "update"; id: string; name?: string; phone?: string; role?: StaffRole; active?: boolean; worksToday?: boolean }
   | { action: "set-pin"; id: string; pin: string }
   | { action: "devices" }
-  | { action: "pair-device"; deviceName: string }
-  | { action: "revoke-device"; deviceId: string };
+  | { action: "rename-device"; deviceId: string; name: string }
+  | { action: "revoke-device"; deviceId: string }
+  /** The waiters' QR (made the first time) / a new one that disconnects the QR devices. */
+  | { action: "waiter-qr" }
+  | { action: "rotate-waiter-qr" };
 
 export type StaffInputError = "NAME" | "PHONE" | "ROLE" | "PIN_FORMAT" | "PIN_WEAK" | "ID" | "ACTION" | "DEVICE_NAME";
 
@@ -45,6 +48,8 @@ export function parseStaffAdminRequest(body: unknown): { ok: true; request: Staf
       const phone = cleanPhone(input.phone);
       if (!phone) return { ok: false, error: "PHONE" };
       if (!isStaffRole(input.role)) return { ok: false, error: "ROLE" };
+      // Waiters have no code: they join with the waiters' QR.
+      if (input.role === "waiter") return { ok: true, request: { action: "create", name, phone, role: "waiter" } };
       const pinError = checkPin(input.pin);
       if (pinError) return { ok: false, error: pinError };
       return { ok: true, request: { action: "create", name, phone, role: input.role, pin: input.pin as string } };
@@ -72,11 +77,16 @@ export function parseStaffAdminRequest(body: unknown): { ok: true; request: Staf
     }
     case "devices":
       return { ok: true, request: { action: "devices" } };
-    case "pair-device": {
-      const deviceName = cleanName(input.deviceName);
-      if (!deviceName || deviceName.length > 40) return { ok: false, error: "DEVICE_NAME" };
-      return { ok: true, request: { action: "pair-device", deviceName } };
+    case "rename-device": {
+      if (typeof input.deviceId !== "string" || !ID.test(input.deviceId)) return { ok: false, error: "ID" };
+      const name = cleanName(input.name);
+      if (!name || name.length > 40) return { ok: false, error: "DEVICE_NAME" };
+      return { ok: true, request: { action: "rename-device", deviceId: input.deviceId, name } };
     }
+    case "waiter-qr":
+      return { ok: true, request: { action: "waiter-qr" } };
+    case "rotate-waiter-qr":
+      return { ok: true, request: { action: "rotate-waiter-qr" } };
     case "revoke-device": {
       if (typeof input.deviceId !== "string" || !ID.test(input.deviceId)) return { ok: false, error: "ID" };
       return { ok: true, request: { action: "revoke-device", deviceId: input.deviceId } };

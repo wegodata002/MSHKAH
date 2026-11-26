@@ -86,14 +86,11 @@ function ItemSheet({ product, onAdd, onClose }: { product: Product; onAdd: (line
 
 export function WaiterNewOrder({
   table,
-  waiterId,
   onBack,
   onSent,
   onSignedOut,
 }: {
   table: DineInTable;
-  /** The waiter chosen on a fixed tablet (none for a waiter signed in with her code). */
-  waiterId?: string;
   onBack: () => void;
   onSent: (orderNumber: string) => void;
   onSignedOut: () => void;
@@ -149,8 +146,6 @@ export function WaiterNewOrder({
         return t("waiter.newOrder.error.closed");
       case "UNKNOWN_TABLE":
         return t("checkout.unknownTable");
-      case "CHOOSE_WAITER":
-        return t("waiter.error.chooseWaiter");
       case "INVALID_PHONE":
         return t("waiter.newOrder.error.phone");
       case "RATE_LIMITED":
@@ -174,7 +169,6 @@ export function WaiterNewOrder({
           phone: phone.trim() || undefined,
           notes: notes.trim() || undefined,
           locale,
-          waiterId,
           items: lines.map((l) => ({
             productId: l.product.id,
             quantity: l.quantity,

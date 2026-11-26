@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowRight, Banknote, Check, CreditCard, Loader2, LogOut, Plus, Tablet, UserRound } from "lucide-react";
+import { ArrowRight, Banknote, Check, CreditCard, Loader2, Plus, Tablet } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { formatPrice, cn } from "@/lib/utils";
 import { tableAreaName, tableDisplayName, tablesByArea, type DineInTable, type TableArea } from "@/lib/fulfillment/settings";
@@ -13,15 +13,15 @@ import { tableHasWork, summarizeTable, type PaidWith, type TableSummary, type Wa
 
 /** How often the waiter screen asks for updates (all waiters see each other's changes). */
 export const WAITER_POLL_MS = 10_000;
-const DEVICE_WAITER_KEY = "mishkat-device-waiter";
+/** Left over from "Who is working now?" (removed): cleared from the device. */
+const OLD_DEVICE_WAITER_KEY = "mishkat-device-waiter";
 /** "Only tables with work": kept on this device until turned off. */
 const BUSY_ONLY_KEY = "mishkat-waiter-busy-only";
 
 type Data = {
-  mode: "personal" | "device";
-  me: { name: string } | null;
-  device: { name: string } | null;
-  waiters: { id: string; name: string }[];
+  mode: "device";
+  /** This device's name ("טלפון מלצרית 1"): what the actions are recorded under. */
+  device: { name: string };
   dineInEnabled: boolean;
   tables: DineInTable[];
   orders: WaiterOrder[];
@@ -36,16 +36,6 @@ const TILE: Record<TableSummary["state"], string> = {
 
 function timeOf(iso: string | null): string {
   return iso ? new Date(iso).toLocaleTimeString("he-IL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "Asia/Jerusalem" }) : "";
-}
-
-function readDeviceWaiter(): { id: string; name: string } | null {
-  try {
-    const raw = window.localStorage.getItem(DEVICE_WAITER_KEY);
-    const v = raw ? (JSON.parse(raw) as { id?: unknown; name?: unknown }) : null;
-    return v && typeof v.id === "string" && typeof v.name === "string" ? { id: v.id, name: v.name } : null;
-  } catch {
-    return null;
-  }
 }
 
 function PaySheet({
@@ -108,7 +98,6 @@ function PaySheet({
 function OrderCard({
   order,
   busy,
-  locked,
   flash = false,
   onServed,
   onPay,
@@ -117,8 +106,6 @@ function OrderCard({
   busy: boolean;
   /** New or just ready: highlighted for a few seconds. */
   flash?: boolean;
-  /** Fixed tablet before choosing who is working: buttons off, no spinner. */
-  locked: boolean;
   onServed: () => void;
   onPay: () => void;
 }) {
@@ -182,13 +169,13 @@ function OrderCard({
       {(canServe || canPay) && (
         <div className={cn("mt-3 grid gap-2", canServe && canPay ? "grid-cols-2" : "grid-cols-1")}>
           {canServe && (
-            <button type="button" disabled={busy || locked} onClick={onServed} className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-turquoise font-bold text-warm-white disabled:opacity-50" data-action="served">
+            <button type="button" disabled={busy} onClick={onServed} className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-turquoise font-bold text-warm-white disabled:opacity-50" data-action="served">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
               {t("waiter.served")}
             </button>
           )}
           {canPay && (
-            <button type="button" disabled={busy || locked} onClick={onPay} className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-turquoise/50 font-bold text-turquoise disabled:opacity-50" data-action="pay">
+            <button type="button" disabled={busy} onClick={onPay} className="flex h-11 items-center justify-center gap-1.5 rounded-xl border border-turquoise/50 font-bold text-turquoise disabled:opacity-50" data-action="pay">
               <Banknote className="h-4 w-4" />
               {t("waiter.pay")}
             </button>
@@ -210,14 +197,18 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [pay, setPay] = useState<{ orderIds: string[]; amount: number; title: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [deviceWaiter, setDeviceWaiter] = useState<{ id: string; name: string } | null>(null);
-  const [choosing, setChoosing] = useState(false);
   /** "New order" open for this table. */
   const [ordering, setOrdering] = useState<string | null>(null);
   /** "Sent to the kitchen · #MC-…" after a new order. */
   const [sentNotice, setSentNotice] = useState<string | null>(null);
 
-  useEffect(() => setDeviceWaiter(readDeviceWaiter()), []);
+  useEffect(() => {
+    try {
+      window.localStorage.removeItem(OLD_DEVICE_WAITER_KEY);
+    } catch {
+      // nothing kept
+    }
+  }, []);
 
   // New work: a new order at a table, or a dish that became ready. Sound, vibration, tab title,
   // the table tile highlighted until it is opened, and the order card for 6 seconds once seen.
@@ -294,22 +285,8 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
   const areaTables = groups.find((g) => g.area === shownArea)?.tables ?? [];
   const shownTables = busyOnly ? busyIn(areaTables) : areaTables;
 
-  // Fixed tablet: "Who is working now?" (kept on the tablet until changed; must be an active waiter).
-  const isDevice = data?.mode === "device";
-  const chosen = isDevice && deviceWaiter && data?.waiters.some((w) => w.id === deviceWaiter.id) ? deviceWaiter : null;
-  const needWho = isDevice && !chosen;
-  // The fixed cafe tablet keeps its screen on while this screen is open.
-  useScreenWakeLock(isDevice);
-
-  const chooseWaiter = (w: { id: string; name: string }) => {
-    setDeviceWaiter(w);
-    setChoosing(false);
-    try {
-      window.localStorage.setItem(DEVICE_WAITER_KEY, JSON.stringify(w));
-    } catch {
-      // kept for this visit only
-    }
-  };
+  // The screen stays on while the waiter screen is open.
+  useScreenWakeLock(Boolean(data));
 
   const act = async (key: string, body: Record<string, unknown>) => {
     setBusy(key);
@@ -318,13 +295,13 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
       const res = await fetch("/api/staff/tables", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...body, waiterId: chosen?.id }),
+        body: JSON.stringify(body),
       });
       if (res.status === 401) return onSignedOut();
       const json = (await res.json().catch(() => null)) as { ok?: boolean; code?: string } | null;
       if (!res.ok || !json?.ok) {
         const code = json?.code ?? "";
-        setError(t(code === "CANCELLED" ? "waiter.error.cancelled" : code === "CHOOSE_WAITER" ? "waiter.error.chooseWaiter" : code === "ALREADY_PAID" || code === "ALREADY_SERVED" ? "waiter.error.alreadyDone" : "courier.error.generic"));
+        setError(t(code === "CANCELLED" ? "waiter.error.cancelled" : code === "ALREADY_PAID" || code === "ALREADY_SERVED" ? "waiter.error.alreadyDone" : "courier.error.generic"));
       }
       setPay(null);
       await load();
@@ -333,11 +310,6 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
     } finally {
       setBusy(null);
     }
-  };
-
-  const signOut = async () => {
-    await fetch("/api/staff/logout", { method: "POST" }).catch(() => undefined);
-    onSignedOut();
   };
 
   if (!data) {
@@ -353,58 +325,19 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
 
   return (
     <div className="w-full max-w-3xl self-stretch pb-24" data-waiter-screen={data.mode}>
-      {/* Header: who is using the screen. */}
+      {/* Header: this device's name (the actions are recorded under it). */}
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="flex items-center gap-2 font-display text-xl font-bold text-dark-brown">
-            {isDevice ? <Tablet className="h-5 w-5 text-turquoise" /> : null}
-            {isDevice ? data.device?.name : t("staff.hello").replace("{name}", data.me?.name ?? "")}
+          <h1 className="flex items-center gap-2 font-display text-xl font-bold text-dark-brown" data-device-name>
+            <Tablet className="h-5 w-5 text-turquoise" />
+            {data.device.name}
           </h1>
           <p className="flex items-center gap-1.5 text-xs text-coffee/55">
             <span className={cn("h-2 w-2 rounded-full", offline ? "bg-amber-500" : "animate-pulse bg-emerald-500")} />
             {offline ? t("courier.offline") : t("waiter.live")}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          {isDevice && chosen && (
-            <button type="button" onClick={() => setChoosing(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-turquoise/40 px-3 py-2 text-sm font-semibold text-turquoise" data-who-current>
-              <UserRound className="h-4 w-4" />
-              {chosen.name}
-            </button>
-          )}
-          {!isDevice && (
-            <button type="button" onClick={() => void signOut()} className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-coffee/65 hover:bg-beige/50" data-staff-logout>
-              <LogOut className="h-4 w-4" strokeWidth={1.75} />
-              {t("staff.logout")}
-            </button>
-          )}
-        </div>
       </div>
-
-      {(needWho || choosing) && (
-        <div className="mb-4 rounded-2xl bg-warm-white p-4 shadow-soft" data-who-chooser>
-          <p className="font-semibold text-dark-brown">{t("waiter.whoTitle")}</p>
-          <p className="mt-0.5 text-xs text-coffee/60">{t("waiter.whoHint")}</p>
-          {data.waiters.length === 0 ? (
-            <p className="mt-3 text-sm text-amber-800">{t("waiter.noWaiters")}</p>
-          ) : (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {data.waiters.map((w) => (
-                <button
-                  key={w.id}
-                  type="button"
-                  onClick={() => chooseWaiter(w)}
-                  aria-pressed={chosen?.id === w.id}
-                  data-who={w.name}
-                  className={cn("h-11 rounded-full border-2 px-4 font-semibold", chosen?.id === w.id ? "border-turquoise bg-turquoise text-warm-white" : "border-beige-dark/40 text-dark-brown")}
-                >
-                  {w.name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {!alerts.soundReady && <SoundButton onEnable={alerts.enableSound} />}
 
@@ -424,7 +357,6 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
       {selected && ordering === selected.table.id ? (
         <WaiterNewOrder
           table={selected.table}
-          waiterId={chosen?.id}
           onBack={() => setOrdering(null)}
           onSignedOut={onSignedOut}
           onSent={(orderNumber) => {
@@ -449,7 +381,7 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
           </div>
           <button
             type="button"
-            disabled={needWho || !data.dineInEnabled}
+            disabled={!data.dineInEnabled}
             onClick={() => {
               setSentNotice(null);
               setError(null);
@@ -472,7 +404,6 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
                   key={order.id}
                   order={order}
                   busy={busy === order.id}
-                  locked={needWho}
                   flash={flashOrders.has(order.id)}
                   onServed={() => void act(order.id, { action: "served", orderId: order.id })}
                   onPay={() => setPay({ orderIds: [order.id], amount: order.total, title: t("waiter.payOne") })}
@@ -483,7 +414,6 @@ export function WaiterTables({ onSignedOut }: { onSignedOut: () => void }) {
           {unpaid.length > 1 && (
             <button
               type="button"
-              disabled={needWho}
               onClick={() => setPay({ orderIds: unpaid.map((o) => o.id), amount: selected.toPay, title: t("waiter.payTable") })}
               className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-dark-brown font-bold text-warm-white disabled:opacity-50"
               data-pay-table

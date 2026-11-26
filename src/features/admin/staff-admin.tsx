@@ -87,7 +87,10 @@ type Dialog =
   | { kind: "pin"; member: StaffMemberView }
   | null;
 
-/** Admin → Staff: couriers and waiters with a personal 4-digit code (Admin only). */
+/**
+ * Admin → Staff (Admin only): couriers with a personal 4-digit code; waiters with no code (their
+ * devices join with the waiters' QR and are listed under "Waiter devices").
+ */
 export function StaffAdmin() {
   const t = useT();
   const [staff, setStaff] = useState<StaffMemberView[] | null>(null);
@@ -142,7 +145,7 @@ export function StaffAdmin() {
     setFormError(null);
     const body =
       dialog.kind === "create"
-        ? { action: "create", name, phone, role, pin }
+        ? { action: "create", name, phone, role, ...(role === "courier" ? { pin } : {}) }
         : dialog.kind === "edit"
           ? { action: "update", id: dialog.member.id, name, phone, role }
           : { action: "set-pin", id: dialog.member.id, pin };
@@ -154,7 +157,12 @@ export function StaffAdmin() {
     }
     replace(result.data.member);
     setNotice({
-      text: dialog.kind === "pin" ? `${t("admin.staff.pinChanged")} (${pin})` : dialog.kind === "create" ? `${t("admin.staff.saved")} · ${result.data.member.name} · ${pin}` : t("admin.staff.saved"),
+      text:
+        dialog.kind === "pin"
+          ? `${t("admin.staff.pinChanged")} (${pin})`
+          : dialog.kind === "create" && role === "courier"
+            ? `${t("admin.staff.saved")} · ${result.data.member.name} · ${pin}`
+            : t("admin.staff.saved"),
       tone: "ok",
     });
     setDialog(null);
@@ -260,11 +268,14 @@ export function StaffAdmin() {
                     <Pencil className="h-3.5 w-3.5" />
                     {t("admin.staff.edit")}
                   </Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => open({ kind: "pin", member })} data-staff-change-pin>
-                    <KeyRound className="h-3.5 w-3.5" />
-                    {t("admin.staff.changePin")}
-                  </Button>
+                  {member.role === "courier" && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => open({ kind: "pin", member })} data-staff-change-pin>
+                      <KeyRound className="h-3.5 w-3.5" />
+                      {t("admin.staff.changePin")}
+                    </Button>
+                  )}
                 </div>
+                {member.role === "waiter" && <p className="mt-2 text-xs text-coffee/55" data-staff-waiter-no-code>{t("admin.staff.waiterNoCode")}</p>}
               </li>
             );
           })}
@@ -317,7 +328,12 @@ export function StaffAdmin() {
               </div>
             </>
           )}
-          {dialog?.kind !== "edit" && <PinField id="staff-pin" value={pin} onChange={setPin} />}
+          {(dialog?.kind === "pin" || (dialog?.kind === "create" && role === "courier")) && <PinField id="staff-pin" value={pin} onChange={setPin} />}
+          {dialog?.kind !== "pin" && role === "waiter" && (
+            <p className="rounded-xl bg-turquoise/5 px-3 py-2 text-sm text-coffee/75" data-staff-waiter-note>
+              {t("admin.staff.waiterNoCode")}
+            </p>
+          )}
           {formError && (
             <p className="text-sm text-red-600" role="alert" data-staff-form-error>
               {formError}

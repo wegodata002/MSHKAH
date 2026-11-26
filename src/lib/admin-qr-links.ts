@@ -1,6 +1,6 @@
 import { getPublicStoreOrigin } from "@/lib/domains/host-routing";
 
-export type AdminQrLinkId = "menu" | "club" | "couriers" | "waiters";
+export type AdminQrLinkId = "menu" | "club" | "couriers";
 
 export type AdminQrLink = {
   id: AdminQrLinkId;
@@ -28,13 +28,19 @@ function readQrLink(envName: string, fallback: string): string {
   return normalizePublicUrl(process.env[envName] ?? "", fallback);
 }
 
+/** The store address used in every QR (NEXT_PUBLIC_QR_LINK_2, or the public store origin). */
+export function qrStoreOrigin(): string {
+  return readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin());
+}
+
 /**
- * Single source for Admin QR cards: "Menu", "Join the club", and the staff sign-in QRs "Couriers" / "Waiters". Override the store link with
+ * Single source for Admin QR cards: "Menu", "Join the club", and the couriers' sign-in QR. The
+ * waiters' QR carries a secret and is drawn by its own admin-only card (waiter-qr-card.tsx). Override the store link with
  * NEXT_PUBLIC_QR_LINK_2 (menu = /catalog, club = /club). The old "Order" card (store home page) was
  * dropped: it opened the same menu; printed copies keep working since the home page stays.
  */
 export function getAdminQrLinks(): AdminQrLink[] {
-  const store = readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin());
+  const store = qrStoreOrigin();
   return [
     {
       id: "menu",
@@ -59,18 +65,12 @@ export function getAdminQrLinks(): AdminQrLink[] {
       url: `${store}/staff?for=courier`,
       filename: "mishkah-qr-couriers.png",
     },
-    {
-      id: "waiters",
-      nameKey: "admin.qr.waitersName",
-      url: `${store}/staff?for=waiter`,
-      filename: "mishkah-qr-waiters.png",
-    },
   ];
 }
 
 /** A table's QR link: <store>/t/<tableId> (the id exactly as saved in the settings, e.g. inside-4). */
 export function tableQrUrl(tableId: string): string {
-  return `${readQrLink("NEXT_PUBLIC_QR_LINK_2", getPublicStoreOrigin())}/t/${encodeURIComponent(tableId)}`;
+  return `${qrStoreOrigin()}/t/${encodeURIComponent(tableId)}`;
 }
 
 export const ADMIN_QR_PREVIEW_PX = 360;

@@ -1,16 +1,15 @@
-import { createHmac, randomInt, timingSafeEqual } from "node:crypto";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { clubSecret } from "@/lib/loyalty/session";
-import { requireServerSecret } from "@/lib/server-secrets";
+import { WAITER_DEVICE_TTL_SECONDS } from "@/lib/staff/waiter-join";
 
 /**
- * "Fixed device": a cafe tablet that stays signed in to the waiter screen for 30 days without a
- * personal code. The admin creates a one-time pairing code (6 digits, 10 minutes); typing it on the
- * tablet links the tablet. The admin can disconnect it at any time (the server checks every request).
+ * A device signed in to the waiter screen (a waiter's phone or a cafe tablet). It joins by scanning
+ * the waiters' QR (see waiter-join.ts) and stays signed in for 90 days; scanning again renews. The
+ * admin can disconnect it at any time (the server checks every request). Devices linked earlier with
+ * a 6-digit code keep working until their own end date or until disconnected.
  */
 export const DEVICE_COOKIE_NAME = "mkh_device";
-export const DEVICE_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
-export const PAIRING_CODE_TTL_MS = 10 * 60 * 1000;
-export const PAIRING_CODE_PATTERN = /^\d{6}$/;
+export const DEVICE_SESSION_TTL_SECONDS = WAITER_DEVICE_TTL_SECONDS;
 
 const PREFIX = "staff-device:v1:";
 
@@ -19,44 +18,27 @@ export type StaffDeviceDoc = {
   name: string;
   role: "waiter";
   active: boolean;
-  /** Bumped on disconnect: the tablet's sign-in ends at once. */
+  /** Bumped on disconnect: the device's sign-in ends at once. */
   sessionVersion: number;
   createdAt: string;
   createdBy: string;
   expiresAt: string;
   lastSeenAt: string | null;
+  /** "qr" = joined with the waiters' QR; missing = linked earlier with a 6-digit code. */
+  source?: "qr";
+  /** The QR version it joined with ("Replace QR" disconnects older ones). */
+  joinVersion?: number;
 };
 
-/** Stored in `staffDevicePairings/{hash of the code}` (server only); one use, 10 minutes. */
-export type DevicePairingDoc = {
-  deviceName: string;
+export type StaffDeviceView = {
+  id: string;
+  name: string;
+  active: boolean;
+  source: "qr" | "code";
   createdAt: string;
-  createdBy: string;
-  expiresAtMs: number;
-  used: boolean;
+  expiresAt: string;
+  lastSeenAt: string | null;
 };
-
-export type StaffDeviceView = { id: string; name: string; active: boolean; createdAt: string; expiresAt: string; lastSeenAt: string | null };
-
-export function newPairingCode(): string {
-  return String(randomInt(0, 1_000_000)).padStart(6, "0");
-}
-
-/** Pairing codes are kept only as a keyed hash (server pepper). */
-export function pairingCodeHash(code: string): string {
-  const pepper = requireServerSecret("LOYALTY_TOKEN_PEPPER", "mishkah-dev-pepper");
-  return createHmac("sha256", pepper).update(`device-pair:v1:${code}`).digest("hex");
-}
-
-export type PairingCheck = { ok: true } | { ok: false; code: "INVALID_CODE" | "EXPIRED" | "USED" };
-
-/** Whether a pairing record can still link a device now. Pure. */
-export function checkPairing(doc: DevicePairingDoc | undefined, nowMs: number): PairingCheck {
-  if (!doc) return { ok: false, code: "INVALID_CODE" };
-  if (doc.used) return { ok: false, code: "USED" };
-  if (nowMs >= doc.expiresAtMs) return { ok: false, code: "EXPIRED" };
-  return { ok: true };
-}
 
 function sign(payload: string): string {
   return createHmac("sha256", clubSecret()).update(`${PREFIX}${payload}`).digest("base64url");
@@ -91,5 +73,13 @@ export function deviceCookieOptions(maxAgeSeconds: number) {
 }
 
 export function toDeviceView(id: string, doc: StaffDeviceDoc): StaffDeviceView {
-  return { id, name: doc.name, active: doc.active, createdAt: doc.createdAt, expiresAt: doc.expiresAt, lastSeenAt: doc.lastSeenAt };
+  return {
+    id,
+    name: doc.name,
+    active: doc.active,
+    source: doc.source === "qr" ? "qr" : "code",
+    createdAt: doc.createdAt,
+    expiresAt: doc.expiresAt,
+    lastSeenAt: doc.lastSeenAt,
+  };
 }

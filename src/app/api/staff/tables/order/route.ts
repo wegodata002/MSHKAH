@@ -16,19 +16,18 @@ export const dynamic = "force-dynamic";
 const NO_STORE = { "cache-control": "no-store" };
 
 /**
- * POST — a waiter enters a guest's order at a table (waiter signed in with her code, or a fixed
- * tablet with the waiter chosen on it). Same server checks as a guest's order; printed and emailed
+ * POST — a waiter enters a guest's order at a table, from a device joined with the waiters' QR
+ * (recorded under the device's name). Same server checks as a guest's order; printed and emailed
  * here on the server, like any new order.
  */
 export async function POST(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as { waiterId?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   try {
     const db = getAdminDb();
     const ctx = await readWaiterContext(db, request);
     if (!ctx) return NextResponse.json({ ok: false }, { status: 401, headers: NO_STORE });
-    const actor = await actorFor(db, ctx, body?.waiterId);
-    if (!actor) return NextResponse.json({ ok: false, code: "CHOOSE_WAITER" }, { status: 400, headers: NO_STORE });
-    const who = ctx.mode === "personal" ? `staff:${ctx.waiter.id}` : `device:${ctx.device.id}`;
+    const actor = actorFor(ctx);
+    const who = `device:${ctx.device.id}`;
 
     const result = await handleWaiterOrder(body, actor, {
       now: () => new Date(),

@@ -14,6 +14,7 @@ import {
 } from "@/lib/admin-qr-links";
 import { createQrPngDataUrl } from "@/lib/admin-qr-image";
 import { TableQrSection } from "@/features/admin/table-qr-section";
+import { WaiterQrCard } from "@/features/admin/waiter-qr-card";
 
 function QrLinkCard({ link, index }: { link: AdminQrLink; index: number }) {
   const t = useT();
@@ -104,13 +105,16 @@ function QrLinkCard({ link, index }: { link: AdminQrLink; index: number }) {
   );
 }
 
-export function QrLinksGrid() {
+/** `withWaiters`: the QR page only (the waiters' secret QR is not shown on the dashboard). */
+export function QrLinksGrid({ withWaiters = false }: { withWaiters?: boolean }) {
   const links = getAdminQrLinks();
   return (
     <div className="grid max-w-4xl gap-5 md:grid-cols-2">
       {links.map((link, index) => (
         <QrLinkCard key={link.id} link={link} index={index} />
       ))}
+      {/* Waiters: a secret link, Admin only (see waiter-qr-card.tsx). */}
+      {withWaiters ? <WaiterQrCard index={links.length} /> : null}
     </div>
   );
 }
@@ -121,7 +125,7 @@ export function QrLinksAdmin() {
   return (
     <div className="space-y-6">
       <AdminPageHeader title={t("admin.qr.title")} subtitle={t("admin.qr.subtitle")} />
-      <QrLinksGrid />
+      <QrLinksGrid withWaiters />
       <TableQrSection />
     </div>
   );
