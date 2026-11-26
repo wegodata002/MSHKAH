@@ -9,8 +9,10 @@ vi.mock("@/components/providers/locale-provider", async () => {
 vi.mock("@/features/admin/components/admin-page-header", () => ({ AdminPageHeader: ({ title }: { title: string }) => <h1>{title}</h1> }));
 vi.mock("@/hooks/useAdminPath", () => ({ useAdminPath: () => (segment: string) => `/admin/${segment}` }));
 vi.mock("next/link", () => ({ default: ({ href, children, onClick, ...rest }: { href: string; children: React.ReactNode; onClick?: () => void }) => <a href={href} onClick={onClick} {...rest}>{children}</a> }));
+const authState = { firebaseUser: { uid: "admin" } as unknown, loading: false };
+vi.mock("@/components/providers/auth-provider", () => ({ useAuth: () => authState }));
 const fetchMock = vi.fn();
-vi.mock("@/lib/auth/client-admin-fetch", () => ({ clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
+vi.mock("@/lib/auth/client-admin-fetch", async (orig) => ({ ...(await orig<object>()), clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
 
 const { ClubMembersTab, CLUB_MEMBERS_VIEW_KEY } = await import("@/features/admin/club-members");
 const { ADMIN_TRANSLATIONS } = await import("@/data/admin-translations");
@@ -35,6 +37,8 @@ const MEMBERS = [
 
 beforeEach(() => {
   window.sessionStorage.clear();
+  authState.loading = false;
+  authState.firebaseUser = { uid: "admin" };
   fetchMock.mockReset();
   fetchMock.mockImplementation(async (url: string, body?: { action?: string; memberIds?: string[]; memberId?: string }) => {
     if (url.endsWith("/suspend") || url.endsWith("/resume")) return { ok: true, status: 200, data: { ok: true } };
@@ -119,5 +123,53 @@ describe("Admin → Club → Members (rendered)", () => {
     await waitFor(() => expect(rows()).toHaveLength(40));
     await waitFor(() => expect(document.querySelector('[data-member-detail="Member0001"]')).toBeTruthy());
     expect(screen.getAllByText("רנא").length).toBeGreaterThan(0);
+  });
+  it("a failure shows the error with 'Try again', never 'no club members yet'; retry loads the list", async () => {
+    let fail = true;
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, body?: { action?: string }) => (body?.action === "list" && fail ? { ok: false, status: 500, code: "UNAVAILABLE" } : base(url, body)));
+    render(<ClubMembersTab tabs={null} />);
+    await waitFor(() => expect(document.querySelector("[data-members-error=\"failed\"]")).toBeTruthy());
+    expect(document.querySelector("[data-members-error]")!.textContent).toContain(he("admin.clubMembers.error"));
+    expect(document.querySelector("[data-members-empty]")).toBeNull();
+    fail = false;
+    fireEvent.click(document.querySelector("[data-members-retry]")!);
+    await waitFor(() => expect(rows()).toHaveLength(30));
+    expect(document.querySelector("[data-members-error]")).toBeNull();
+  });
+
+  it("waits for the sign-in to be restored before asking for the list", async () => {
+    authState.loading = true;
+    authState.firebaseUser = null;
+    const { rerender } = render(<ClubMembersTab tabs={null} />);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(fetchMock.mock.calls.some((c) => (c[1] as { action?: string })?.action === "list")).toBe(false);
+    authState.loading = false;
+    authState.firebaseUser = { uid: "admin" };
+    rerender(<ClubMembersTab tabs={null} />);
+    await waitFor(() => expect(rows()).toHaveLength(30));
+  });
+
+  it("?member=<id> (from Admin → Customers) opens that member and is removed from the address", async () => {
+    window.history.replaceState(null, "", "/admin/club?tab=members&member=Member0001");
+    render(<ClubMembersTab tabs={null} />);
+    await waitFor(() => expect(document.querySelector('[data-member-detail="Member0001"]')).toBeTruthy());
+    expect(window.location.search).toBe("?tab=members");
+    window.history.replaceState(null, "", "/");
+  });
+  it("no permission (403): the admin-only note, no 'Try again'; a server error (503): 'couldn't load' with 'Try again'", async () => {
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url: string, body?: { action?: string }) => (body?.action === "list" ? { ok: false, status: 403, code: "PERMISSION_DENIED" } : base(url, body)));
+    render(<ClubMembersTab tabs={null} />);
+    await waitFor(() => expect(document.querySelector('[data-members-error="denied"]')).toBeTruthy());
+    expect(document.querySelector('[data-members-error="denied"]')!.textContent).toBe(he("admin.clubMembers.adminOnly"));
+    expect(document.querySelector("[data-members-retry]")).toBeNull();
+    cleanup();
+    fetchMock.mockImplementation(async (url: string, body?: { action?: string }) => (body?.action === "list" ? { ok: false, status: 503, code: "UNAVAILABLE" } : base(url, body)));
+    render(<ClubMembersTab tabs={null} />);
+    await waitFor(() => expect(document.querySelector('[data-members-error="failed"]')).toBeTruthy());
+    expect(document.querySelector('[data-members-error="failed"]')!.textContent).toContain(he("admin.clubMembers.error"));
+    expect(document.querySelector('[data-members-error="failed"]')!.textContent).not.toContain(he("admin.clubMembers.adminOnly"));
+    expect(document.querySelector("[data-members-retry]")).toBeTruthy();
   });
 });

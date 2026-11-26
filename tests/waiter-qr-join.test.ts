@@ -178,11 +178,13 @@ describe("wiring", () => {
     expect(page).toContain("robots: { index: false, follow: false }");
   });
 
-  it("the secret QR is on the QR page only, behind the admin-only API", () => {
+  it("the secret QR: QR page, and the dashboard for an Admin only (no Replace there), behind the admin-only API", () => {
     const qr = read("src/features/admin/qr-links-admin.tsx");
     expect(qr).toContain("<QrLinksGrid withWaiters />");
-    expect(qr).toContain("{withWaiters ? <WaiterQrCard index={links.length} /> : null}");
-    expect(read("src/features/admin/admin-dashboard.tsx")).toContain("<QrLinksGrid />");
+    expect(qr).toContain("{withWaiters ? <WaiterQrCard index={links.length} allowReplace={waitersReplace} /> : null}");
+    const dash = read("src/features/admin/admin-dashboard.tsx");
+    expect(dash).toContain("<QrLinksGrid withWaiters={isAdmin} waitersReplace={false} />");
+    expect(dash).toContain("const isAdmin = Boolean(user && canManageUsers(user.role));");
     const card = read("src/features/admin/waiter-qr-card.tsx");
     expect(card).toContain('clientAdminFetch<{ qr: WaiterQr }>("/api/admin/staff", { action })');
     expect(card).toContain("data-waiter-qr-replace-yes");

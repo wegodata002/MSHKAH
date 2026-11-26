@@ -44,3 +44,11 @@ export async function clientAdminFetch<T>(path: string, body: unknown): Promise<
   }
   return { ok: true, status: response.status, data: payload };
 }
+
+/**
+ * "No permission" only when the server said so (401/403) or nobody is signed in here. A server
+ * failure (500/503, no Admin key, network) is a loading failure, never "you have no permission".
+ */
+export function isPermissionDenied(result: Pick<AdminFetchResult<unknown>, "status">): boolean {
+  return result.status === 401 || result.status === 403;
+}

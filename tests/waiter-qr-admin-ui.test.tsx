@@ -14,7 +14,7 @@ vi.mock("@/components/providers/locale-provider", async () => {
   };
 });
 const fetchMock = vi.fn();
-vi.mock("@/lib/auth/client-admin-fetch", () => ({ clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
+vi.mock("@/lib/auth/client-admin-fetch", async (orig) => ({ ...(await orig<object>()), clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
 vi.mock("@/lib/admin-qr-image", () => ({ createQrPngDataUrl: async (url: string) => `data:image/png;base64,${btoa(url).slice(0, 20)}` }));
 vi.mock("@/features/admin/components/admin-card", () => ({
   AdminCard: ({ title, children }: { title?: string; children: React.ReactNode }) => (
@@ -66,6 +66,45 @@ describe("waiters' QR card", () => {
     fireEvent.click(container.querySelector("[data-waiter-qr-copy]")!);
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(QR1.url));
     await waitFor(() => expect(container.querySelector("[data-waiter-qr-copy]")!.textContent).toBe(he("admin.qr.copied")));
+  });
+
+  it("dashboard (allowReplace={false}): download, print and copy; no Replace", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, data: { qr: QR1 } });
+    const { container } = render(<WaiterQrCard allowReplace={false} />);
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-image]")).toBeTruthy());
+    expect(container.querySelector("[data-waiter-qr-download]")).toBeTruthy();
+    expect(container.querySelector("[data-waiter-qr-print]")).toBeTruthy();
+    expect(container.querySelector("[data-waiter-qr-copy]")).toBeTruthy();
+    expect(container.querySelector("[data-waiter-qr-replace]")).toBeNull();
+  });
+
+  it("Print: opens a sheet with the QR and the line in Hebrew, Arabic and English; a blocked window says so", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, data: { qr: QR1 } });
+    const written: string[] = [];
+    const win = { document: { write: (h: string) => written.push(h), close: vi.fn() } };
+    const open = vi.spyOn(window, "open").mockReturnValueOnce(win as unknown as Window).mockReturnValueOnce(null);
+    const { container } = render(<WaiterQrCard />);
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-print]")).toBeTruthy());
+    fireEvent.click(container.querySelector("[data-waiter-qr-print]")!);
+    await waitFor(() => expect(written).toHaveLength(1));
+    for (const lang of ["he", "ar", "en"] as const) expect(written[0]).toContain(ADMIN_TRANSLATIONS[lang]["admin.waiterQr.printTitle"]!);
+    expect(written[0]).toContain('lang="ar" dir="rtl"');
+    expect(written[0]).toContain('lang="en" dir="ltr"');
+    expect(written[0]).toContain("window.print()");
+    expect(written[0]).not.toContain(QR1.url); // the secret link is not printed as text
+    fireEvent.click(container.querySelector("[data-waiter-qr-print]")!);
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-print-blocked]")).toBeTruthy());
+    open.mockRestore();
+  });
+
+  it("server error (503, no Admin key): 'couldn't load' with 'Try again', not the admin-only note", async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 503, code: "UNAVAILABLE" }).mockResolvedValue({ ok: true, status: 200, data: { qr: QR1 } });
+    const { container } = render(<WaiterQrCard />);
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-error]")).toBeTruthy());
+    expect(container.querySelector("[data-waiter-qr-error]")!.textContent).toContain(he("admin.waiterQr.loadError"));
+    expect(container.querySelector("[data-waiter-qr-denied]")).toBeNull();
+    fireEvent.click(container.querySelector("[data-waiter-qr-retry]")!);
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-image]")).toBeTruthy());
   });
 
   it("not an admin: no QR, a short note", async () => {

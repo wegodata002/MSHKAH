@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { requireAdminOnly } from "@/lib/auth/verify-admin";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { clubMemberDetail, clubMemberStats, listClubMembers } from "@/lib/loyalty/admin/member-list";
+import { customerMemberLinks } from "@/lib/loyalty/admin/customer-links";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ const NO_STORE = { "cache-control": "no-store, private" };
 const ID = /^[A-Za-z0-9_-]{6,128}$/;
 
 /**
- * Admin → Club → Members (Admin only, read only): POST { action: "list" | "stats" | "detail", … }.
+ * Admin → Club → Members (Admin only, read only): POST { action: "list" | "stats" | "detail" | "customer-links", … }.
+ * "customer-links" (Admin → Customers): customer id → member id + status only, no member data.
  * Members' names and emails are sent to the admin's screen only.
  */
 export async function POST(request: NextRequest) {
@@ -19,6 +21,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => null)) as { action?: unknown; memberIds?: unknown; memberId?: unknown } | null;
   try {
     const db = getAdminDb();
+    if (body?.action === "customer-links") return Response.json({ ok: true, links: await customerMemberLinks(db) }, { headers: NO_STORE });
     if (body?.action === "list") return Response.json({ ok: true, ...(await listClubMembers(db)) }, { headers: NO_STORE });
     if (body?.action === "stats") {
       const ids = Array.isArray(body.memberIds) ? body.memberIds.filter((id): id is string => typeof id === "string" && ID.test(id)) : [];

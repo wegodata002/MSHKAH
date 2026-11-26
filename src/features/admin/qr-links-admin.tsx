@@ -105,8 +105,11 @@ function QrLinkCard({ link, index }: { link: AdminQrLink; index: number }) {
   );
 }
 
-/** `withWaiters`: the QR page only (the waiters' secret QR is not shown on the dashboard). */
-export function QrLinksGrid({ withWaiters = false }: { withWaiters?: boolean }) {
+/**
+ * `withWaiters`: also the waiters' secret QR (Admin only: the QR page, and the dashboard for an
+ * Admin). `waitersReplace={false}` (dashboard): no "Replace QR" there, only on the QR page.
+ */
+export function QrLinksGrid({ withWaiters = false, waitersReplace = true }: { withWaiters?: boolean; waitersReplace?: boolean }) {
   const links = getAdminQrLinks();
   return (
     <div className="grid max-w-4xl gap-5 md:grid-cols-2">
@@ -114,7 +117,7 @@ export function QrLinksGrid({ withWaiters = false }: { withWaiters?: boolean }) 
         <QrLinkCard key={link.id} link={link} index={index} />
       ))}
       {/* Waiters: a secret link, Admin only (see waiter-qr-card.tsx). */}
-      {withWaiters ? <WaiterQrCard index={links.length} /> : null}
+      {withWaiters ? <WaiterQrCard index={links.length} allowReplace={waitersReplace} /> : null}
     </div>
   );
 }

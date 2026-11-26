@@ -4,10 +4,11 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import Link from "next/link";
 import { ChevronLeft, Coffee, Loader2, Search, Sparkles, X } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
+import { useAuth } from "@/components/providers/auth-provider";
 import { Button } from "@/components/ui/button";
 import { AdminPageHeader } from "@/features/admin/components/admin-page-header";
 import { AdminModal, AdminModalBody, AdminModalFooter, AdminModalHeader, AdminModalTitle } from "@/features/admin/components/admin-modal";
-import { clientAdminFetch } from "@/lib/auth/client-admin-fetch";
+import { clientAdminFetch, isPermissionDenied } from "@/lib/auth/client-admin-fetch";
 import { useAdminPath } from "@/hooks/useAdminPath";
 import { cn, formatPrice } from "@/lib/utils";
 import type { AdminMemberCounts, AdminMemberOrder, AdminMemberRow, AdminMemberStats, WelcomeCodeState } from "@/lib/loyalty/admin/member-list";
@@ -19,6 +20,7 @@ type Sort = "newest" | "points";
 type Detail = { orders: AdminMemberOrder[]; history: LoyaltyLedgerEntry[]; coupons: LoyaltyCouponView[] };
 
 const PAGE = 30;
+const MEMBER_ID = /^[A-Za-z0-9_-]{6,128}$/;
 const COFFEE_CARD = 5;
 /** The list's place (search, filters, how many shown, the open member, scroll) for "back" from an order. */
 export const CLUB_MEMBERS_VIEW_KEY = "mishkat-admin-club-members";
@@ -54,10 +56,12 @@ export function ClubMembersTab({ tabs }: { tabs: ReactNode }) {
   const t = useT();
   const { dir } = useLocale();
   const adminPath = useAdminPath();
+  const { firebaseUser, loading: authLoading } = useAuth();
   const [members, setMembers] = useState<AdminMemberRow[] | null>(null);
   const [counts, setCounts] = useState<AdminMemberCounts | null>(null);
   const [stats, setStats] = useState<Record<string, AdminMemberStats>>({});
-  const [error, setError] = useState<string | null>(null);
+  /** "denied": 401/403 (no "Try again"); "failed": the server could not load (with "Try again"). */
+  const [error, setError] = useState<"denied" | "failed" | null>(null);
   const saved = useRef<Partial<SavedView>>({});
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
@@ -75,22 +79,34 @@ export function ClubMembersTab({ tabs }: { tabs: ReactNode }) {
     if (v.sort === "points" || v.sort === "newest") setSort(v.sort);
     if (typeof v.shown === "number" && v.shown >= PAGE) setShown(v.shown);
     if (typeof v.selectedId === "string") setSelectedId(v.selectedId);
+    // From Admin → Customers ("club member" badge): ?member=<id> opens that member's details.
+    const url = new URL(window.location.href);
+    const fromLink = url.searchParams.get("member");
+    if (fromLink && MEMBER_ID.test(fromLink)) {
+      setSelectedId(fromLink);
+      url.searchParams.delete("member");
+      window.history.replaceState(window.history.state, "", url.toString());
+    }
   }, []);
 
   const load = useCallback(async () => {
+    setError(null);
+    setMembers(null);
     const result = await clientAdminFetch<{ members: AdminMemberRow[]; counts: AdminMemberCounts }>("/api/admin/club/members", { action: "list" });
     if (result.ok && result.data) {
       setMembers(result.data.members);
       setCounts(result.data.counts);
     } else {
-      setMembers([]);
-      setError(t(result.code === "PERMISSION_DENIED" ? "admin.clubMembers.adminOnly" : "admin.clubMembers.error"));
+      // A failure is shown as a failure, never as "no club members yet"; no permission only on 401/403.
+      setError(isPermissionDenied(result) ? "denied" : "failed");
     }
-  }, [t]);
+  }, []);
 
+  // Asked only once the sign-in is restored (opening ?tab=members directly after a reload).
   useEffect(() => {
+    if (authLoading || !firebaseUser) return;
     void load();
-  }, [load]);
+  }, [load, authLoading, firebaseUser]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLocaleLowerCase();
@@ -208,9 +224,20 @@ export function ClubMembersTab({ tabs }: { tabs: ReactNode }) {
         </div>
       </div>
 
-      {error && <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700">{error}</p>}
-
-      {members === null ? (
+      {error ? (
+        error === "denied" ? (
+          <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-members-error="denied">
+            {t("admin.clubMembers.adminOnly")}
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" data-members-error="failed">
+            <p>{t("admin.clubMembers.error")}</p>
+            <Button type="button" variant="outline" size="sm" onClick={() => void load()} data-members-retry>
+              {t("admin.action.retry")}
+            </Button>
+          </div>
+        )
+      ) : members === null ? (
         <div className="flex justify-center py-10">
           <Loader2 className="h-6 w-6 animate-spin text-turquoise" />
         </div>

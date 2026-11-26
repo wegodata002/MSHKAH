@@ -31,7 +31,7 @@ const STAFF = [
 ];
 
 const fetchMock = vi.fn();
-vi.mock("@/lib/auth/client-admin-fetch", () => ({ clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
+vi.mock("@/lib/auth/client-admin-fetch", async (orig) => ({ ...(await orig<object>()), clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
 
 const { StaffAdmin } = await import("@/features/admin/staff-admin");
 const { ADMIN_TRANSLATIONS } = await import("@/data/admin-translations");
