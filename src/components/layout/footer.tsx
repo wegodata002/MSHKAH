@@ -9,12 +9,24 @@ import { useFloatingButtonsFooter } from "@/hooks/useFooterInView";
 import { BRAND } from "@/lib/brand";
 import { openingHoursText } from "@/lib/settings/opening-hours";
 import { whatsappUrl } from "@/lib/assistant/fulfillment-answers";
+import { useAccessibility } from "@/components/providers/accessibility-provider";
+import { useInfoPages } from "@/hooks/useInfoPages";
+import { INFO_PAGE_IDS, INFO_PAGE_PATHS, type InfoPageId } from "@/lib/info-pages/content";
+
+const FOOTER_LABELS: Record<InfoPageId, string> = {
+  faq: "footer.faq",
+  accessibility: "footer.accessibility",
+  terms: "footer.terms",
+  privacy: "footer.privacy",
+};
 
 export function SiteFooter() {
   const t = useT();
   const { locale } = useLocale();
   const { settings } = useSettings();
   const { shortPage } = useFloatingButtonsFooter();
+  const { pages: infoPages } = useInfoPages();
+  const { setPanelOpen } = useAccessibility();
 
   const phone = settings?.phone ?? "";
   const address = settings?.address ?? "";
@@ -99,18 +111,28 @@ export function SiteFooter() {
           <div className="order-2 lg:order-none">
             <h3 className="text-caption mb-2 uppercase tracking-wider">{t("footer.moreInfo")}</h3>
             <ul className="space-y-1.5">
-              {[
-                { href: "/account", label: t("footer.faq") },
-                { href: "#a11y-panel", label: t("footer.accessibility") },
-                { href: "/account", label: t("footer.terms") },
-                { href: "/account", label: t("footer.privacy") },
-              ].map((link) => (
-                <li key={link.label}>
-                  <Link href={link.href} className="text-body hover:text-turquoise">
-                    {link.label}
-                  </Link>
-                </li>
-              ))}
+              {/* Pages published from the admin ("Info pages"); an unpublished page has no link.
+                  Accessibility opens the accessibility menu until its statement is published. */}
+              {INFO_PAGE_IDS.map((id) => {
+                const label = t(FOOTER_LABELS[id]);
+                if (infoPages?.[id].published) {
+                  return (
+                    <li key={id}>
+                      <Link href={INFO_PAGE_PATHS[id]} className="text-body hover:text-turquoise" data-footer-info={id}>
+                        {label}
+                      </Link>
+                    </li>
+                  );
+                }
+                if (id !== "accessibility") return null;
+                return (
+                  <li key={id}>
+                    <button type="button" onClick={() => setPanelOpen(true)} className="text-body text-start hover:text-turquoise" data-footer-info={id}>
+                      {label}
+                    </button>
+                  </li>
+                );
+              })}
             </ul>
           </div>
 

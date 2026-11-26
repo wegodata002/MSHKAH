@@ -26,6 +26,11 @@ export const CUSTOMER_ONLY_PATH_PREFIXES = [
   "/t",
   "/offline",
   "/pdf-smoke",
+  // Footer "More info" pages (on the portal they would otherwise map to /admin/…).
+  "/faq",
+  "/accessibility",
+  "/terms",
+  "/privacy",
 ] as const;
 
 /** Ordering paths blocked on menu.mishkatcafe.dev */
@@ -143,7 +148,7 @@ export function getAdminSurface(host: string | null | undefined): AdminSurface {
  * - dev (localhost): /admin/products
  */
 export function adminPath(
-  segment: "" | "login" | "products" | "categories" | "modifier-groups" | "product-builder" | "business-rules" | "orders" | "customers" | "banners" | "menu-builder" | "qr" | "assistant" | "printer" | "printer-test" | "users" | "settings" | "media" | "ai-assistant" | "costing" | "reports" | "club" | "club-scan" | "staff",
+  segment: "" | "login" | "products" | "categories" | "modifier-groups" | "product-builder" | "business-rules" | "orders" | "customers" | "banners" | "menu-builder" | "qr" | "assistant" | "printer" | "printer-test" | "users" | "settings" | "media" | "ai-assistant" | "costing" | "reports" | "club" | "club-scan" | "staff" | "info-pages",
   surface: AdminSurface = "dev"
 ): string {
   if (segment === "login") {

@@ -44,29 +44,31 @@ export function HeroBanner() {
 
   const activeBanner = banners[bannerIndex];
   if (activeBanner) {
+    // Carousel dots at the bottom of the picture (not on the text strip).
+    const dots =
+      banners.length > 1 ? (
+        <div className="absolute inset-x-0 bottom-3 z-20 flex justify-center gap-2" data-banner-dots>
+          {banners.map((banner, index) => (
+            <button
+              key={banner.id}
+              type="button"
+              onClick={() => setBannerIndex(index)}
+              aria-label={`${index + 1}`}
+              className={`h-2.5 rounded-full transition-all ${
+                index === bannerIndex ? "w-7 bg-turquoise" : "w-2.5 bg-white/70"
+              }`}
+            />
+          ))}
+        </div>
+      ) : null;
     return (
       <section className="relative mx-4 mt-3 md:mx-8 md:mt-8 lg:mx-auto lg:max-w-[1400px]">
         <div className="md:hidden">
-          <BannerHero banner={activeBanner} device="mobile" />
+          <BannerHero banner={activeBanner} device="mobile">{dots}</BannerHero>
         </div>
         <div className="hidden md:block">
-          <BannerHero banner={activeBanner} device="desktop" />
+          <BannerHero banner={activeBanner} device="desktop">{dots}</BannerHero>
         </div>
-        {banners.length > 1 && (
-          <div className="absolute inset-x-0 bottom-4 z-20 flex justify-center gap-2">
-            {banners.map((banner, index) => (
-              <button
-                key={banner.id}
-                type="button"
-                onClick={() => setBannerIndex(index)}
-                aria-label={`${index + 1}`}
-                className={`h-2.5 rounded-full transition-all ${
-                  index === bannerIndex ? "w-7 bg-turquoise" : "w-2.5 bg-white/70"
-                }`}
-              />
-            ))}
-          </div>
-        )}
       </section>
     );
   }

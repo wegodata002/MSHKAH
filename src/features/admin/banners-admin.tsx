@@ -17,6 +17,7 @@ import {
 } from "@/features/admin/components/admin-modal";
 import { AdminToastStack, createToast, type AdminToast } from "@/features/admin/components/admin-toast";
 import { BannerWizard } from "@/features/admin/banners/banner-wizard";
+import { bannerMissingLanguages } from "@/lib/banners/display";
 import { BannerHero } from "@/features/catalog/banner-hero";
 import { SortableList } from "@/components/admin/sortable-list";
 import {
@@ -198,6 +199,12 @@ export function BannersAdmin() {
         <div>
           <h3 className="truncate font-semibold text-dark-brown dark:text-warm-white">{banner.title}</h3>
           <p className="mt-0.5 line-clamp-2 text-sm text-coffee/55">{banner.subtitle}</p>
+          {bannerMissingLanguages(banner).length > 0 && (
+            <span className="mt-1.5 inline-flex rounded-full border border-amber-300 bg-amber-50 px-2 py-0.5 text-xs text-amber-800" data-banner-missing>
+              {t("admin.banners.missing")}:{" "}
+              {bannerMissingLanguages(banner).map((l) => t(l === "ar" ? "admin.banners.lang.ar" : "admin.banners.lang.en")).join(", ")}
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap gap-2 text-xs text-coffee/55">
           <span>{t("admin.banners.desktop")} ✓</span>
