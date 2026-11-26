@@ -133,6 +133,8 @@ export interface LoyaltyMember {
    * and location link from the last delivery). Read only by the member's own session to fill the checkout.
    */
   checkoutDetails?: { phone?: string; zoneId?: string; address?: string; locationUrl?: string; updatedAt?: string };
+  /** Favourite products (the heart), shown on every device while signed in. At most 200. */
+  favoriteProductIds?: string[];
   createdAt: string;
   updatedAt: string;
 }

@@ -15,6 +15,7 @@ import { ClubCoffeeCard } from "@/features/club/club-coffee-card";
 import type { LoyaltyMeResponse } from "@/lib/loyalty/types";
 import { spendToNextPoint } from "@/lib/loyalty/points-math";
 import { coffeeCardView } from "@/lib/loyalty/coffee";
+import { forgetClubOrders } from "@/lib/orders/my-order-views";
 
 const DATE_LOCALES = { he: "he-IL", ar: "ar", en: "en-GB" } as const;
 /** How often the open page checks for new cups / points (only while it is visible). */
@@ -143,6 +144,9 @@ function ClubMemberContent() {
 
   async function signOut() {
     await fetch("/api/club/session", { method: "POST" }).catch(() => undefined);
+    // The account's orders kept for this tab go too; favourites come from the account only, so the
+    // device starts empty after signing out.
+    forgetClubOrders();
     window.location.href = "/club";
   }
 

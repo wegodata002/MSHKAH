@@ -21,6 +21,7 @@ import {
 import { trackingHeadline } from "@/lib/orders/tracking-view";
 import { formatPrice, cn } from "@/lib/utils";
 import { formatTrackingDateTime, headlineTone, type HeadlineTone } from "./tracking-format";
+import { ClubAccountLine, ClubInvite } from "@/features/club/club-account-note";
 
 const BADGE_TONE: Record<HeadlineTone, string> = {
   progress: "bg-amber-50 text-amber-800",
@@ -162,12 +163,14 @@ function FindOrderForm() {
 const TYPES: Exclude<MyOrderType, "all">[] = ["pickup", "delivery", "dine_in"];
 
 /**
- * "My orders": the orders from this device (90 days), in two tabs (in progress / finished) with a
- * filter by kind (pickup / delivery / table), plus finding an order by number and phone.
+ * "My orders": the orders from this device (90 days) — and, for a signed-in club member, the orders of
+ * the account from every device (12 months) — in two tabs (in progress / finished) with a filter by
+ * kind (pickup / delivery / table), plus finding an order by number and phone. Anyone not signed in to
+ * the club is invited to join.
  */
 export function MyOrdersScreen() {
   const t = useT();
-  const { items, loaded } = useMyOrderItems();
+  const { items, loaded, member } = useMyOrderItems();
   const [tab, setTab] = useState<MyOrderTab | null>(null);
   const [type, setType] = useState<MyOrderType>("all");
 
@@ -181,6 +184,8 @@ export function MyOrdersScreen() {
   return (
     <div className="mx-auto max-w-lg px-4 py-6">
       <h1 className="font-display text-2xl font-bold text-dark-brown md:text-3xl">{t("orders.title")}</h1>
+      {member === true && <ClubAccountLine textKey="myOrders.allDevices" className="mt-1.5" />}
+      {member === false && <ClubInvite className="mt-4" />}
       {items.length > 0 ? (
         <>
           <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl bg-beige/60 p-1" role="tablist" data-orders-tabs>
@@ -235,7 +240,7 @@ export function MyOrdersScreen() {
               {t(shownTab === "active" ? "myOrders.noActive" : "myOrders.noDone")}
             </p>
           )}
-          <p className="mt-3 text-center text-xs text-coffee/45">{t("myOrders.keptDays")}</p>
+          <p className="mt-3 text-center text-xs text-coffee/45">{t(member ? "myOrders.keptMonths" : "myOrders.keptDays")}</p>
         </>
       ) : (
         <div className="mt-4 rounded-3xl bg-warm-white p-6 text-center shadow-soft" data-my-orders-empty>
