@@ -18,7 +18,7 @@ vi.mock("@/components/providers/locale-provider", async () => {
   };
 });
 const fetchMock = vi.fn();
-vi.mock("@/lib/auth/client-admin-fetch", () => ({ clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
+vi.mock("@/lib/auth/client-admin-fetch", async (orig) => ({ ...(await orig<object>()), clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
 vi.mock("@/features/admin/components/admin-page-header", () => ({
   AdminPageHeader: ({ title }: { title: string }) => <h1>{title}</h1>,
 }));

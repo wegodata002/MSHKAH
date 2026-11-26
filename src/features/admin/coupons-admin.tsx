@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Loader2, Pencil, Plus, Power, Search, Sparkles, Trash2 } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { Button } from "@/components/ui/button";
@@ -183,7 +182,6 @@ export function CouponsAdmin() {
     <div className="space-y-5" data-coupons-admin>
       <AdminPageHeader
         title={t("admin.coupons.title")}
-        subtitle={t("admin.coupons.subtitle")}
         actions={
           <Button type="button" onClick={openCreate} data-coupon-add>
             <Plus className="h-4 w-4" />
@@ -294,13 +292,6 @@ export function CouponsAdmin() {
         </>
       )}
 
-      <p className="text-sm text-coffee/60">
-        {t("admin.coupons.personalNote")}{" "}
-        <Link href="/admin/club" className="font-medium text-turquoise underline">
-          {t("admin.coupons.personalLink")}
-        </Link>
-      </p>
-
       <AdminModal open={!!editing} onOpenChange={(next) => !saving && !next && setEditing(null)} size="sm">
         <AdminModalHeader onClose={() => setEditing(null)}>
           <AdminModalTitle>{t(editing?.mode === "edit" ? "admin.coupons.editTitle" : "admin.coupons.add")}</AdminModalTitle>
@@ -318,7 +309,6 @@ export function CouponsAdmin() {
                 className="mt-1 h-11 font-mono uppercase"
                 placeholder="SUMMER15"
               />
-              {editing.mode === "create" && <p className="mt-1 text-xs text-coffee/55">{t("admin.coupons.codeHint")}</p>}
             </div>
             <div>
               <Label>{t("admin.coupons.col.name")}</Label>

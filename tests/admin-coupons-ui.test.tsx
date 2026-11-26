@@ -15,7 +15,7 @@ vi.mock("@/features/admin/components/admin-page-header", () => ({
   ),
 }));
 const fetchMock = vi.fn();
-vi.mock("@/lib/auth/client-admin-fetch", () => ({ clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
+vi.mock("@/lib/auth/client-admin-fetch", async (orig) => ({ ...(await orig<object>()), clientAdminFetch: (...args: unknown[]) => fetchMock(...args) }));
 
 const { CouponsAdmin } = await import("@/features/admin/coupons-admin");
 const { ADMIN_TRANSLATIONS } = await import("@/data/admin-translations");

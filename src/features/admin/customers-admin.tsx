@@ -7,8 +7,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCustomers } from "@/hooks/useCustomers";
 import { useOrders } from "@/hooks/useOrders";
-import { useClubMembers } from "@/hooks/useClubMembers";
-import { ClubMemberBadge } from "@/features/admin/club-member-badge";
+import { useCustomerMemberLinks } from "@/hooks/useCustomerMemberLinks";
+import { useAdminPath } from "@/hooks/useAdminPath";
+import { ClubMemberBadgeLink } from "@/features/admin/club-member-badge";
 import { createCustomer, updateCustomer, deleteCustomer } from "@/services";
 import { customerSchema, type CustomerInput } from "@/lib/validation/schemas";
 import { Button } from "@/components/ui/button";
@@ -34,7 +35,9 @@ export function CustomersAdmin() {
   const t = useT();
   const { customers, loading } = useCustomers();
   const { orders } = useOrders();
-  const { byEmail: membersByEmail } = useClubMembers();
+  // Customer id → club member, matched on the server (order, linked customer, email, phone). Admin only.
+  const { links: memberLinks, state: memberLinksState, retry: retryMemberLinks } = useCustomerMemberLinks();
+  const adminPath = useAdminPath();
   const [editing, setEditing] = useState<Customer | null>(null);
   const [profile, setProfile] = useState<Customer | null>(null);
   const [open, setOpen] = useState(false);
@@ -42,14 +45,9 @@ export function CustomersAdmin() {
   const [error, setError] = useState<string | null>(null);
   const [onlyMembers, setOnlyMembers] = useState(false);
 
-  // Resolve club membership once per render for every row; cheap because
-  // `membersByEmail` is a Map keyed on lower-cased email.
-  const customerIsMember = (customer: Customer) => {
-    const email = customer.email?.trim().toLowerCase();
-    if (!email) return undefined;
-    const member = membersByEmail.get(email);
-    return member?.status === "active" ? member : undefined;
-  };
+  const customerIsMember = (customer: Customer) => memberLinks[customer.id];
+  /** Club → Members, with this member's details open. */
+  const memberHref = (memberId: string) => `${adminPath("club")}?tab=members&member=${encodeURIComponent(memberId)}`;
 
   const visibleCustomers = onlyMembers
     ? customers.filter((customer) => Boolean(customerIsMember(customer)))
@@ -136,6 +134,20 @@ export function CustomersAdmin() {
         }
       />
 
+      {/* Club badges: a server failure says so (with "Try again"); no permission only when it matters (the filter is on). */}
+      {memberLinksState === "failed" ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700" data-customer-members-error="failed">
+          <p>{t("admin.customers.clubError")}</p>
+          <Button type="button" variant="outline" size="sm" onClick={retryMemberLinks} data-customer-members-retry>
+            {t("admin.action.retry")}
+          </Button>
+        </div>
+      ) : memberLinksState === "denied" && onlyMembers ? (
+        <p className="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-customer-members-error="denied">
+          {t("admin.customers.clubDenied")}
+        </p>
+      ) : null}
+
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
@@ -147,7 +159,7 @@ export function CustomersAdmin() {
           <div className="overflow-x-auto">
             <table className="w-full min-w-[640px]">
               <thead>
-                <tr className="border-b border-beige-dark/20 bg-beige/30 text-left text-xs uppercase tracking-wider text-coffee/60 dark:bg-white/5">
+                <tr className="border-b border-beige-dark/20 bg-beige/30 text-start text-xs uppercase tracking-wider text-coffee/60 dark:bg-white/5">
                   <th className="px-4 py-3">{t("admin.customers.name")}</th>
                   <th className="hidden px-4 py-3 md:table-cell">{t("admin.customers.phone")}</th>
                   <th className="px-4 py-3">{t("admin.customers.orders")}</th>
@@ -166,24 +178,26 @@ export function CustomersAdmin() {
                     className="border-b border-beige-dark/10 hover:bg-beige/20 dark:hover:bg-white/5"
                   >
                     <td className="px-4 py-3">
-                      <button
-                        type="button"
-                        onClick={() => setProfile(customer)}
-                        className="flex items-center gap-3 text-left"
-                      >
-                        <Avatar className="h-9 w-9">
-                          <AvatarFallback className="bg-beige text-coffee text-xs">
-                            {getInitials(customer.name)}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <button
+                          type="button"
+                          onClick={() => setProfile(customer)}
+                          className="flex items-center gap-3 text-start"
+                        >
+                          <Avatar className="h-9 w-9">
+                            <AvatarFallback className="bg-beige text-coffee text-xs">
+                              {getInitials(customer.name)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
                             <p className="text-sm font-medium text-dark-brown dark:text-warm-white">{customer.name}</p>
-                            {customerIsMember(customer) ? <ClubMemberBadge compact /> : null}
+                            <p className="text-xs text-coffee/50 md:hidden">{customer.phone}</p>
                           </div>
-                          <p className="text-xs text-coffee/50 md:hidden">{customer.phone}</p>
-                        </div>
-                      </button>
+                        </button>
+                        {customerIsMember(customer) ? (
+                          <ClubMemberBadgeLink link={customerIsMember(customer)!} href={memberHref(customerIsMember(customer)!.memberId)} compact />
+                        ) : null}
+                      </div>
                     </td>
                     <td className="hidden px-4 py-3 text-sm text-coffee/60 md:table-cell">{customer.phone}</td>
                     <td className="px-4 py-3 text-sm font-medium text-coffee">{customer.ordersCount}</td>
@@ -226,6 +240,9 @@ export function CustomersAdmin() {
                 </AdminModalTitle>
               </AdminModalHeader>
               <AdminModalBody className="space-y-4">
+              {customerIsMember(profile) ? (
+                <ClubMemberBadgeLink link={customerIsMember(profile)!} href={memberHref(customerIsMember(profile)!.memberId)} withDetails />
+              ) : null}
               <div className="grid grid-cols-2 gap-3">
                 <div className="rounded-xl bg-beige/30 p-3 dark:bg-white/5">
                   <p className="text-xs text-coffee/50">{t("admin.customers.totalOrders")}</p>

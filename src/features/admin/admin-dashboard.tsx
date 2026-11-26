@@ -31,6 +31,8 @@ import { useAllCategories } from "@/hooks/useProducts";
 import { formatPrice } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/components/providers/locale-provider";
+import { useAuth } from "@/components/providers/auth-provider";
+import { canManageUsers } from "@/lib/auth/roles";
 import { useAdminPath } from "@/hooks/useAdminPath";
 import { AdminPageHeader } from "./components/admin-page-header";
 import { AdminKpiCard } from "./components/admin-kpi-card";
@@ -57,6 +59,8 @@ function isThisMonth(iso: string) {
 
 export function AdminDashboard() {
   const t = useT();
+  const { user } = useAuth();
+  const isAdmin = Boolean(user && canManageUsers(user.role));
   const adminPath = useAdminPath();
   const { products, loading: productsLoading } = useProducts();
   const { categories, loading: categoriesLoading } = useAllCategories();
@@ -193,7 +197,8 @@ export function AdminDashboard() {
 
       <div className="space-y-3">
         <h2 className="text-lg font-semibold text-dark-brown dark:text-warm-white">{t("admin.qr.title")}</h2>
-        <QrLinksGrid />
+        {/* The waiters' QR: Admin only (the server refuses anyone else too). */}
+        <QrLinksGrid withWaiters={isAdmin} waitersReplace={false} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
