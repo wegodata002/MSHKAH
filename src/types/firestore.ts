@@ -17,6 +17,8 @@ export interface FirestoreCategory {
 }
 
 export interface FirestoreProduct {
+  /** Admin → Sales: written by the server only (see `@/lib/sales/sale-price`). */
+  sales?: unknown;
   nameHe: string;
   nameAr: string;
   nameEn: string;

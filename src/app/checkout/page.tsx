@@ -58,6 +58,8 @@ import { tableDisplayName } from "@/lib/fulfillment/settings";
 import { detailsFromOrder, valuesToFill, type CheckoutDetails, type FillField } from "@/lib/customers/checkout-details";
 import { readDeviceDetails, rememberDeviceDetails } from "@/lib/customers/saved-checkout-details";
 import { hasClubHint } from "@/lib/loyalty/club-hint";
+import { SalePrice } from "@/features/sales/sale-price-view";
+import { SaleNotices, SaleSavingsRow } from "@/features/sales/cart-sale-parts";
 
 function OrderLineItem({
   item,
@@ -76,7 +78,13 @@ function OrderLineItem({
         <span className="min-w-0 flex-1 text-coffee/70">
           {item.quantity}× {localized.name}
         </span>
-        <span>{formatPrice(calculateLineTotal(item.unitPrice, item.quantity))}</span>
+        <SalePrice
+          product={item.product}
+          size="sm"
+          amount={calculateLineTotal(item.unitPrice, item.quantity)}
+          regularAmount={calculateLineTotal(item.regularUnitPrice ?? item.unitPrice, item.quantity)}
+          className="text-sm font-normal text-inherit"
+        />
         {/* Pen: change add-ons, quantity or note in the product window. */}
         <EditLineButton item={item} onEdit={onEdit} className="h-11 w-11 rounded-full hover:bg-beige/50" iconClassName="h-4 w-4" />
         {/* Same as the cart: remove right away, no confirmation. */}
@@ -714,8 +722,10 @@ export default function CheckoutPage() {
                       </p>
                     )}
                     <ClubCouponOffer className="mt-2" />
+                    <SaleNotices />
                     <div className="mt-4 space-y-1.5 border-t border-beige-dark/20 pt-4 text-sm">
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
+                      <SaleSavingsRow />
                       {discount > 0 && (
                         <div className="flex justify-between text-emerald-600">
                           <span className="inline-flex items-center gap-1">

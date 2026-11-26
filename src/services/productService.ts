@@ -22,6 +22,7 @@ import { nowTimestamp } from "@/types/firestore";
 import type { Product, ProductFilters } from "@/types";
 import { isPublicMenuProduct } from "@/lib/menu/category-tree";
 import type { FirestoreProduct, FirestoreDoc } from "@/types/firestore";
+import { withoutSaleFields } from "@/lib/sales/sale-price";
 
 function docToProduct(id: string, data: DocumentData): FirestoreDoc<FirestoreProduct> {
   return { id, ...(data as FirestoreProduct) };
@@ -226,8 +227,9 @@ export async function updateProduct(
   try {
     const db = getDb();
     const ref = doc(db, COLLECTIONS.products, id);
+    // Never the sale fields (Admin → Sales writes them on the server).
     await updateDoc(ref, sanitizeFirestoreData({
-      ...input,
+      ...withoutSaleFields(input as Record<string, unknown>),
       ...(input.subcategoryId === "" ? { subcategoryId: null } : {}),
       updatedAt: nowTimestamp(),
     }));

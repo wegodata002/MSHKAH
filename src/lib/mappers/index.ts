@@ -8,6 +8,7 @@ import type {
 } from "@/types/firestore";
 import { timestampToIso } from "@/types/firestore";
 import { normalizeImageUrl } from "@/lib/menu/placeholders";
+import { readProductSales } from "@/lib/sales/sale-price";
 import type {
   Category,
   Product,
@@ -92,9 +93,15 @@ export function mapProduct(doc: FirestoreDoc<FirestoreProduct>): Product {
     sortOrder: doc.sortOrder,
     hidden: doc.hidden === true,
     isTestProduct: doc.isTestProduct === true,
+    ...withSales(doc.sales),
     createdAt: timestampToIso(doc.createdAt),
     updatedAt: timestampToIso(doc.updatedAt),
   };
+}
+
+function withSales(raw: unknown): { sales?: Product["sales"] } {
+  const sales = readProductSales(raw);
+  return sales.length > 0 ? { sales } : {};
 }
 
 export function mapCustomer(doc: FirestoreDoc<FirestoreCustomer>): Customer {

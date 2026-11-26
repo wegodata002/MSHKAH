@@ -18,6 +18,7 @@ import {
 import { nowTimestamp } from "@/types/firestore";
 import type { ProductModifierGroup } from "@/types/modifiers";
 import type { PendingModifierChanges } from "@/features/admin/product-form/product-modifier-pending";
+import { withoutSaleFields } from "@/lib/sales/sale-price";
 
 export interface ProductEditorSaveInput {
   productId: string | null;
@@ -52,7 +53,7 @@ export async function saveProductEditorChanges(
     let writes = 0;
 
     if (!input.productId) {
-      const parsed = productSchema.parse(input.productValues);
+      const parsed = withoutSaleFields(productSchema.parse(input.productValues) as Record<string, unknown>) as ReturnType<typeof productSchema.parse>;
       if (parsed.imageUrl) parsed.imageUrl = normalizeImageUrl(parsed.imageUrl) ?? "";
       batch.set(
         productRef,
@@ -65,7 +66,8 @@ export async function saveProductEditorChanges(
       );
       writes += 1;
     } else if (Object.keys(input.productPatch).length > 0) {
-      const patch = { ...input.productPatch };
+      // Never the sale fields (Admin → Sales writes them on the server).
+      const patch = withoutSaleFields({ ...input.productPatch } as Record<string, unknown>) as typeof input.productPatch;
       if (patch.imageUrl !== undefined) patch.imageUrl = normalizeImageUrl(patch.imageUrl) ?? "";
       batch.update(
         productRef,

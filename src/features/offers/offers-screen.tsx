@@ -10,12 +10,13 @@ import { ProductCard } from "@/features/catalog/product-card";
 import { ProductDetailDrawer } from "@/features/catalog/product-detail-drawer";
 import { CatalogModifierPreviewProvider } from "@/features/catalog/catalog-modifier-preview-context";
 import { CATALOG_GRID_CLASS } from "@/features/catalog/catalog-grid";
-import { orderOfferProducts, type OfferEntry } from "@/lib/catalog/offers";
+import { splitOffers, type OfferEntry } from "@/lib/catalog/offers";
+import { useSaleClock } from "@/features/sales/sale-price-view";
 import type { Product } from "@/types";
 
 /**
- * "Offers": the products chosen in the admin as "Recommended (offers)", in the order set there.
- * None right now → "No offers right now" and the popular products.
+ * "Offers": products on sale now (Admin → Sales) first, then the ones chosen in the admin as
+ * "Recommended (offers)", in the order set there. Neither → "No offers right now" and the popular ones.
  */
 export function OffersScreen() {
   const t = useT();
@@ -35,10 +36,17 @@ export function OffersScreen() {
     };
   }, []);
 
-  const offerProducts = useMemo(() => orderOfferProducts(products, offers ?? []), [offers, products]);
+  const clock = useSaleClock();
+  const { onSale, recommended } = useMemo(() => splitOffers(products, offers ?? [], clock || Date.now()), [offers, products, clock]);
   const popular = useMemo(() => topPopular(products, 8), [products]);
   const ready = !loading && offers !== null;
-  const list = offerProducts.length > 0 ? offerProducts : popular;
+  const hasOffers = onSale.length > 0 || recommended.length > 0;
+  const sections: Array<{ key: "onSale" | "recommended" | "popular"; title: string | null; list: Product[] }> = hasOffers
+    ? [
+        { key: "onSale" as const, title: recommended.length > 0 ? t("offers.onSale") : null, list: onSale },
+        { key: "recommended" as const, title: onSale.length > 0 ? t("offers.recommended") : null, list: recommended },
+      ].filter((s) => s.list.length > 0)
+    : [{ key: "popular" as const, title: null, list: popular }];
 
   return (
     <CatalogModifierPreviewProvider>
@@ -52,20 +60,25 @@ export function OffersScreen() {
           <ProductGridSkeleton count={4} />
         ) : (
           <>
-            {offerProducts.length === 0 && (
+            {!hasOffers && (
               <div className="mb-6 rounded-2xl bg-warm-white p-5 text-center shadow-soft" data-offers-empty>
                 <p className="font-semibold text-dark-brown">{t("offers.none")}</p>
                 {popular.length > 0 && <p className="mt-1 text-sm text-coffee/60">{t("offers.popularInstead")}</p>}
               </div>
             )}
-            {list.length > 0 && (
-              <div className={CATALOG_GRID_CLASS} data-offers-list={offerProducts.length > 0 ? "offers" : "popular"}>
-                {list.map((product, index) => (
-                  <div key={product.id} className="h-full min-w-0" data-offer-product={product.id}>
-                    <ProductCard product={product} index={index} onClick={() => setSelectedProduct(product)} />
+            {sections.map((section) =>
+              section.list.length > 0 ? (
+                <section key={section.key} className="mb-8" data-offers-section={section.key}>
+                  {section.title && <h2 className="mb-3 font-display text-lg font-bold text-dark-brown md:text-xl dark:text-warm-white">{section.title}</h2>}
+                  <div className={CATALOG_GRID_CLASS} data-offers-list={section.key === "popular" ? "popular" : "offers"}>
+                    {section.list.map((product, index) => (
+                      <div key={product.id} className="h-full min-w-0" data-offer-product={product.id}>
+                        <ProductCard product={product} index={index} onClick={() => setSelectedProduct(product)} />
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </section>
+              ) : null
             )}
           </>
         )}

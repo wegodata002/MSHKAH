@@ -1,7 +1,8 @@
 import { isPublicMenuProduct } from "@/lib/menu/category-tree";
+import { priceNow } from "@/lib/sales/sale-price";
 import type { Product } from "@/types";
 
-/** One offer as the server sends it; later also a discount price and dates. */
+/** One recommended product as the server sends it (sale prices come with the product itself). */
 export type OfferEntry = { productId: string };
 
 /**
@@ -24,4 +25,19 @@ export function moveOffer(ids: readonly string[], id: string, delta: -1 | 1): st
   const next = [...ids];
   [next[i], next[j]] = [next[j]!, next[i]!];
   return next;
+}
+
+/**
+ * The "Offers" page in two parts: products on sale now (Admin → Sales; available ones first, in
+ * menu order), then the recommended ones not already on sale. Pure.
+ */
+export function splitOffers(
+  products: readonly Product[],
+  offers: readonly OfferEntry[],
+  now: number
+): { onSale: Product[]; recommended: Product[] } {
+  const sale = products.filter((p) => isPublicMenuProduct(p) && priceNow(p, now).sale !== null);
+  const onSale = [...sale.filter((p) => p.available), ...sale.filter((p) => !p.available)];
+  const saleIds = new Set(onSale.map((p) => p.id));
+  return { onSale, recommended: orderOfferProducts(products, offers).filter((p) => !saleIds.has(p.id)) };
 }

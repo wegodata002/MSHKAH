@@ -18,6 +18,7 @@ import { jerusalemDate } from "@/lib/staff/types";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import type { ProductBuilderConfig, SelectedModifier } from "@/types/modifiers";
 import { priceLineModifiers } from "@/lib/orders/modifier-pricing";
+import { priceNow } from "@/lib/sales/sale-price";
 
 /**
  * Builds a storefront order on the server (POST /api/orders/create).
@@ -114,6 +115,8 @@ export type CatalogProduct = {
   isTestProduct?: unknown;
   /** For add-on rules that depend on the category. */
   categoryId?: unknown;
+  /** Admin → Sales: the sales this product is in (the one on at `now` sets the price). */
+  sales?: unknown;
 };
 
 export type OrderBuildError =
@@ -152,7 +155,11 @@ export type ServerOrderDraft = {
     productName: string;
     quantity: number;
     price: number;
+    /** The product's own price charged (the sale price while a sale is on); add-ons not included. */
     basePrice: number;
+    /** On sale only: the regular price and which sale (for reports). */
+    regularBasePrice?: number;
+    saleId?: string;
     modifiers?: SelectedModifier[];
     notes?: string;
     kitchenNotes?: string[];
@@ -273,7 +280,9 @@ export function buildServerOrder(
   const badOptions = new Set<string>();
   for (const line of request.items) {
     const product = ctx.products.get(line.productId)!;
-    const base = Number(product.price);
+    // The sale price while a sale is on (Admin → Sales), else the regular price. Add-ons stay full price.
+    const pricing = priceNow(product, ctx.now);
+    const base = pricing.price;
     if (!Number.isFinite(base) || base < 0) return { ok: false, error: { code: "INVALID_PRICE" } };
     const priced = priceLineModifiers(
       ctx.modifierConfigs.get(line.productId),
@@ -296,6 +305,10 @@ export function buildServerOrder(
       price: unit,
       basePrice: base,
     };
+    if (pricing.sale) {
+      item.regularBasePrice = pricing.regular;
+      item.saleId = pricing.sale.saleId;
+    }
     if (modifiers.length > 0) item.modifiers = modifiers;
     const note = line.notes?.trim();
     if (note) item.notes = note;

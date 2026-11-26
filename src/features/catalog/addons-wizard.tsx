@@ -1,5 +1,6 @@
 "use client";
 
+import { SalePrice, useProductPrice } from "@/features/sales/sale-price-view";
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { AnimatePresence, motion } from "framer-motion";
@@ -384,9 +385,12 @@ export function AddonsWizard({
       }),
     [config, locale, product.categoryId, product.id, state]
   );
+  // The product's price now (sale price while a sale is on); add-ons at their full price.
+  const pricing = useProductPrice(product);
+  const basePrice = pricing.price;
   const unitPrice = useMemo(
-    () => calculateUnitPrice(product.price, selections),
-    [product.price, selections]
+    () => calculateUnitPrice(basePrice, selections),
+    [basePrice, selections]
   );
   const total = calculateLineTotal(unitPrice, quantity);
   const currentValid =
@@ -521,12 +525,12 @@ export function AddonsWizard({
                   <div className="space-y-2 rounded-2xl border border-beige-dark/20 p-4 text-sm">
                     <div className="flex justify-between text-coffee/65">
                       <span>{t("builder.basePrice")}</span>
-                      <span>{formatPrice(product.price)}</span>
+                      <SalePrice product={product} size="sm" className="text-sm font-normal text-inherit" />
                     </div>
-                    {unitPrice !== product.price && (
+                    {unitPrice !== basePrice && (
                       <div className="flex justify-between text-coffee/65">
                         <span>{t("builder.addonsPrice")}</span>
-                        <span>+{formatPrice(unitPrice - product.price)}</span>
+                        <span>+{formatPrice(unitPrice - basePrice)}</span>
                       </div>
                     )}
                     {quantity > 1 && (

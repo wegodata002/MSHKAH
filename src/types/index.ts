@@ -1,3 +1,5 @@
+import type { ProductSale } from "@/lib/sales/sale-price";
+
 export type BusinessType = "beverage" | "food" | "bakery" | "dessert" | "dairy";
 
 export interface Category {
@@ -55,6 +57,11 @@ export interface Product {
   isTestProduct?: boolean;
   /** Browser only: place in "most popular" (real sales, then manual pins); none = not popular. */
   popularRank?: number;
+  /**
+   * Sales this product is in (Admin → Sales), written by the server only; the product editor never
+   * writes it. The price now: `priceNow` in `@/lib/sales/sale-price`.
+   */
+  sales?: ProductSale[];
   createdAt: string;
   updatedAt: string;
 }
@@ -180,6 +187,9 @@ export interface CartItem {
   unitPrice: number;
   notes?: string;
   configurable?: boolean;
+  /** From the cart, priced now (not kept): the regular unit price, and the sale on now, if any. */
+  regularUnitPrice?: number;
+  sale?: import("@/lib/sales/sale-price").ProductSale | null;
 }
 
 export interface ProductFilters {

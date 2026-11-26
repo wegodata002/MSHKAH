@@ -1,5 +1,6 @@
 "use client";
 
+import { SalePrice, useProductPrice } from "@/features/sales/sale-price-view";
 import { useState } from "react";
 import Image from "next/image";
 import { motion } from "framer-motion";
@@ -93,7 +94,7 @@ export function AssistantProductCard({
           {!compact && product.description && (
             <p className="mt-0.5 line-clamp-2 text-xs text-coffee/55">{product.description}</p>
           )}
-          <p className="mt-1 text-xs font-bold text-turquoise">{formatPrice(product.price)}</p>
+          <span className="mt-1 block"><SalePrice product={product} size="sm" className="text-xs font-bold text-turquoise" /></span>
         </button>
         <Button
           size="sm"
@@ -119,6 +120,7 @@ export function AssistantProductDetail({
   onAdd: (qty: number) => void;
 }) {
   const t = useT();
+  const priced = useProductPrice(product);
   const [qty, setQty] = useState(1);
   const imageSrc = getProductImage(product.image, product.categoryId);
 
@@ -151,7 +153,7 @@ export function AssistantProductDetail({
       </div>
       <h3 className="mt-3 font-display text-lg font-bold text-dark-brown">{product.name}</h3>
       {product.categoryName && <p className="text-xs text-coffee/45">{product.categoryName}</p>}
-      <p className="mt-2 text-xl font-bold text-turquoise">{formatPrice(product.price)}</p>
+      <div className="mt-2"><SalePrice product={product} size="lg" until className="text-xl font-bold text-turquoise" /></div>
       {product.description && (
         <p className="mt-2 text-sm leading-relaxed text-coffee/65">{product.description}</p>
       )}
@@ -184,7 +186,7 @@ export function AssistantProductDetail({
         onClick={() => onAdd(qty)}
       >
         <ShoppingBag className="h-4 w-4" strokeWidth={1.75} />
-        {t("catalog.addToCart")} · {formatPrice(product.price * qty)}
+        {t("catalog.addToCart")} · {formatPrice(priced.price * qty)}
       </Button>
     </motion.div>
   );

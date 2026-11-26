@@ -1,5 +1,7 @@
 "use client";
 
+import { SaleBadge, SalePrice } from "@/features/sales/sale-price-view";
+import { priceNow } from "@/lib/sales/sale-price";
 import { useMemo, useState } from "react";
 import { ArrowRight, Loader2, Minus, Plus, Search, Send, Trash2, X } from "lucide-react";
 import { useLocale, useT } from "@/components/providers/locale-provider";
@@ -35,7 +37,8 @@ function ItemSheet({ product, onAdd, onClose }: { product: Product; onAdd: (line
   const { config, loading } = useProductBuilderConfig(product.id);
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
-  const [unitPrice, setUnitPrice] = useState(product.price);
+  // Same price as the customer gets: the sale price while a sale is on (the server prices it again).
+  const [unitPrice, setUnitPrice] = useState(() => priceNow(product, Date.now()).price);
   const [valid, setValid] = useState(true);
   const [selections, setSelections] = useState<SelectedModifier[]>([]);
 
@@ -318,7 +321,14 @@ export function WaiterNewOrder({
                 data-available={p.available ? "yes" : "no"}
               >
                 <span className="line-clamp-2 text-sm font-semibold text-dark-brown">{getLocalizedName(p, locale)}</span>
-                <span className="mt-1 text-xs text-coffee/60">{p.available ? formatPrice(p.price) : t("waiter.newOrder.unavailable")}</span>
+                {p.available ? (
+                  <span className="mt-1 flex flex-wrap items-center gap-1">
+                    <SalePrice product={p} size="sm" className="text-xs font-normal text-coffee/60" />
+                    <SaleBadge product={p} className="px-1.5 text-[10px] md:text-[10px]" />
+                  </span>
+                ) : (
+                  <span className="mt-1 text-xs text-coffee/60">{t("waiter.newOrder.unavailable")}</span>
+                )}
               </button>
             </li>
           ))}
