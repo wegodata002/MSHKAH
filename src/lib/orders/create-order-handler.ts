@@ -11,6 +11,7 @@ import {
   type ServerOrderDraft,
 } from "@/lib/orders/server-order";
 import { CouponUnavailableError, isPersonalCouponCode } from "@/lib/loyalty/coupons";
+import { checkStoreCoupon, normalizeStoreCode, type StoreCoupon } from "@/lib/coupons/store-coupons";
 import type { ProductBuilderConfig } from "@/types/modifiers";
 
 /**
@@ -50,6 +51,14 @@ export type CreateOrderDeps = {
    * (active or suspended). A failure here never fails the order.
    */
   rememberMemberCheckout?: (memberId: string, order: ServerOrderDraft) => Promise<void>;
+  /**
+   * Store coupons (Admin → Coupons): the coupon as it works now (record first, MISHKAT10 built in),
+   * how many counted orders this customer (club member or phone) already has with it, and saving the
+   * order together with the discount priced for it (read later by the card charge).
+   */
+  findStoreCoupon?: (code: string) => Promise<StoreCoupon | null>;
+  countStoreCouponUses?: (code: string, who: { memberId: string | null; phone: string | null }) => Promise<number>;
+  saveOrderWithStoreCoupon?: (draft: ServerOrderDraft, record: { code: string; type: StoreCoupon["type"]; value: number; discount: number }) => Promise<string>;
 };
 
 export type CreateOrderResponse =
@@ -66,7 +75,9 @@ export const ORDER_RATE_LIMITS = {
   perTable: { windowSeconds: 60 * 60, limit: 20 },
 } as const;
 
-function couponRefused(reason: "login_required" | "invalid" | "used" | "expired"): CreateOrderResponse {
+type CouponReason = Extract<OrderBuildError, { code: "COUPON_INVALID" }>["reason"];
+
+function couponRefused(reason: CouponReason): CreateOrderResponse {
   return { status: 409, body: { ok: false, code: "COUPON_INVALID", reason } };
 }
 
@@ -120,6 +131,23 @@ export async function handleCreateOrder(
       personal = { percent: check.percent, heldBy: check.heldBy };
     }
 
+    // A store coupon (one coupon per order: the request has a single code). Checked here on the server
+    // only: active, date, who may use it (club members by the signed club cookie), once per customer.
+    // The minimum order and "not the whole order" are checked when the order is priced.
+    let storeCoupon: StoreCoupon | null | undefined;
+    const storeCode = !personalCode ? normalizeStoreCode(request.couponCode) : "";
+    if (deps.findStoreCoupon) {
+      storeCoupon = null;
+      if (storeCode) {
+        const coupon = await deps.findStoreCoupon(storeCode);
+        const who = { memberId: member?.id ?? null, phone: digits || null };
+        const customerUses = coupon?.limit === "once" && deps.countStoreCouponUses ? await deps.countStoreCouponUses(storeCode, who) : 0;
+        const check = checkStoreCoupon(coupon, { now, isMember: member?.status === "active", customerUses });
+        if (!check.ok) return couponRefused(check.reason);
+        storeCoupon = check.coupon;
+      }
+    }
+
     const built = buildServerOrder(request, {
       products,
       modifierConfigs,
@@ -128,6 +156,7 @@ export async function handleCreateOrder(
       now,
       orderNumber: generateOrderNumber(now),
       personalCouponRate: personal ? personal.percent / 100 : undefined,
+      storeCoupon,
     });
     if (!built.ok) return { status: 409, body: { ok: false, ...built.error } };
 
@@ -143,7 +172,9 @@ export async function handleCreateOrder(
     const id =
       personal && personalCode && member && deps.saveOrderWithCoupon
         ? await deps.saveOrderWithCoupon(order, { code: personalCode, memberId: member.id, heldBy: personal.heldBy })
-        : await deps.saveOrder(order);
+        : storeCoupon && order.discount > 0 && deps.saveOrderWithStoreCoupon
+          ? await deps.saveOrderWithStoreCoupon(order, { code: storeCode, type: storeCoupon.type, value: storeCoupon.value, discount: order.discount })
+          : await deps.saveOrder(order);
     if (member?.id && deps.rememberMemberCheckout && (member.status === "active" || member.status === "suspended")) {
       await deps.rememberMemberCheckout(member.id, order).catch((error) =>
         console.error("[orders/create] member checkout details not saved:", error instanceof Error ? error.message : error)

@@ -81,6 +81,10 @@ export const COLLECTIONS = {
   staffDevicePairings: "staffDevicePairings",
   /** The waiters' QR secret, `staffJoinKeys/waiter` (server only; read by the admin-only API). */
   staffJoinKeys: "staffJoinKeys",
+  /** Store coupons by code (Admin → Coupons), e.g. MISHKAT10 (server only). */
+  storeCoupons: "storeCoupons",
+  /** The store-coupon discount the server priced for an order, by order id — used for the card charge (server only). */
+  orderCoupons: "orderCoupons",
   /** Server-only computed figures (e.g. "popularity": best sellers). */
   stats: "stats",
 } as const;

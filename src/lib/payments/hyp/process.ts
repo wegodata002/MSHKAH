@@ -21,6 +21,8 @@ import { priceLineModifiers } from "@/lib/orders/modifier-pricing";
 import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
+import { readOrderCouponRecord, readStoreCoupon } from "@/lib/coupons/admin/store";
+import { couponStatus, normalizeStoreCode } from "@/lib/coupons/store-coupons";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 
 export class HypPaymentError extends Error {
@@ -92,8 +94,22 @@ async function trustedChargeAmount(
   const personalRate = isPersonalCouponCode(order.couponCode)
     ? await personalCouponRateForOrder(db, orderId, order.couponCode)
     : undefined;
+  // A store coupon: the discount the server priced and saved with this order (never order.discount,
+  // which the browser could write). An order priced before that record existed: the coupon as it works
+  // now (its record first — a disabled or deleted MISHKAT10 gives nothing). No coupon: nothing.
+  let store: { discount: number } | { rate: number } | undefined;
+  if (personalRate === undefined) {
+    const code = normalizeStoreCode(order.couponCode);
+    const record = code ? await readOrderCouponRecord(db, orderId) : null;
+    if (record && record.code === code) store = { discount: Number(record.discount) || 0 };
+    else if (code) {
+      const coupon = await readStoreCoupon(db, code);
+      const usable = coupon && coupon.type === "percent" && coupon.audience === "all" && couponStatus(coupon, new Date()) === "active";
+      store = { rate: usable ? coupon.value / 100 : 0 };
+    } else store = { rate: 0 };
+  }
   return {
-    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate),
+    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate, store),
     delivery: deliveryFee,
   };
 }

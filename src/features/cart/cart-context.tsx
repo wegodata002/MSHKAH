@@ -18,7 +18,8 @@ import {
   selectionsFingerprint,
 } from "@/lib/product-builder/engine";
 import { NEW_ORDER_FULFILLMENT } from "@/lib/orders/fulfillment";
-import { checkCoupon, couponRate, normalizeCouponCode, type CouponCheck } from "@/lib/orders/coupons";
+import { couponRate, normalizeCouponCode, type CouponCheck } from "@/lib/orders/coupons";
+import type { CouponName } from "@/lib/coupons/store-coupons";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { isViewOnlyMenuSurface } from "@/lib/domains/host-routing";
 
@@ -26,8 +27,16 @@ interface CartState {
   items: CartItem[];
   isOpen: boolean;
   couponCode: string;
+  /** Percent coupons: the rate (0–1) shown in the cart. The server prices the order on its own. */
   couponDiscount: number;
+  /** Store coupons in shekels (₪ off the products); 0 for percent coupons. */
+  couponFixed?: number;
+  /** Store coupons: products needed before the discount applies (0 = none). */
+  couponMinOrder?: number;
+  couponName?: CouponName | null;
 }
+
+type CouponTerms = { discount: number; fixed?: number; minOrder?: number; name?: CouponName | null };
 
 type CartAction =
   | {
@@ -54,7 +63,7 @@ type CartAction =
   | { type: "OPEN_CART" }
   | { type: "CLOSE_CART" }
   | { type: "TOGGLE_CART" }
-  | { type: "SET_COUPON"; code: string; discount: number }
+  | ({ type: "SET_COUPON"; code: string } & CouponTerms)
   | { type: "REMOVE_COUPON" };
 
 interface AddItemOptions {
@@ -75,6 +84,13 @@ interface CartContextValue {
   deliveryFee: number;
   total: number;
   couponCode: string;
+  /** The applied store coupon's name (Admin → Coupons), in the three languages. */
+  couponName: CouponName | null;
+  /** The cart is below the applied coupon's minimum order: no discount until it is reached. */
+  couponBelowMinimum: boolean;
+  couponMinOrder: number;
+  /** The minimum of the last coupon refused for "min_order" (for its message, right after applyCoupon). */
+  lastCouponMinOrder: () => number;
   /** Always pickup — business does not offer delivery. */
   orderType: typeof NEW_ORDER_FULFILLMENT;
   addItem: (product: Product, options?: AddItemOptions) => void;
@@ -132,11 +148,50 @@ async function checkPersonalCoupon(code: string): Promise<PersonalCouponAnswer |
   }
 }
 
+type StoreCouponAnswer =
+  | { ok: true; coupon: { code: string; name: CouponName; type: "percent" | "fixed"; value: number; minOrder: number } }
+  | { ok: false; reason?: CouponCheck; minOrder?: number };
+
+/** Store coupon (Admin → Coupons): the server decides (date, club members only, minimum, once per customer). */
+async function checkStoreCouponOnServer(code: string, subtotal: number): Promise<StoreCouponAnswer | null> {
+  try {
+    const res = await fetch("/api/coupons/check", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ code, subtotal }),
+    });
+    return (await res.json()) as StoreCouponAnswer;
+  } catch {
+    return null;
+  }
+}
+
+function termsOf(coupon: Extract<StoreCouponAnswer, { ok: true }>["coupon"]): CouponTerms {
+  return coupon.type === "fixed"
+    ? { discount: 0, fixed: coupon.value, minOrder: coupon.minOrder, name: coupon.name }
+    : { discount: coupon.value / 100, fixed: 0, minOrder: coupon.minOrder, name: coupon.name };
+}
+
+const NO_COUPON = { couponCode: "", couponDiscount: 0, couponFixed: 0, couponMinOrder: 0, couponName: null } as const;
+
 /** A coupon applies to one order only: drop it once the cart is empty. */
 function resetCouponIfEmpty(state: CartState): CartState {
-  return state.items.length === 0 && (state.couponCode || state.couponDiscount)
-    ? { ...state, couponCode: "", couponDiscount: 0 }
+  return state.items.length === 0 && (state.couponCode || state.couponDiscount || state.couponFixed)
+    ? { ...state, ...NO_COUPON }
     : state;
+}
+
+/** Saved store-coupon terms, for display only until the server answers again (capped). */
+function savedTerms(state: Partial<CartState>): CouponTerms {
+  const rate = Number(state.couponDiscount);
+  const fixed = Number(state.couponFixed);
+  const min = Number(state.couponMinOrder);
+  return {
+    discount: Number.isFinite(rate) && rate > 0 && rate <= 0.9 ? rate : 0,
+    fixed: Number.isFinite(fixed) && fixed > 0 && fixed <= 1000 ? fixed : 0,
+    minOrder: Number.isFinite(min) && min > 0 ? min : 0,
+    name: state.couponName && typeof state.couponName === "object" ? state.couponName : null,
+  };
 }
 
 export function cartReducer(state: CartState, action: CartAction): CartState {
@@ -233,18 +288,27 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       const code = normalizeCouponCode(action.state.couponCode ?? state.couponCode);
       // A personal club code keeps its saved rate for display (capped); it is re-checked with the
       // server right after loading, and the server prices the order on its own anyway.
-      const rate = isPersonalCouponCode(code) ? personalDisplayRate(action.state.couponDiscount) : couponRate(code);
+      // A store coupon keeps its saved terms for display (capped) and is checked with the server right
+      // after loading too (MISHKAT10 saved by an older cart still shows its 10% meanwhile).
+      const items = Array.isArray(action.state.items) ? action.state.items : state.items;
+      if (isPersonalCouponCode(code)) {
+        const rate = personalDisplayRate(action.state.couponDiscount);
+        return resetCouponIfEmpty({ ...state, items, ...NO_COUPON, couponCode: rate > 0 ? code : "", couponDiscount: rate, isOpen: false });
+      }
+      const terms = savedTerms(action.state);
+      const rate = terms.discount || (terms.fixed ? 0 : couponRate(code));
+      const applies = !!code && (rate > 0 || (terms.fixed ?? 0) > 0);
       return resetCouponIfEmpty({
         ...state,
-        items: Array.isArray(action.state.items) ? action.state.items : state.items,
-        couponCode: rate > 0 ? code : "",
-        couponDiscount: rate,
+        items,
+        ...NO_COUPON,
+        ...(applies ? { couponCode: code, couponDiscount: rate, couponFixed: terms.fixed, couponMinOrder: terms.minOrder, couponName: terms.name } : {}),
         isOpen: false,
       });
     }
     case "CLEAR_CART":
       // After a successful order (cash or HYP success page) the coupon is used up.
-      return { ...state, items: [], couponCode: "", couponDiscount: 0 };
+      return { ...state, items: [], ...NO_COUPON };
     case "OPEN_CART":
       return { ...state, isOpen: true };
     case "CLOSE_CART":
@@ -252,9 +316,16 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
     case "TOGGLE_CART":
       return { ...state, isOpen: !state.isOpen };
     case "SET_COUPON":
-      return { ...state, couponCode: action.code, couponDiscount: action.discount };
+      return {
+        ...state,
+        couponCode: action.code,
+        couponDiscount: action.discount,
+        couponFixed: action.fixed ?? 0,
+        couponMinOrder: action.minOrder ?? 0,
+        couponName: action.name ?? null,
+      };
     case "REMOVE_COUPON":
-      return { ...state, couponCode: "", couponDiscount: 0 };
+      return { ...state, ...NO_COUPON };
     default:
       return state;
   }
@@ -264,10 +335,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, {
     items: [],
     isOpen: false,
-    couponCode: "",
-    couponDiscount: 0,
+    ...NO_COUPON,
   });
   const [hydrated, setHydrated] = useState(false);
+  const lastCouponMinOrderRef = useRef(0);
+  const lastCouponMinOrder = useCallback(() => lastCouponMinOrderRef.current, []);
 
   useEffect(() => {
     try {
@@ -293,9 +365,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
         items: state.items,
         couponCode: state.couponCode,
         couponDiscount: state.couponDiscount,
+        couponFixed: state.couponFixed ?? 0,
+        couponMinOrder: state.couponMinOrder ?? 0,
+        couponName: state.couponName ?? null,
       })
     );
-  }, [hydrated, state.couponCode, state.couponDiscount, state.items]);
+  }, [hydrated, state.couponCode, state.couponDiscount, state.couponFixed, state.couponMinOrder, state.couponName, state.items]);
 
   const addItem = useCallback((product: Product, options?: AddItemOptions) => {
     if (
@@ -353,15 +428,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   // A personal club code restored from this browser is checked again (used elsewhere, expired,
   // logged out…); an invalid one is removed, a valid one gets the server's rate.
+  // A store coupon restored from this browser is checked again too (disabled, expired, club only…);
+  // below its minimum it stays (the cart shows what is missing), anything else removes it.
   const recheckedCode = useRef("");
+  const subtotalRef = useRef(0);
   useEffect(() => {
-    if (!hydrated || !isPersonalCouponCode(state.couponCode) || recheckedCode.current === state.couponCode) return;
+    if (!hydrated || !state.couponCode || recheckedCode.current === state.couponCode) return;
     const code = state.couponCode;
     recheckedCode.current = code;
-    void checkPersonalCoupon(code).then((answer) => {
+    if (isPersonalCouponCode(code)) {
+      void checkPersonalCoupon(code).then((answer) => {
+        if (!answer) return;
+        if (answer.ok) dispatch({ type: "SET_COUPON", code, discount: answer.percent / 100 });
+        else dispatch({ type: "REMOVE_COUPON" });
+      });
+      return;
+    }
+    void checkStoreCouponOnServer(code, subtotalRef.current).then((answer) => {
       if (!answer) return;
-      if (answer.ok) dispatch({ type: "SET_COUPON", code, discount: answer.percent / 100 });
-      else dispatch({ type: "REMOVE_COUPON" });
+      if (answer.ok) dispatch({ type: "SET_COUPON", code, ...termsOf(answer.coupon) });
+      else if (answer.reason !== "min_order") dispatch({ type: "REMOVE_COUPON" });
     });
   }, [hydrated, state.couponCode]);
 
@@ -376,10 +462,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
         dispatch({ type: "SET_COUPON", code: normalized, discount: answer.percent / 100 });
         return "ok";
       }
+      if (!normalized) return "invalid";
       const currentSubtotal = state.items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
-      const check = checkCoupon(normalized, currentSubtotal);
-      if (check === "ok") dispatch({ type: "SET_COUPON", code: normalized, discount: couponRate(normalized) });
-      return check;
+      // One coupon per order: a new code replaces the one applied (store or personal).
+      const answer = await checkStoreCouponOnServer(normalized, currentSubtotal);
+      if (!answer) return "invalid";
+      if (!answer.ok) {
+        if (answer.reason === "min_order") lastCouponMinOrderRef.current = Number(answer.minOrder) || 0;
+        return answer.reason && answer.reason !== "ok" ? answer.reason : "invalid";
+      }
+      recheckedCode.current = normalized;
+      dispatch({ type: "SET_COUPON", code: normalized, ...termsOf(answer.coupon) });
+      return "ok";
     },
     [state.items]
   );
@@ -392,7 +486,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
       sum + calculateLineTotal(item.unitPrice, item.quantity),
     0
   );
-  const discount = subtotal * state.couponDiscount;
+  subtotalRef.current = subtotal;
+  const couponMinOrder = state.couponMinOrder ?? 0;
+  const couponBelowMinimum = !!state.couponCode && couponMinOrder > 0 && subtotal < couponMinOrder;
+  const discount = couponBelowMinimum
+    ? 0
+    : (state.couponFixed ?? 0) > 0
+      ? Math.min(state.couponFixed ?? 0, subtotal)
+      : subtotal * state.couponDiscount;
   const deliveryFee = 0;
   const total = subtotal - discount;
 
@@ -407,6 +508,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
         deliveryFee,
         total,
         couponCode: state.couponCode,
+        couponName: state.couponName ?? null,
+        couponBelowMinimum,
+        couponMinOrder,
+        lastCouponMinOrder,
         orderType: NEW_ORDER_FULFILLMENT,
         addItem,
         removeItem,

@@ -56,11 +56,19 @@ export function chargeFromCatalogSum(
   catalogSum: number,
   order: { couponCode?: unknown; delivery?: unknown },
   /** Rate of a personal club code, checked on the server against this order (see process.ts). */
-  personalCouponRate?: number
+  personalCouponRate?: number,
+  /**
+   * Store coupons (see process.ts): `discount` = the amount the server priced and saved with the order
+   * (orderCoupons); `rate` = an order priced before that record existed (MISHKAT10 as it works now).
+   */
+  store?: { discount: number } | { rate: number }
 ): { amount: number; discount: number; subtotal: number } {
   const subtotal = money(catalogSum);
-  const rate = personalCouponRate !== undefined ? personalCouponRate : couponRate(order.couponCode);
-  const discount = money(subtotal * rate);
+  let discount: number;
+  if (personalCouponRate !== undefined) discount = money(subtotal * personalCouponRate);
+  else if (store && "discount" in store) discount = Math.min(money(Math.max(0, store.discount)), subtotal);
+  else if (store) discount = money(subtotal * store.rate);
+  else discount = money(subtotal * couponRate(order.couponCode));
   const delivery = Math.max(0, money(order.delivery));
   const amount = Math.max(money(subtotal - discount + delivery), 0);
   return { amount, discount, subtotal };
