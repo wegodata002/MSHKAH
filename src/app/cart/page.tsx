@@ -1,24 +1,27 @@
 "use client";
 
-import { Header } from "@/components/layout/header";
-import { useCart } from "@/features/cart/cart-context";
 import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
+import { useCart } from "@/features/cart/cart-context";
 
+/**
+ * /cart (old links, the browser's address bar): opens the cart and shows the menu behind it. The
+ * cart drawer lives in the layout, so it stays open across the move; an empty cart shows its usual
+ * "Your cart is empty" view.
+ */
 export default function CartPage() {
   const { openCart } = useCart();
+  const router = useRouter();
 
   useEffect(() => {
     openCart();
-  }, [openCart]);
+    router.replace("/catalog");
+  }, [openCart, router]);
 
   return (
-    <>
-      <Header searchQuery="" onSearchChange={() => {}} />
-      <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
-        <p className="text-sm text-coffee/60">
-          Your cart drawer should be open
-        </p>
-      </div>
-    </>
+    <div className="flex justify-center py-20" data-cart-redirect>
+      <Loader2 className="h-6 w-6 animate-spin text-turquoise" />
+    </div>
   );
 }

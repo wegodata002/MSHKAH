@@ -95,8 +95,8 @@ describe("mobile catalog UX", () => {
     expect(view).not.toMatch(/window\.location\.reload/);
   });
 
-  it("keeps the mobile header compact and slightly smaller on scroll", () => {
-    expect(header).toMatch(/h-14 md:h-20/);
-    expect(header).toMatch(/scrolled && "h-12 shadow-soft md:h-20"/);
+  it("keeps the mobile header compact and slightly smaller on scroll (tablet 64px, desktop 80px)", () => {
+    expect(header).toMatch(/h-14 md:h-16 lg:h-20/);
+    expect(header).toMatch(/scrolled && "h-12 shadow-soft md:h-16 lg:h-20"/);
   });
 });

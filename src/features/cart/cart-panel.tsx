@@ -217,7 +217,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
               }}
               placeholder={t("cart.coupon", "Coupon code")}
               aria-label={t("cart.coupon", "Coupon code")}
-              className="h-9 text-base md:text-sm"
+              className="h-9 text-base lg:text-sm"
             />
             <Button
               variant="outline"

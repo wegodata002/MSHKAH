@@ -18,7 +18,7 @@ import { useAllProducts, useCategories } from "@/hooks/useProducts";
 import { topPopular, usePopularProducts } from "@/hooks/usePopularity";
 import { ProductCarousel } from "@/features/catalog/catalog-sections";
 import { useT, useLocale } from "@/components/providers/locale-provider";
-import { buildCatalogSections } from "@/lib/menu/category-tree";
+import { buildCatalogSections, catalogSearchMatcher, isPublicMenuProduct } from "@/lib/menu/category-tree";
 import { cn } from "@/lib/utils";
 import type { Product, ProductFilters } from "@/types";
 
@@ -52,6 +52,11 @@ export function CatalogView() {
     [allProducts, categories, filters, locale, searchQuery]
   );
   const navCategories = useMemo(() => sections.map((s) => s.category), [sections]);
+  // Nothing matched exactly, so these are close matches (a small typo forgiven): say so.
+  const closeMatches = useMemo(
+    () => !!searchQuery.trim() && catalogSearchMatcher(allProducts.filter(isPublicMenuProduct), searchQuery).fuzzy,
+    [allProducts, searchQuery]
+  );
 
   // Memoised so scroll-spy updates (activeId) re-render only the nav, not ~150 product cards.
   const sectionsContent = useMemo(
@@ -172,7 +177,7 @@ export function CatalogView() {
         onChange={(e) => setSearchQuery(e.target.value)}
         aria-label={t("header.search")}
         dir={dir}
-        className="h-10 border-beige-dark/25 bg-warm-white ps-10 pe-10 text-base shadow-none md:text-sm"
+        className="h-10 border-beige-dark/25 bg-warm-white ps-10 pe-10 text-base shadow-none lg:text-sm"
       />
       {searchQuery && (
         <button
@@ -205,7 +210,7 @@ export function CatalogView() {
           <div
             ref={stickyRef}
             id="menu"
-            className="sticky top-12 z-30 -mx-4 border-b border-beige-dark/15 bg-cream/95 px-4 py-2 backdrop-blur-md md:top-20 md:-mx-8 md:px-8 lg:-mx-10 lg:px-10"
+            className="sticky top-12 z-30 -mx-4 border-b border-beige-dark/15 bg-cream/95 px-4 py-2 backdrop-blur-md md:top-16 lg:top-20 md:-mx-8 md:px-8 lg:-mx-10 lg:px-10"
           >
             <CategoryNav
               categories={navCategories}
@@ -269,7 +274,14 @@ export function CatalogView() {
               <ProductGrid products={[]} loading={false} onProductClick={setSelectedProduct} />
             </div>
           ) : (
-            sectionsContent
+            <>
+              {closeMatches && (
+                <p className="pt-4 text-start text-sm text-coffee/70" role="status" data-search-close>
+                  {t("catalog.searchClose").replace("{query}", searchQuery.trim())}
+                </p>
+              )}
+              {sectionsContent}
+            </>
           )}
         </div>
       </div>

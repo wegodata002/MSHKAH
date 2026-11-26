@@ -217,6 +217,8 @@ describe("table strip and home order", () => {
     expect(at("{isHome && <HeroBanner />}")).toBeLessThan(at("{atTable ? <TableBanner /> : <AvailabilityPill />}"));
     expect(at("{atTable ? <TableBanner /> : <AvailabilityPill />}")).toBeLessThan(at("ref={stickyRef}"));
     expect(at("ref={stickyRef}")).toBeLessThan(at("data-popular-row"));
-    expect(at("data-popular-row")).toBeLessThan(view.search(/^\s*sectionsContent\r?$/m));
+    // The menu sections, after the "close matches" line of the search.
+    expect(view.search(/^\s*\{sectionsContent\}\r?$/m)).toBeGreaterThan(-1);
+    expect(at("data-popular-row")).toBeLessThan(view.search(/^\s*\{sectionsContent\}\r?$/m));
   });
 });

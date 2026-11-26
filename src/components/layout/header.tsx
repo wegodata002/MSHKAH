@@ -66,8 +66,9 @@ export function SiteHeader() {
       transition={{ duration: 0.35 }}
       className={cn(
         "sticky top-0 z-40 border-b bg-warm-white transition-[height,box-shadow] duration-300",
-        "h-14 md:h-20",
-        scrolled && "h-12 shadow-soft md:h-20",
+        // Phone 56px (48px scrolled), tablet 64px, desktop 80px.
+        "h-14 md:h-16 lg:h-20",
+        scrolled && "h-12 shadow-soft md:h-16 lg:h-20",
         scrolled ? "border-beige-dark/20" : "border-beige-dark/10 shadow-none"
       )}
     >
@@ -89,7 +90,7 @@ export function SiteHeader() {
             size="sm"
             href="/"
             priority
-            className={cn("w-auto md:h-12", scrolled ? "h-8 md:h-12" : "h-9 md:h-12")}
+            className={cn("w-auto md:h-11 lg:h-12", scrolled ? "h-8 md:h-11 lg:h-12" : "h-9 md:h-11 lg:h-12")}
           />
         </div>
 
