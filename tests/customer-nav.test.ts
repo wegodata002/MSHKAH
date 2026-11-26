@@ -143,13 +143,14 @@ describe("staff page sign-in hint", () => {
 });
 
 describe("phone navigation (header, bottom bar, side menu)", () => {
-  it("header on phones: ☰, logo, favourites (count), account, cart; club button and language on desktop only", () => {
+  it("header on phones: ☰, logo, language (round button), favourites (count), account, cart; club button on desktop only", () => {
     const header = read("src/components/layout/header.tsx");
     expect(header).toContain("data-mobile-menu-open");
     expect(header).toMatch(/data-mobile-menu-open[\s\S]*<Logo/);
     expect(header).toContain('className={cn(ICON_BUTTON, "lg:hidden")} data-header-favorites');
     expect(header).toContain("hidden h-10 min-w-0 shrink-0 items-center gap-1.5 rounded-full bg-turquoise");
     expect(header).toContain('<LanguageSwitcher compact className="hidden lg:inline-flex" />');
+    expect(header).toContain('<LanguageSwitcher variant="icon" className="lg:hidden" />');
     expect(header).not.toContain('variant="dropdown"');
     expect(header).toContain("<MobileMenuDrawer open={menuOpen} onClose={closeMenu} />");
   });
@@ -161,16 +162,17 @@ describe("phone navigation (header, bottom bar, side menu)", () => {
     expect(nav).toContain("badge: activeOrders");
   });
 
-  it("side menu: every link, about, contact, language; opens from the start side; closes in four ways", () => {
+  it("side menu: every link, about, contact (language moved to the header); opens from the start side; closes in four ways", () => {
     const drawer = read("src/components/layout/mobile-menu-drawer.tsx");
-    for (const key of ["nav.home", "nav.catalog", "nav.offers", "nav.favorites", "nav.orders", "nav.accountClub", "nav.about", "nav.contact", "nav.language"]) {
+    for (const key of ["nav.home", "nav.catalog", "nav.offers", "nav.favorites", "nav.orders", "nav.accountClub", "nav.about", "nav.contact"]) {
       expect(drawer, key).toContain(`"${key}"`);
     }
     expect(drawer).toContain('rtl ? "right-0" : "left-0"');
     expect(drawer).toContain('e.key === "Escape" && onClose()');
     expect(drawer).toContain("onClick={onClose}");
     expect(drawer).toContain("lastPath.current !== pathname");
-    expect(drawer).toContain("<LanguageSwitcher compact />");
+    expect(drawer).not.toContain("<LanguageSwitcher");
+    expect(drawer).not.toContain("data-mobile-menu-language");
     expect(drawer).not.toMatch(/admin/i);
     expect(read("src/features/account/account-screen.tsx")).toContain('id="contact"');
     const ui = read("src/data/ui-translations-seed.ts");

@@ -144,11 +144,8 @@ describe("joining, renewing, replacing (in-memory database)", () => {
 });
 
 describe("waiters have no code; couriers keep theirs", () => {
-  it("Staff page: a waiter is created without a code; a courier still needs one", () => {
-    expect(parseStaffAdminRequest({ action: "create", name: "רנא", phone: "0501234567", role: "waiter" })).toEqual({
-      ok: true,
-      request: { action: "create", name: "רנא", phone: "0501234567", role: "waiter" },
-    });
+  it("Staff page: only couriers are added (waiters need no record); a courier still needs a code", () => {
+    expect(parseStaffAdminRequest({ action: "create", name: "רנא", phone: "0501234567", role: "waiter" })).toEqual({ ok: false, error: "ROLE" });
     expect(parseStaffAdminRequest({ action: "create", name: "סאמי", phone: "0501234567", role: "courier" })).toEqual({ ok: false, error: "PIN_FORMAT" });
   });
 
@@ -202,6 +199,6 @@ describe("wiring", () => {
       expect(keys(source.ar)).toEqual(keys(source.he));
       expect(keys(source.en)).toEqual(keys(source.he));
     }
-    expect(ADMIN_TRANSLATIONS.he["admin.staff.waiterNoCode"]).toBeTruthy();
+    expect(ADMIN_TRANSLATIONS.he["admin.staff.oldWaiters"]).toBeTruthy();
   });
 });

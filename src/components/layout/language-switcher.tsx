@@ -9,16 +9,20 @@ import { cn } from "@/lib/utils";
 interface LanguageSwitcherProps {
   className?: string;
   compact?: boolean;
-  variant?: "inline" | "dropdown";
+  /** "icon": a small round button with the current language ("עב" / "ع" / "EN") that opens the list (phone header). */
+  variant?: "inline" | "dropdown" | "icon";
 }
+
+/** Short names for the round header button. */
+const SHORT_LABEL: Record<Locale, string> = { he: "עב", ar: "ع", en: "EN" };
 
 export function LanguageSwitcher({
   className,
   compact,
   variant = "inline",
 }: LanguageSwitcherProps) {
-  if (variant === "dropdown") {
-    return <LanguageDropdown className={className} />;
+  if (variant === "dropdown" || variant === "icon") {
+    return <LanguageDropdown className={className} short={variant === "icon"} />;
   }
 
   return <LanguageInline className={className} compact={compact} />;
@@ -76,7 +80,7 @@ function LanguageInline({
   );
 }
 
-function LanguageDropdown({ className }: { className?: string }) {
+function LanguageDropdown({ className, short = false }: { className?: string; short?: boolean }) {
   const { locale, setLocale, t } = useLocale();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -114,6 +118,19 @@ function LanguageDropdown({ className }: { className?: string }) {
 
   return (
     <div ref={containerRef} className={cn("relative", className)}>
+      {short ? (
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-beige-dark/25 bg-cream/50 text-xs font-bold text-coffee transition-colors hover:border-turquoise/40 hover:text-turquoise"
+          aria-label={`${t("lang.switch")}: ${currentMeta.nativeLabel}`}
+          aria-expanded={open}
+          aria-haspopup="listbox"
+          data-lang-button
+        >
+          <span dir={currentMeta.dir}>{SHORT_LABEL[locale]}</span>
+        </button>
+      ) : (
       <button
         type="button"
         onClick={() => setOpen(!open)}
@@ -132,6 +149,7 @@ function LanguageDropdown({ className }: { className?: string }) {
           strokeWidth={2}
         />
       </button>
+      )}
 
       {open && (
         <div

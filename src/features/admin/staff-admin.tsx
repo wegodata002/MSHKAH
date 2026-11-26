@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bike, KeyRound, Loader2, Pencil, Plus, Shuffle, UtensilsCrossed } from "lucide-react";
+import { Bike, KeyRound, Loader2, Pencil, Plus, Shuffle, Trash2, UtensilsCrossed } from "lucide-react";
 import { useT } from "@/components/providers/locale-provider";
 import { BidiText } from "@/components/ui/bidi-text";
 import { Button } from "@/components/ui/button";
@@ -20,9 +20,11 @@ import {
 } from "@/features/admin/components/admin-modal";
 import { clientAdminFetch } from "@/lib/auth/client-admin-fetch";
 import { cn } from "@/lib/utils";
-import type { StaffMemberView, StaffRole } from "@/lib/staff/types";
+import type { StaffMemberView } from "@/lib/staff/types";
 
 const ERROR_KEYS = new Set(["PIN_IN_USE", "PIN_WEAK", "PIN_FORMAT", "NAME", "PHONE"]);
+/** The list holds couriers only (waiters join with the waiters' QR). */
+const COURIER_FILTER: StaffFilter = { ...DEFAULT_STAFF_FILTER, role: "courier" };
 
 /** 4 random digits, never an easy one (same digit ×4, straight runs). */
 export function randomPin(): string {
@@ -88,8 +90,9 @@ type Dialog =
   | null;
 
 /**
- * Admin → Staff (Admin only): couriers with a personal 4-digit code; waiters with no code (their
- * devices join with the waiters' QR and are listed under "Waiter devices").
+ * Admin → Staff (Admin only): couriers, each with a personal 4-digit code. Waiters need no record
+ * (their devices join with the waiters' QR, listed under "Waiter devices"); old waiter records are
+ * shown apart until deleted. Deleting removes the record only: orders keep the names saved on them.
  */
 export function StaffAdmin() {
   const t = useT();
@@ -97,17 +100,23 @@ export function StaffAdmin() {
   const [notice, setNotice] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
   const [dialog, setDialog] = useState<Dialog>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [filter, setFilter] = useState<StaffFilter>(DEFAULT_STAFF_FILTER);
-  const shown = useMemo(() => (staff ? filterStaff(staff, filter) : []), [filter, staff]);
-  const counts = useMemo(() => staffCounts(staff ?? [], filter.query), [filter.query, staff]);
+  const [filter, setFilter] = useState<StaffFilter>(COURIER_FILTER);
+  const couriers = useMemo(() => (staff ?? []).filter((m) => m.role === "courier"), [staff]);
+  const oldWaiters = useMemo(() => (staff ?? []).filter((m) => m.role === "waiter"), [staff]);
+  const shown = useMemo(() => filterStaff(couriers, filter), [couriers, filter]);
+  const counts = useMemo(() => staffCounts(couriers, filter.query), [couriers, filter.query]);
 
   // Dialog form.
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<StaffRole>("courier");
   const [pin, setPin] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Delete confirmation.
+  const [deleting, setDeleting] = useState<StaffMemberView | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const errorText = (code?: string) => t(code && ERROR_KEYS.has(code) ? `admin.staff.error.${code}` : "admin.staff.error.generic");
 
@@ -128,7 +137,6 @@ export function StaffAdmin() {
     setFormError(null);
     setName(next && next.kind !== "create" ? next.member.name : "");
     setPhone(next && next.kind !== "create" ? next.member.phone : "");
-    setRole(next && next.kind !== "create" ? next.member.role : "courier");
     setPin(next && next.kind === "edit" ? "" : randomPin());
     setDialog(next);
   };
@@ -145,9 +153,9 @@ export function StaffAdmin() {
     setFormError(null);
     const body =
       dialog.kind === "create"
-        ? { action: "create", name, phone, role, ...(role === "courier" ? { pin } : {}) }
+        ? { action: "create", name, phone, role: "courier", pin }
         : dialog.kind === "edit"
-          ? { action: "update", id: dialog.member.id, name, phone, role }
+          ? { action: "update", id: dialog.member.id, name, phone }
           : { action: "set-pin", id: dialog.member.id, pin };
     const result = await clientAdminFetch<{ member: StaffMemberView }>("/api/admin/staff", body);
     setSaving(false);
@@ -160,7 +168,7 @@ export function StaffAdmin() {
       text:
         dialog.kind === "pin"
           ? `${t("admin.staff.pinChanged")} (${pin})`
-          : dialog.kind === "create" && role === "courier"
+          : dialog.kind === "create"
             ? `${t("admin.staff.saved")} · ${result.data.member.name} · ${pin}`
             : t("admin.staff.saved"),
       tone: "ok",
@@ -176,6 +184,27 @@ export function StaffAdmin() {
     else setNotice({ text: errorText(result.code), tone: "error" });
   };
 
+  const askDelete = (member: StaffMemberView) => {
+    setDeleteError(null);
+    setDeleting(member);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    setDeleteBusy(true);
+    setDeleteError(null);
+    const result = await clientAdminFetch<{ ok: true }>("/api/admin/staff", { action: "delete", id: deleting.id });
+    setDeleteBusy(false);
+    if (result.ok || result.code === "NOT_FOUND") {
+      const removed = deleting;
+      setStaff((list) => (list ?? []).filter((m) => m.id !== removed.id));
+      setNotice({ text: t("admin.staff.deleted").replace("{name}", removed.name), tone: "ok" });
+      setDeleting(null);
+      return;
+    }
+    setDeleteError(t(result.code === "OPEN_DELIVERIES" ? "admin.staff.deleteOpenDeliveries" : "admin.staff.error.generic"));
+  };
+
   return (
     <div className="space-y-6" data-staff-admin>
       <AdminPageHeader
@@ -184,7 +213,7 @@ export function StaffAdmin() {
         actions={
           <Button type="button" onClick={() => open({ kind: "create" })} data-staff-add>
             <Plus className="h-4 w-4" />
-            {t("admin.staff.add")}
+            {t("admin.staff.addCourier")}
           </Button>
         }
       />
@@ -211,7 +240,7 @@ export function StaffAdmin() {
         <div className="flex justify-center py-10">
           <Loader2 className="h-6 w-6 animate-spin text-turquoise" />
         </div>
-      ) : staff.length === 0 ? (
+      ) : couriers.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-beige-dark/40 p-8 text-center">
           <p className="font-semibold text-dark-brown">{t("admin.staff.empty")}</p>
           <p className="mt-1 text-sm text-coffee/60">{t("admin.staff.emptyHint")}</p>
@@ -222,15 +251,13 @@ export function StaffAdmin() {
           {shown.length === 0 && (
             <div className="rounded-2xl border border-dashed border-beige-dark/40 p-6 text-center" data-staff-no-results>
               <p className="text-sm text-coffee/70">{t("admin.staff.filter.none")}</p>
-              <button type="button" onClick={() => setFilter(DEFAULT_STAFF_FILTER)} className="mt-2 text-sm font-semibold text-turquoise underline" data-staff-clear-filters>
+              <button type="button" onClick={() => setFilter(COURIER_FILTER)} className="mt-2 text-sm font-semibold text-turquoise underline" data-staff-clear-filters>
                 {t("admin.staff.filter.clear")}
               </button>
             </div>
           )}
-        <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-staff-list>
-          {shown.map((member) => {
-            const Icon = member.role === "courier" ? Bike : UtensilsCrossed;
-            return (
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3" data-staff-list>
+            {shown.map((member) => (
               <li
                 key={member.id}
                 className={cn("rounded-2xl border border-beige-dark/15 bg-warm-white p-4 shadow-soft dark:bg-white/5", !member.active && "opacity-60")}
@@ -239,12 +266,12 @@ export function StaffAdmin() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-turquoise/10 text-turquoise">
-                      <Icon className="h-5 w-5" />
+                      <Bike className="h-5 w-5" />
                     </span>
                     <div className="min-w-0">
                       <p className="truncate font-semibold text-dark-brown dark:text-warm-white">{member.name}</p>
                       <p className="text-xs text-coffee/60">
-                        {t(`admin.staff.role.${member.role}`)} · <span dir="ltr">{member.phone}</span>
+                        {t("admin.staff.role.courier")} · <span dir="ltr">{member.phone}</span>
                       </p>
                     </div>
                   </div>
@@ -253,7 +280,7 @@ export function StaffAdmin() {
                   </span>
                 </div>
                 <div className="mt-4 flex flex-wrap items-center gap-x-5 gap-y-3">
-                  {member.role === "courier" && member.active && (
+                  {member.active && (
                     <Toggle
                       checked={member.worksToday}
                       label={t("admin.staff.worksToday")}
@@ -263,34 +290,63 @@ export function StaffAdmin() {
                   )}
                   <Toggle checked={member.active} label={t("admin.staff.active")} disabled={busyId === member.id} onChange={(v) => void patch(member, { active: v })} />
                 </div>
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={() => open({ kind: "edit", member })}>
                     <Pencil className="h-3.5 w-3.5" />
                     {t("admin.staff.edit")}
                   </Button>
-                  {member.role === "courier" && (
-                    <Button type="button" size="sm" variant="outline" onClick={() => open({ kind: "pin", member })} data-staff-change-pin>
-                      <KeyRound className="h-3.5 w-3.5" />
-                      {t("admin.staff.changePin")}
-                    </Button>
-                  )}
+                  <Button type="button" size="sm" variant="outline" onClick={() => open({ kind: "pin", member })} data-staff-change-pin>
+                    <KeyRound className="h-3.5 w-3.5" />
+                    {t("admin.staff.changePin")}
+                  </Button>
+                  <Button type="button" size="sm" variant="outline" className="border-red-200 text-red-700" onClick={() => askDelete(member)} data-staff-delete>
+                    <Trash2 className="h-3.5 w-3.5" />
+                    {t("admin.staff.delete")}
+                  </Button>
                 </div>
-                {member.role === "waiter" && <p className="mt-2 text-xs text-coffee/55" data-staff-waiter-no-code>{t("admin.staff.waiterNoCode")}</p>}
               </li>
-            );
-          })}
-        </ul>
+            ))}
+          </ul>
         </>
       )}
 
-      {/* Cafe tablets that stay signed in to the waiter screen. */}
+      {/* Old waiter records (from before the waiters' QR): shown apart, until deleted. */}
+      {oldWaiters.length > 0 && (
+        <section className="space-y-3" data-staff-old-waiters>
+          <div>
+            <h2 className="flex items-center gap-2 font-display text-xl font-bold text-dark-brown dark:text-warm-white">
+              <UtensilsCrossed className="h-5 w-5 text-coffee/50" />
+              {t("admin.staff.oldWaiters")}
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-coffee/60">{t("admin.staff.oldWaitersHint")}</p>
+          </div>
+          <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {oldWaiters.map((member) => (
+              <li key={member.id} className="flex items-center justify-between gap-3 rounded-2xl border border-dashed border-beige-dark/40 p-4" data-staff-old-waiter={member.name}>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-dark-brown dark:text-warm-white">{member.name}</p>
+                  <p className="text-xs text-coffee/60" dir="ltr">
+                    {member.phone}
+                  </p>
+                </div>
+                <Button type="button" size="sm" variant="outline" className="shrink-0 border-red-200 text-red-700" onClick={() => askDelete(member)} data-staff-delete>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  {t("admin.staff.delete")}
+                </Button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {/* Devices signed in to the waiter screen (joined with the waiters' QR). */}
       <StaffDevicesSection />
 
       <AdminModal open={!!dialog} onOpenChange={(next) => !saving && !next && setDialog(null)} size="sm">
         <AdminModalHeader onClose={() => setDialog(null)}>
           <AdminModalTitle>
             {dialog?.kind === "create"
-              ? t("admin.staff.add")
+              ? t("admin.staff.addCourier")
               : dialog?.kind === "pin"
                 ? t("admin.staff.newPinFor").replace("{name}", dialog.member.name)
                 : t("admin.staff.edit")}
@@ -307,33 +363,9 @@ export function StaffAdmin() {
                 <Label htmlFor="staff-phone">{t("admin.staff.phone")}</Label>
                 <Input id="staff-phone" value={phone} onChange={(e) => setPhone(e.target.value)} type="tel" inputMode="tel" dir="ltr" className="mt-1 h-11" />
               </div>
-              <div>
-                <span className="text-sm font-medium">{t("admin.staff.role")}</span>
-                <div className="mt-1 grid grid-cols-2 gap-2">
-                  {(["courier", "waiter"] as const).map((value) => (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setRole(value)}
-                      aria-pressed={role === value}
-                      className={cn(
-                        "h-11 rounded-xl border-2 text-sm font-semibold",
-                        role === value ? "border-turquoise bg-turquoise/10 text-turquoise" : "border-beige-dark/30 text-coffee/70"
-                      )}
-                    >
-                      {t(`admin.staff.role.${value}`)}
-                    </button>
-                  ))}
-                </div>
-              </div>
             </>
           )}
-          {(dialog?.kind === "pin" || (dialog?.kind === "create" && role === "courier")) && <PinField id="staff-pin" value={pin} onChange={setPin} />}
-          {dialog?.kind !== "pin" && role === "waiter" && (
-            <p className="rounded-xl bg-turquoise/5 px-3 py-2 text-sm text-coffee/75" data-staff-waiter-note>
-              {t("admin.staff.waiterNoCode")}
-            </p>
-          )}
+          {dialog?.kind !== "edit" && <PinField id="staff-pin" value={pin} onChange={setPin} />}
           {formError && (
             <p className="text-sm text-red-600" role="alert" data-staff-form-error>
               {formError}
@@ -347,6 +379,29 @@ export function StaffAdmin() {
           <Button type="button" disabled={saving} onClick={() => void submitDialog()} data-staff-save>
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
             {t("admin.staff.save")}
+          </Button>
+        </AdminModalFooter>
+      </AdminModal>
+
+      <AdminModal open={!!deleting} onOpenChange={(next) => !deleteBusy && !next && setDeleting(null)} size="sm">
+        <AdminModalHeader onClose={() => setDeleting(null)}>
+          <AdminModalTitle>{deleting ? t("admin.staff.deleteTitle").replace("{name}", deleting.name) : ""}</AdminModalTitle>
+        </AdminModalHeader>
+        <AdminModalBody className="space-y-3" data-staff-delete-dialog>
+          <p className="text-sm text-coffee/80">{t("admin.staff.deleteQuestion")}</p>
+          {deleteError && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" role="alert" data-staff-delete-error>
+              {deleteError}
+            </p>
+          )}
+        </AdminModalBody>
+        <AdminModalFooter>
+          <Button type="button" variant="outline" disabled={deleteBusy} onClick={() => setDeleting(null)}>
+            {t("admin.staff.cancel")}
+          </Button>
+          <Button type="button" className="bg-red-600 text-white hover:bg-red-700" disabled={deleteBusy} onClick={() => void confirmDelete()} data-staff-delete-confirm>
+            {deleteBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+            {t("admin.staff.delete")}
           </Button>
         </AdminModalFooter>
       </AdminModal>

@@ -60,6 +60,9 @@ export function createFakeFirestore() {
         if (!prev) throw new Error("NOT_FOUND");
         col(collection).set(id, clone({ ...prev, ...data }));
       },
+      async delete() {
+        col(collection).delete(id);
+      },
     };
     return ref;
   }

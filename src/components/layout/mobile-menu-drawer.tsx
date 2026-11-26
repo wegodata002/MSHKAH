@@ -7,7 +7,6 @@ import { usePathname } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ClipboardList, Heart, Home, Info, LayoutGrid, Phone, Star, Tag, X, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/brand/logo";
-import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useActiveOrderCount } from "@/lib/orders/my-order-views";
@@ -19,7 +18,7 @@ type DrawerLink = { href: string; labelKey: string; icon: LucideIcon; count?: nu
 
 /**
  * Phone and tablet (below lg): the ☰ menu. Opens from the start side (right in Hebrew and Arabic,
- * left in English) with every link, About, Contact and the language. Closes with ✕, a tap outside,
+ * left in English) with every link, About and Contact (the language is in the header). Closes with ✕, a tap outside,
  * Escape, or a page change.
  */
 export function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -148,10 +147,8 @@ export function MobileMenuDrawer({ open, onClose }: { open: boolean; onClose: ()
                 </Link>
               </li>
             </ul>
-            <div className="border-t border-beige-dark/15 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3" data-mobile-menu-language>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-coffee/55">{t("nav.language")}</p>
-              <LanguageSwitcher compact />
-            </div>
+            {/* The language is chosen from the round button in the header (not here any more). */}
+            <div className="pb-[max(1rem,env(safe-area-inset-bottom))]" />
           </motion.nav>
         </div>
       )}

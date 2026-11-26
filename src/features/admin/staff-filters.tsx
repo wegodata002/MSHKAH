@@ -23,7 +23,7 @@ function Chip({ on, label, count, onClick, data }: { on: boolean; label: string;
   );
 }
 
-/** Admin → Staff: search (name or phone), role, status, and "works today" for couriers. */
+/** Admin → Staff (couriers): search (name or phone), status, and "works today". */
 export function StaffFilters({
   filter,
   counts,
@@ -48,10 +48,6 @@ export function StaffFilters({
         />
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Chip on={filter.role === "all"} label={t("admin.staff.filter.all")} count={counts.all} onClick={() => set({ role: "all", worksToday: false })} data={{ "data-staff-role": "all" }} />
-        <Chip on={filter.role === "courier"} label={t("admin.staff.filter.couriers")} count={counts.courier} onClick={() => set({ role: "courier" })} data={{ "data-staff-role": "courier" }} />
-        <Chip on={filter.role === "waiter"} label={t("admin.staff.filter.waiters")} count={counts.waiter} onClick={() => set({ role: "waiter", worksToday: false })} data={{ "data-staff-role": "waiter" }} />
-        <span className="mx-1 h-6 w-px bg-beige-dark/30" aria-hidden />
         <Chip on={filter.status === "all"} label={t("admin.staff.filter.anyStatus")} onClick={() => set({ status: "all" })} data={{ "data-staff-status": "all" }} />
         <Chip on={filter.status === "active"} label={t("admin.staff.filter.active")} count={counts.active} onClick={() => set({ status: "active" })} data={{ "data-staff-status": "active" }} />
         <Chip on={filter.status === "disabled"} label={t("admin.staff.filter.disabled")} count={counts.disabled} onClick={() => set({ status: "disabled" })} data={{ "data-staff-status": "disabled" }} />

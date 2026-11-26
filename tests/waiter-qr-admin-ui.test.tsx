@@ -56,12 +56,25 @@ describe("waiters' QR card", () => {
     expect(container.querySelector("[data-waiter-qr-version]")!.textContent).toContain("QR מספר 2");
   });
 
+  it("Copy link: copies the secret link, with the 'send only to a waiter' note", async () => {
+    fetchMock.mockResolvedValue({ ok: true, status: 200, data: { qr: QR1 } });
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const { container } = render(<WaiterQrCard />);
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-copy]")).toBeTruthy());
+    expect(container.querySelector("[data-waiter-qr-copy-note]")!.textContent).toBe(he("admin.waiterQr.copyNote"));
+    fireEvent.click(container.querySelector("[data-waiter-qr-copy]")!);
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(QR1.url));
+    await waitFor(() => expect(container.querySelector("[data-waiter-qr-copy]")!.textContent).toBe(he("admin.qr.copied")));
+  });
+
   it("not an admin: no QR, a short note", async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 403, code: "PERMISSION_DENIED" });
     const { container } = render(<WaiterQrCard />);
     await waitFor(() => expect(container.querySelector("[data-waiter-qr-denied]")).toBeTruthy());
     expect(container.querySelector("[data-waiter-qr-image]")).toBeNull();
     expect(container.querySelector("[data-waiter-qr-replace]")).toBeNull();
+    expect(container.querySelector("[data-waiter-qr-copy]")).toBeNull();
   });
 });
 
