@@ -20,6 +20,7 @@ import {
   Sparkles,
   ScanLine,
   IdCard,
+  BookOpen,
 } from "lucide-react";
 import { adminPath, toInternalAdminPath } from "@/lib/domains/host-routing";
 import type { AdminSurface } from "@/lib/domains/host-routing";
@@ -74,6 +75,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { segment: "banners", labelKey: "admin.banners", icon: ImageIcon },
       { segment: "menu-builder", labelKey: "admin.menuBuilder", icon: FileText },
       { segment: "qr", labelKey: "admin.qr", icon: QrCode },
+      { segment: "info-pages", labelKey: "admin.infoPages", icon: BookOpen },
     ],
   },
   {
@@ -108,6 +110,7 @@ export const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/admin/banners": "admin.banners.title",
   "/admin/menu-builder": "admin.menuBuilder",
   "/admin/qr": "admin.qr.title",
+  "/admin/info-pages": "admin.infoPages.title",
   "/admin/costing": "admin.costing.title",
   "/admin/reports": "admin.reports.title",
   "/admin/media": "admin.media.title",

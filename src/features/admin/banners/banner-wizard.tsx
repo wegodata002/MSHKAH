@@ -16,6 +16,7 @@ import { ImageUpload } from "@/features/admin/image-upload";
 import { BannerHero } from "@/features/catalog/banner-hero";
 import { uploadBannerImage } from "@/services/storageService";
 import { draftToBanner, emptyBannerDraft, bannerToDraft } from "@/lib/banners/manager";
+import { bannerMissingLanguages } from "@/lib/banners/display";
 import { useLocale, useT } from "@/components/providers/locale-provider";
 import { cn } from "@/lib/utils";
 import type { BannerInput } from "@/lib/validation/schemas";
@@ -116,6 +117,9 @@ export function BannerWizard({
     return { title: "titleHe", subtitle: "subtitleHe", button: "buttonHe" } as const;
   }, [language]);
 
+  // Arabic / English without a title: the site shows only the picture and the button there.
+  const missingLanguages = bannerMissingLanguages(draftToBanner({ ...draft, title: (draft.titleHe || draft.title).trim() }));
+
   const canContinue =
     step === 0
       ? Boolean(draft.imageUrl)
@@ -123,8 +127,6 @@ export function BannerWizard({
         ? Boolean(
             (draft.titleHe || draft.title).trim() &&
               (draft.subtitleHe || draft.subtitle).trim() &&
-              (draft.ctaAction === "none" ||
-                (draft.buttonHe || draft.cta || "").trim()) &&
               (draft.ctaAction !== "link" || draft.ctaUrl?.trim()) &&
               (!["product", "category"].includes(draft.ctaAction || "") ||
                 draft.ctaTargetId)
@@ -134,7 +136,8 @@ export function BannerWizard({
   const normalizedDraft = (): BannerInput => {
     const title = (draft.titleHe || draft.title).trim();
     const subtitle = (draft.subtitleHe || draft.subtitle).trim();
-    const cta = (draft.buttonHe || draft.cta || "").trim();
+    // The old single field mirrors the Hebrew button (an empty button shows the translated default).
+    const cta = (draft.buttonHe || "").trim();
     return {
       ...draft,
       title,
@@ -293,6 +296,14 @@ export function BannerWizard({
                   className="mt-1"
                 />
               </div>
+              {missingLanguages.length > 0 && (
+                <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status" data-banner-missing-note>
+                  {t("admin.banners.missingNote").replace(
+                    "{languages}",
+                    missingLanguages.map((l) => t(l === "ar" ? "admin.banners.lang.ar" : "admin.banners.lang.en")).join(", ")
+                  )}
+                </p>
+              )}
               <div>
                 <Label>{t("admin.banners.ctaText")}</Label>
                 <Input
@@ -300,6 +311,7 @@ export function BannerWizard({
                   value={(draft[localizedKeys.button] as string | undefined) ?? ""}
                   onChange={(event) => set(localizedKeys.button, event.target.value)}
                   className="mt-1"
+                  placeholder={t("admin.banners.ctaDefault")}
                 />
               </div>
               <div>

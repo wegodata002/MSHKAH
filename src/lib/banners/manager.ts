@@ -1,5 +1,6 @@
 import type { BannerInput } from "@/lib/validation/schemas";
 import type { BannerSlide } from "@/types";
+import { legacyHebrewButton } from "@/lib/banners/display";
 
 export type BannerVisibility = "live" | "inactive" | "scheduled" | "ended";
 
@@ -45,7 +46,7 @@ export function bannerToDraft(banner: BannerSlide): BannerInput {
     subtitleHe: banner.subtitle_he || banner.subtitle,
     subtitleAr: banner.subtitle_ar || "",
     subtitleEn: banner.subtitle_en || "",
-    buttonHe: banner.button_he || banner.cta || "",
+    buttonHe: banner.button_he || legacyHebrewButton(banner),
     buttonAr: banner.button_ar || "",
     buttonEn: banner.button_en || "",
     imageUrl: banner.image,
