@@ -2,7 +2,9 @@ import { NextRequest } from "next/server";
 import { requireAdminOnly } from "@/lib/auth/verify-admin";
 import { getAdminDb } from "@/lib/firebase/admin";
 import { parseStaffAdminRequest } from "@/lib/staff/admin-input";
-import { createStaff, listStaff, setStaffPin, updateStaff } from "@/lib/staff/admin/store";
+import { createStaff, deleteStaff, listStaff, setStaffPin, updateStaff } from "@/lib/staff/admin/store";
+import { listCourierDeliveries } from "@/lib/couriers/admin/store";
+import { openDeliveryCount } from "@/lib/couriers/deliveries";
 import { getOrCreateWaiterJoinKey, listDevices, renameDevice, revokeDevice, rotateWaiterJoinKey } from "@/lib/staff/admin/devices";
 import { waiterJoinUrl } from "@/lib/staff/waiter-join";
 import { qrStoreOrigin } from "@/lib/admin-qr-links";
@@ -39,6 +41,16 @@ export async function POST(request: NextRequest) {
     if (req.action === "rename-device") {
       const done = await renameDevice(db, req.deviceId, req.name);
       return done ? Response.json({ ok: true }) : Response.json({ error: "NOT_FOUND", code: "NOT_FOUND" }, { status: 404 });
+    }
+    if (req.action === "delete") {
+      const result = await deleteStaff(db, {
+        id: req.id,
+        openDeliveriesToday: async (courierId) => openDeliveryCount(await listCourierDeliveries(db, courierId)),
+      });
+      if (result.ok) return Response.json({ ok: true });
+      return result.code === "OPEN_DELIVERIES"
+        ? Response.json({ error: result.code, code: result.code, open: result.open }, { status: 409 })
+        : Response.json({ error: result.code, code: result.code }, { status: 404 });
     }
     if (req.action === "revoke-device") {
       const done = await revokeDevice(db, req.deviceId);

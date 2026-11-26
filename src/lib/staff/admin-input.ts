@@ -8,6 +8,8 @@ export type StaffAdminRequest =
   | { action: "create"; name: string; phone: string; role: StaffRole; pin?: string }
   | { action: "update"; id: string; name?: string; phone?: string; role?: StaffRole; active?: boolean; worksToday?: boolean }
   | { action: "set-pin"; id: string; pin: string }
+  /** Removes the staff record only; orders keep the names saved on them. */
+  | { action: "delete"; id: string }
   | { action: "devices" }
   | { action: "rename-device"; deviceId: string; name: string }
   | { action: "revoke-device"; deviceId: string }
@@ -47,9 +49,8 @@ export function parseStaffAdminRequest(body: unknown): { ok: true; request: Staf
       if (!name) return { ok: false, error: "NAME" };
       const phone = cleanPhone(input.phone);
       if (!phone) return { ok: false, error: "PHONE" };
-      if (!isStaffRole(input.role)) return { ok: false, error: "ROLE" };
-      // Waiters have no code: they join with the waiters' QR.
-      if (input.role === "waiter") return { ok: true, request: { action: "create", name, phone, role: "waiter" } };
+      // Only couriers are added: waiters join with the waiters' QR and need no record.
+      if (input.role !== "courier") return { ok: false, error: "ROLE" };
       const pinError = checkPin(input.pin);
       if (pinError) return { ok: false, error: pinError };
       return { ok: true, request: { action: "create", name, phone, role: input.role, pin: input.pin as string } };
@@ -90,6 +91,10 @@ export function parseStaffAdminRequest(body: unknown): { ok: true; request: Staf
     case "revoke-device": {
       if (typeof input.deviceId !== "string" || !ID.test(input.deviceId)) return { ok: false, error: "ID" };
       return { ok: true, request: { action: "revoke-device", deviceId: input.deviceId } };
+    }
+    case "delete": {
+      if (typeof input.id !== "string" || !ID.test(input.id)) return { ok: false, error: "ID" };
+      return { ok: true, request: { action: "delete", id: input.id } };
     }
     case "set-pin": {
       if (typeof input.id !== "string" || !ID.test(input.id)) return { ok: false, error: "ID" };

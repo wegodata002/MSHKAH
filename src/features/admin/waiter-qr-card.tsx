@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Download, Loader2, Lock, QrCode, RefreshCw } from "lucide-react";
+import { Check, Copy, Download, Loader2, Lock, QrCode, RefreshCw } from "lucide-react";
 import { useT } from "@/components/providers/locale-provider";
 import { Button } from "@/components/ui/button";
 import { AdminCard } from "@/features/admin/components/admin-card";
@@ -29,6 +29,7 @@ export function WaiterQrCard({ index = 0 }: { index?: number }) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async (action: "waiter-qr" | "rotate-waiter-qr") => {
     const result = await clientAdminFetch<{ qr: WaiterQr }>("/api/admin/staff", { action });
@@ -60,6 +61,18 @@ export function WaiterQrCard({ index = 0 }: { index?: number }) {
     a.href = await createQrPngDataUrl(qr.url, ADMIN_QR_DOWNLOAD_PX);
     a.download = `mishkah-qr-waiters-${qr.version}.png`;
     a.click();
+  };
+
+  // The secret link itself, to send to one waiter (Admin only: the card has no link otherwise).
+  const copyLink = async () => {
+    if (!qr) return;
+    try {
+      await navigator.clipboard.writeText(qr.url);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch {
+      setCopied(false);
+    }
   };
 
   const rotate = async () => {
@@ -103,6 +116,10 @@ export function WaiterQrCard({ index = 0 }: { index?: number }) {
               </p>
             )}
             <div className="flex w-full flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-center">
+              <Button type="button" variant="outline" className="h-10 rounded-xl" onClick={() => void copyLink()} data-waiter-qr-copy>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? t("admin.qr.copied") : t("admin.qr.copy")}
+              </Button>
               <Button type="button" variant="turquoise" className="h-10 rounded-xl" onClick={() => void download()} data-waiter-qr-download>
                 <Download className="h-4 w-4" />
                 {t("admin.qr.download")}
@@ -114,6 +131,10 @@ export function WaiterQrCard({ index = 0 }: { index?: number }) {
                 </Button>
               )}
             </div>
+            <p className="-mt-2 flex items-center gap-1.5 text-xs text-coffee/60" data-waiter-qr-copy-note>
+              <Lock className="h-3.5 w-3.5 shrink-0" />
+              {t("admin.waiterQr.copyNote")}
+            </p>
             {confirming && (
               <div className="w-full rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800" data-waiter-qr-confirm>
                 <p>{t("admin.waiterQr.replaceConfirm")}</p>

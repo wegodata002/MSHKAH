@@ -73,7 +73,7 @@ export function SiteHeader() {
     >
       <div className="mx-auto flex h-full max-w-[1400px] items-center gap-3 px-4 md:gap-4 md:px-6 lg:px-8">
         {/* Logo block — start (right in RTL) */}
-        {/* Phone and tablet: ☰ opens the side menu (every link, About, Contact, language). */}
+        {/* Phone and tablet: ☰ opens the side menu (every link, About, Contact). */}
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
@@ -152,8 +152,10 @@ export function SiteHeader() {
             <span className="hidden min-[400px]:inline sm:hidden">{t(clubMember ? "nav.myCard" : "nav.joinClubShort")}</span>
             <span className="hidden sm:inline">{t(clubMember ? "nav.myCard" : "nav.joinClub")}</span>
           </Link>
-          {/* Desktop only: on phones the language is chosen in the side menu. */}
+          {/* Desktop: the three languages side by side. Phone and tablet: a small round button with
+              the current language ("עב" / "ع" / "EN") that opens the list. */}
           <LanguageSwitcher compact className="hidden lg:inline-flex" />
+          <LanguageSwitcher variant="icon" className="lg:hidden" />
 
           {/* Phone and tablet: favourites (desktop has them in the top menu). */}
           <Link href="/favorites" aria-label={t("nav.favorites")} className={cn(ICON_BUTTON, "lg:hidden")} data-header-favorites>

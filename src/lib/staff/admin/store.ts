@@ -108,6 +108,29 @@ export async function setStaffPin(db: Firestore, input: { id: string; pin: strin
   });
 }
 
+export type StaffDeleteResult = { ok: true } | { ok: false; code: "NOT_FOUND" } | { ok: false; code: "OPEN_DELIVERIES"; open: number };
+
+/**
+ * Deletes the staff record only. Orders keep what was saved on them (courier name, "served by",
+ * "paid by", "entered by"), so old orders show exactly as before. A courier with a delivery still
+ * open today must hand it to another courier first (`openDeliveriesToday`, from the couriers store).
+ */
+export async function deleteStaff(
+  db: Firestore,
+  input: { id: string; openDeliveriesToday: (courierId: string) => Promise<number> }
+): Promise<StaffDeleteResult> {
+  const ref = staffCol(db).doc(input.id);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, code: "NOT_FOUND" };
+  const data = snap.data() as StaffMemberDoc;
+  if (data.role === "courier") {
+    const open = await input.openDeliveriesToday(input.id);
+    if (open > 0) return { ok: false, code: "OPEN_DELIVERIES", open };
+  }
+  await ref.delete();
+  return { ok: true };
+}
+
 export async function findActiveStaffByPinHash(db: Firestore, pinHash: string) {
   const snap = await staffCol(db).where("pinHash", "==", pinHash).limit(5).get();
   // Couriers only: waiters no longer sign in with a code (an old waiter code is a wrong code).

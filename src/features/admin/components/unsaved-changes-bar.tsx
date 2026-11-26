@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Loader2, RotateCcw, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/components/providers/locale-provider";
@@ -68,16 +68,36 @@ export function UnsavedChangesBar({
   saveLabel?: string;
 }) {
   const t = useT();
+  const barRef = useRef<HTMLDivElement>(null);
+  // The accessibility button sits just above this bar while it is shown (accessibility.css):
+  // publish the distance from the bottom of the screen to the top of the bar.
+  useEffect(() => {
+    const el = barRef.current;
+    if (!visible || !el) return;
+    const root = document.documentElement;
+    const update = () => root.style.setProperty("--admin-unsaved-top", `${Math.max(0, Math.round(window.innerHeight - el.getBoundingClientRect().top))}px`);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    window.addEventListener("resize", update);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+      root.style.removeProperty("--admin-unsaved-top");
+    };
+  }, [visible]);
   if (!visible) return null;
 
   return (
     <>
       <div aria-hidden className="h-28 lg:h-20" />
       <div
+        data-unsaved-bar
         className="pointer-events-none fixed inset-x-0 bottom-[calc(var(--mobile-bottom-nav-height)+env(safe-area-inset-bottom,0px)+0.5rem)] z-[95] px-4 lg:bottom-4 lg:pe-6 lg:ps-[calc(var(--admin-sidebar-w)+1.5rem)] print:hidden"
         style={{ "--admin-sidebar-w": `${ADMIN_SIDEBAR_WIDTH_PX}px` } as React.CSSProperties}
       >
         <div
+          ref={barRef}
           role="status"
           className="pointer-events-auto mx-auto flex max-w-3xl flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-300 bg-warm-white px-4 py-3 shadow-elevated dark:border-amber-500/40 dark:bg-[#1a1412]"
         >
