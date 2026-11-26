@@ -154,6 +154,7 @@ export function OrderCard({
 
   return (
     <article
+      data-admin-order={order.id}
       className={cn(
         "rounded-2xl border border-beige-dark/15 border-s-4 bg-warm-white p-3 shadow-soft dark:border-white/10 dark:bg-white/5",
         STATUS_BORDER[status],

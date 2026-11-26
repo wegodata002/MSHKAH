@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { BadgeCheck, ChefHat, Inbox, PackageCheck, Search, Timer, Wallet } from "lucide-react";
+import { ArrowRight, BadgeCheck, ChefHat, Inbox, PackageCheck, Search, Timer, Wallet } from "lucide-react";
+import Link from "next/link";
+import { useAdminPath } from "@/hooks/useAdminPath";
 import { useOrders } from "@/hooks/useOrders";
 import { useClubMembers } from "@/hooks/useClubMembers";
 import { updateOrderStatus } from "@/services";
@@ -78,6 +80,17 @@ export function OrdersAdmin() {
   const [paymentFilter, setPaymentFilter] = useState<PaymentStatus | "all">("all");
   const [typeFilter, setTypeFilter] = useState<"pickup" | "delivery" | "dine_in" | "all">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const adminPath = useAdminPath();
+  // Opened from a club member (Admin → Club → Members): ?order=<id>&from=club shows that order
+  // (filters opened up so it is in the list) and a "Back to club members" button.
+  const [focusOrderId, setFocusOrderId] = useState<string | null>(null);
+  const [fromClub, setFromClub] = useState(false);
+  const focusedOrder = useRef(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setFocusOrderId(params.get("order"));
+    setFromClub(params.get("from") === "club");
+  }, []);
   const [optimistic, setOptimistic] = useState<Record<string, OrderStatus>>({});
   const [updatingIds, setUpdatingIds] = useState<Set<string>>(new Set());
   const [cancelOrder, setCancelOrder] = useState<Order | null>(null);
@@ -186,6 +199,24 @@ export function OrdersAdmin() {
     [effectiveOrders, now, payments, statsPeriod]
   );
   const statsUnavailable = Boolean(error) && orders.length === 0;
+
+  // Show the order opened from a club member: its tab, every date / status / payment / type, its number
+  // in the search, opened, and scrolled to.
+  useEffect(() => {
+    if (!focusOrderId || focusedOrder.current || loading) return;
+    const order = orders.find((o) => o.id === focusOrderId);
+    if (!order) return;
+    focusedOrder.current = true;
+    setTab(isActiveOrder(order) ? "active" : "history");
+    setDateFilter("all");
+    setStatusFilter("all");
+    setPaymentFilter("all");
+    setTypeFilter("all");
+    setSearchInput(order.orderNumber);
+    setSearch(order.orderNumber.trim().toLocaleLowerCase());
+    setExpanded(order.id);
+    window.setTimeout(() => document.querySelector(`[data-admin-order="${CSS.escape(order.id)}"]`)?.scrollIntoView({ block: "center" }), 400);
+  }, [focusOrderId, loading, orders]);
 
   const filtered = useMemo(() => {
     return effectiveOrders
@@ -353,6 +384,12 @@ export function OrdersAdmin() {
 
   return (
     <div>
+      {fromClub && (
+        <Link href={`${adminPath("club")}?tab=members`} className="mb-3 inline-flex items-center gap-1.5 text-sm font-semibold text-turquoise" data-back-to-members>
+          <ArrowRight className="h-4 w-4 ltr:rotate-180" />
+          {t("admin.clubMembers.back")}
+        </Link>
+      )}
       <AdminPageHeader
         title={t("admin.orders.title")}
         subtitle={t("admin.orders.operationsSubtitle")}
