@@ -108,8 +108,8 @@ describe("wiring", () => {
     expect(read("src/features/staff/waiter-tables.tsx")).toContain("newWaiterWork(lastStages.current, json.orders, sentHere.current)");
   });
 
-  it("the screen stays on only on the fixed tablet", () => {
-    expect(read("src/features/staff/waiter-tables.tsx")).toContain("useScreenWakeLock(isDevice)");
+  it("the screen stays on while the waiter screen is open (not on the courier screen)", () => {
+    expect(read("src/features/staff/waiter-tables.tsx")).toContain("useScreenWakeLock(Boolean(data))");
     expect(read("src/features/staff/courier-deliveries.tsx")).not.toContain("useScreenWakeLock");
     expect(read("src/features/staff/use-work-alerts.ts")).toContain('wakeLock.request("screen")');
   });

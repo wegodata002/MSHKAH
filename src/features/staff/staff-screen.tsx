@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Delete, Loader2, Tablet } from "lucide-react";
+import { Delete, Loader2, QrCode } from "lucide-react";
 import { AppLogo } from "@/components/brand/app-logo";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { useLocale, useT } from "@/components/providers/locale-provider";
@@ -12,7 +12,7 @@ import { CourierDeliveries } from "@/features/staff/courier-deliveries";
 import { WaiterTables } from "@/features/staff/waiter-tables";
 
 type Member = { name: string; role: StaffRole; worksToday: boolean };
-type State = { kind: "checking" } | { kind: "pin" } | { kind: "pair" } | { kind: "in"; member: Member } | { kind: "device"; name: string };
+type State = { kind: "checking" } | { kind: "pin" } | { kind: "in"; member: Member } | { kind: "device"; name: string };
 
 const PIN_LENGTH = 4;
 const KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "", "0", "back"] as const;
@@ -139,85 +139,22 @@ function PinPad({ audience, onSignedIn }: { audience: StaffRole; onSignedIn: (me
   );
 }
 
-/** A cafe tablet: type the one-time code from Admin → Staff → Fixed devices (6 digits, 10 minutes). */
-function PairDevice({ onPaired, onBack }: { onPaired: (name: string) => void; onBack: () => void }) {
+/** Waiters: no code. This device is not connected yet — scan the waiters' QR in the work area. */
+function ScanWaiterQr() {
   const t = useT();
-  const [code, setCode] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/staff/device/pair", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = (await res.json().catch(() => null)) as { ok?: boolean; code?: string; device?: { name: string } } | null;
-      if (res.ok && data?.ok && data.device) return onPaired(data.device.name);
-      setError(
-        t(
-          data?.code === "EXPIRED"
-            ? "device.pair.expired"
-            : data?.code === "USED"
-              ? "device.pair.used"
-              : data?.code === "BLOCKED"
-                ? "device.pair.blocked"
-                : data?.code === "INVALID_CODE"
-                  ? "device.pair.invalid"
-                  : "staff.error"
-        )
-      );
-    } catch {
-      setError(t("staff.error"));
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
-    <form onSubmit={submit} className="flex w-full max-w-sm flex-col items-center text-center" data-pair-device>
-      <Tablet className="h-10 w-10 text-turquoise" strokeWidth={1.5} />
-      <h1 className="mt-3 font-display text-xl font-bold text-dark-brown">{t("device.pair.title")}</h1>
-      <p className="mt-1 text-sm text-coffee/60">{t("device.pair.hint")}</p>
-      <input
-        value={code}
-        onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        dir="ltr"
-        aria-label={t("device.pair.code")}
-        placeholder="000000"
-        className="mt-5 h-14 w-56 rounded-2xl border-2 border-beige-dark/40 bg-warm-white text-center text-2xl font-bold tracking-[0.35em] text-dark-brown focus:border-turquoise focus:outline-none"
-        data-pair-code
-      />
-      {error && (
-        <p className="mt-3 text-sm text-red-600" role="alert" data-pair-error>
-          {error}
-        </p>
-      )}
-      <button
-        type="submit"
-        disabled={busy || code.length !== 6}
-        className="mt-5 flex h-12 w-56 items-center justify-center gap-2 rounded-xl bg-turquoise font-bold text-warm-white disabled:opacity-50"
-        data-pair-submit
-      >
-        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-        {t("device.pair.submit")}
-      </button>
-      <button type="button" onClick={onBack} className="mt-3 text-sm text-coffee/60 underline">
-        {t("device.pair.back")}
-      </button>
-    </form>
+    <div className="flex max-w-sm flex-col items-center text-center" data-waiter-scan-qr>
+      <QrCode className="h-12 w-12 text-turquoise" strokeWidth={1.5} />
+      <h1 className="mt-3 font-display text-xl font-bold text-dark-brown">{t("waiter.join.scanTitle")}</h1>
+      <p className="mt-2 text-sm text-coffee/65">{t("waiter.join.scanHint")}</p>
+    </div>
   );
 }
 
 /**
- * /staff — where the "Couriers" and "Waiters" QR codes lead. Without a valid code nothing is shown but
- * the keypad. A fixed cafe tablet (paired from the admin) opens the waiter screen without a code.
+ * /staff — couriers: the personal-code keypad, then their deliveries. Waiters (/staff?for=waiter): a
+ * device that joined with the waiters' QR opens the tables screen; any other device is asked to scan
+ * that QR (waiters have no code).
  */
 export function StaffScreen() {
   const t = useT();
@@ -234,9 +171,9 @@ export function StaffScreen() {
       .then(async (res) => (res.ok ? ((await res.json()) as { member?: Member; device?: { name: string } }) : null))
       .then((data) => {
         if (cancelled) return;
-        // Signed in as the other role, or a fixed tablet at the couriers' QR: just the keypad (no hint).
-        if (data?.member && data.member.role === audience) setState({ kind: "in", member: data.member });
-        else if (data?.device && audience === "waiter") setState({ kind: "device", name: data.device.name });
+        // Couriers: signed in with their code. Waiters: a connected device. Otherwise the start screen.
+        if (audience === "courier" && data?.member?.role === "courier") setState({ kind: "in", member: data.member });
+        else if (audience === "waiter" && data?.device) setState({ kind: "device", name: data.device.name });
         else setState({ kind: "pin" });
       })
       .catch(() => !cancelled && setState({ kind: "pin" }));
@@ -268,20 +205,12 @@ export function StaffScreen() {
           <Loader2 className="h-8 w-8 animate-spin text-turquoise" aria-label={t("staff.checking")} />
         ) : state.kind === "in" && state.member.role === "courier" ? (
           <CourierDeliveries name={state.member.name} onSignedOut={() => setState({ kind: "pin" })} />
-        ) : state.kind === "in" || state.kind === "device" ? (
+        ) : state.kind === "device" ? (
           <WaiterTables onSignedOut={() => setState({ kind: "pin" })} />
-        ) : state.kind === "pair" ? (
-          <PairDevice onPaired={(name) => setState({ kind: "device", name })} onBack={() => setState({ kind: "pin" })} />
+        ) : audience === "waiter" ? (
+          <ScanWaiterQr />
         ) : (
-          <div className="flex flex-col items-center">
-            <PinPad audience={audience} onSignedIn={(member) => setState({ kind: "in", member })} />
-            {audience === "waiter" && (
-              <button type="button" onClick={() => setState({ kind: "pair" })} className="mt-8 inline-flex items-center gap-1.5 text-sm font-medium text-turquoise underline" data-pair-link>
-                <Tablet className="h-4 w-4" />
-                {t("device.pair.link")}
-              </button>
-            )}
-          </div>
+          <PinPad audience="courier" onSignedIn={(member) => setState({ kind: "in", member })} />
         )}
       </main>
     </div>

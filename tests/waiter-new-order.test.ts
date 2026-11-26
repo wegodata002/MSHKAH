@@ -187,21 +187,21 @@ describe("new order from the waiter", () => {
 });
 
 describe("wiring", () => {
-  it("the API needs a waiter (or a tablet with a chosen waiter), and prints + emails on the server", () => {
+  it("the API needs a connected device (recorded under its name), and prints + emails on the server", () => {
     const route = read("src/app/api/staff/tables/order/route.ts");
     expect(route).toContain("readWaiterContext(db, request)");
-    expect(route).toContain("actorFor(db, ctx, body?.waiterId)");
-    expect(route).toContain("CHOOSE_WAITER");
+    expect(route).toContain("actorFor(ctx)");
+    expect(route).not.toMatch(/CHOOSE_WAITER|waiterId/);
     expect(route).toContain("maybeEnqueueNewOrderPrint(orderId)");
     expect(route).toContain("notifyNewOrder(orderId)");
     expect(route).toContain("loadModifierConfigs(db, ids)");
   });
 
-  it("the screen opens the new order from a table and sends the chosen waiter", () => {
+  it("the screen opens the new order from a table (no 'who is working now')", () => {
     const screen = read("src/features/staff/waiter-tables.tsx");
     expect(screen).toContain("data-new-order-start");
-    expect(screen).toContain("waiterId={chosen?.id}");
-    expect(screen).toContain("disabled={needWho || !data.dineInEnabled}");
+    expect(screen).toContain("disabled={!data.dineInEnabled}");
+    expect(screen).not.toMatch(/waiterId|needWho|data-who-chooser/);
     const form = read("src/features/staff/waiter-new-order.tsx");
     expect(form).toContain('fetch("/api/staff/tables/order"');
     expect(form).not.toMatch(/priceDelta:/);

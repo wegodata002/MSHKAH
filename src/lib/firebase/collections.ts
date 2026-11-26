@@ -75,10 +75,12 @@ export const COLLECTIONS = {
   loyaltyCoffeeLedger: "loyaltyCoffeeLedger",
   /** Couriers and waiters who sign in with a personal 4-digit code (server only; no client rule). */
   staffMembers: "staffMembers",
-  /** Fixed cafe tablets signed in to the waiter screen (server only). */
+  /** Devices signed in to the waiter screen (server only). */
   staffDevices: "staffDevices",
-  /** One-time pairing codes for fixed devices, by hash (server only). */
+  /** Old one-time 6-digit pairing codes (no longer created; server only). */
   staffDevicePairings: "staffDevicePairings",
+  /** The waiters' QR secret, `staffJoinKeys/waiter` (server only; read by the admin-only API). */
+  staffJoinKeys: "staffJoinKeys",
   /** Server-only computed figures (e.g. "popularity": best sellers). */
   stats: "stats",
 } as const;

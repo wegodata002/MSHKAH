@@ -5,12 +5,11 @@ import { createQrPngDataUrl } from "@/lib/admin-qr-image";
 describe("admin QR links", () => {
   it("exposes the public links (menu, join the club) and the staff sign-in links from a single config", () => {
     const links = getAdminQrLinks();
-    expect(links.map((l) => l.id)).toEqual(["menu", "club", "couriers", "waiters"]);
-    const [menu, club, couriers, waiters] = links;
+    // The waiters' QR carries a secret: drawn by its own admin-only card, not from this list.
+    expect(links.map((l) => l.id)).toEqual(["menu", "club", "couriers"]);
+    const [menu, club, couriers] = links;
     expect(couriers?.url).toBe(menu?.url.replace(/\/catalog$/, "/staff?for=courier"));
-    expect(waiters?.url).toBe(menu?.url.replace(/\/catalog$/, "/staff?for=waiter"));
     expect(couriers?.nameKey).toBe("admin.qr.couriersName");
-    expect(waiters?.nameKey).toBe("admin.qr.waitersName");
     expect(menu?.nameKey).toBe("admin.qr.menuPageName");
     expect(menu?.filename).toBe("mishkah-qr-menu.png");
     expect(club?.filename).toBe("mishkah-qr-club.png");

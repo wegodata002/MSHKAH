@@ -1,77 +1,140 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { COLLECTIONS } from "@/lib/firebase/collections";
 import {
-  checkPairing,
-  newPairingCode,
-  pairingCodeHash,
-  PAIRING_CODE_TTL_MS,
   readDeviceSession,
   signDeviceSession,
   toDeviceView,
-  type DevicePairingDoc,
   type StaffDeviceDoc,
   type StaffDeviceView,
 } from "@/lib/staff/device";
+import {
+  joinKeyHash,
+  joinKeyMatches,
+  newJoinKey,
+  nextWaiterDeviceName,
+  WAITER_JOIN_KEY_DOC,
+  type WaiterJoinKeyDoc,
+} from "@/lib/staff/waiter-join";
 
-/** Server-only (Admin SDK) fixed devices: pairing, reading the device cookie, list, disconnect. */
+/** Server-only (Admin SDK) waiter devices: the QR secret, joining, list, rename, disconnect. */
 
 const LAST_SEEN_EVERY_MS = 5 * 60 * 1000;
 
-export async function createPairing(db: Firestore, input: { deviceName: string; actor: string; now?: Date }): Promise<{ code: string; expiresAt: string }> {
-  const now = input.now ?? new Date();
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const code = newPairingCode();
-    const ref = db.collection(COLLECTIONS.staffDevicePairings).doc(pairingCodeHash(code));
-    const created = await db.runTransaction(async (tx) => {
-      const existing = (await tx.get(ref)).data() as DevicePairingDoc | undefined;
-      // A code still waiting to be used is never reused for another device.
-      if (existing && !existing.used && now.getTime() < existing.expiresAtMs) return false;
-      const doc: DevicePairingDoc = {
-        deviceName: input.deviceName,
-        createdAt: now.toISOString(),
-        createdBy: input.actor,
-        expiresAtMs: now.getTime() + PAIRING_CODE_TTL_MS,
-        used: false,
-      };
-      tx.set(ref, doc);
-      return true;
-    });
-    if (created) return { code, expiresAt: new Date(now.getTime() + PAIRING_CODE_TTL_MS).toISOString() };
-  }
-  throw new Error("could not create a pairing code");
+function keyRef(db: Firestore) {
+  return db.collection(COLLECTIONS.staffJoinKeys).doc(WAITER_JOIN_KEY_DOC);
 }
 
-export type PairResult =
-  | { ok: true; cookie: { value: string; maxAgeSeconds: number }; device: StaffDeviceView }
-  | { ok: false; code: "INVALID_CODE" | "EXPIRED" | "USED" };
-
-/** The tablet typed a pairing code: link it as a fixed device for 30 days (one use per code). */
-export async function pairDevice(db: Firestore, input: { code: string; now?: Date }): Promise<PairResult> {
+/** The current waiters' QR secret; made the first time the admin opens it. */
+export async function getOrCreateWaiterJoinKey(db: Firestore, input: { actor: string; now?: Date }): Promise<{ key: string; version: number; createdAt: string }> {
   const now = input.now ?? new Date();
-  const pairingRef = db.collection(COLLECTIONS.staffDevicePairings).doc(pairingCodeHash(input.code));
-  const deviceRef = db.collection(COLLECTIONS.staffDevices).doc();
   return db.runTransaction(async (tx) => {
-    const pairing = (await tx.get(pairingRef)).data() as DevicePairingDoc | undefined;
-    const check = checkPairing(pairing, now.getTime());
-    if (!check.ok) return check;
-    const session = signDeviceSession({ deviceId: deviceRef.id, sessionVersion: 1, now: now.getTime() });
-    const device: StaffDeviceDoc = {
-      name: pairing!.deviceName,
+    const existing = (await tx.get(keyRef(db))).data() as WaiterJoinKeyDoc | undefined;
+    if (existing?.key) return { key: existing.key, version: existing.version, createdAt: existing.createdAt };
+    const key = newJoinKey();
+    const doc: WaiterJoinKeyDoc = { key, keyHash: joinKeyHash(key), version: 1, createdAt: now.toISOString(), createdBy: input.actor };
+    tx.set(keyRef(db), doc);
+    return { key, version: 1, createdAt: doc.createdAt };
+  });
+}
+
+/**
+ * "Replace QR": a new secret (the printed one stops working) and every device that joined with a
+ * QR is disconnected at once. Devices linked earlier with a 6-digit code are not touched.
+ */
+export async function rotateWaiterJoinKey(
+  db: Firestore,
+  input: { actor: string; now?: Date }
+): Promise<{ key: string; version: number; createdAt: string; disconnected: number }> {
+  const now = input.now ?? new Date();
+  const next = await db.runTransaction(async (tx) => {
+    const existing = (await tx.get(keyRef(db))).data() as WaiterJoinKeyDoc | undefined;
+    const key = newJoinKey();
+    const doc: WaiterJoinKeyDoc = {
+      key,
+      keyHash: joinKeyHash(key),
+      version: (existing?.version ?? 0) + 1,
+      createdAt: now.toISOString(),
+      createdBy: input.actor,
+    };
+    tx.set(keyRef(db), doc);
+    return doc;
+  });
+  const devices = await db.collection(COLLECTIONS.staffDevices).where("source", "==", "qr").get();
+  const active = devices.docs.filter((d) => (d.data() as StaffDeviceDoc).active);
+  for (let i = 0; i < active.length; i += 400) {
+    const batch = db.batch();
+    for (const d of active.slice(i, i + 400)) {
+      const data = d.data() as StaffDeviceDoc;
+      batch.update(d.ref, { active: false, sessionVersion: (data.sessionVersion ?? 1) + 1 });
+    }
+    await batch.commit();
+  }
+  return { key: next.key, version: next.version, createdAt: next.createdAt, disconnected: active.length };
+}
+
+export type JoinResult =
+  | { ok: true; renewed: boolean; cookie: { value: string; maxAgeSeconds: number }; device: StaffDeviceView }
+  | { ok: false; code: "INVALID_KEY" };
+
+/**
+ * A device scanned the waiters' QR. A device already joined with the current QR gets 90 more days
+ * (same name); any other device is added as "טלפון מלצרית N".
+ */
+export async function joinWaiterDevice(
+  db: Firestore,
+  input: { key: unknown; deviceCookie?: string | null; now?: Date }
+): Promise<JoinResult> {
+  const now = input.now ?? new Date();
+  const session = readDeviceSession(input.deviceCookie, now.getTime());
+  return db.runTransaction(async (tx) => {
+    const keyDoc = (await tx.get(keyRef(db))).data() as WaiterJoinKeyDoc | undefined;
+    if (!joinKeyMatches(input.key, keyDoc)) return { ok: false as const, code: "INVALID_KEY" as const };
+
+    // Scanned again on a device that is still connected with this QR: renew it.
+    if (session) {
+      const ref = db.collection(COLLECTIONS.staffDevices).doc(session.deviceId);
+      const doc = (await tx.get(ref)).data() as StaffDeviceDoc | undefined;
+      if (
+        doc &&
+        doc.active &&
+        doc.source === "qr" &&
+        doc.joinVersion === keyDoc!.version &&
+        doc.sessionVersion === session.sessionVersion &&
+        Date.parse(doc.expiresAt) > now.getTime()
+      ) {
+        const cookie = signDeviceSession({ deviceId: ref.id, sessionVersion: doc.sessionVersion, now: now.getTime() });
+        tx.update(ref, { expiresAt: cookie.expiresAt, lastSeenAt: now.toISOString() });
+        return {
+          ok: true as const,
+          renewed: true,
+          cookie: { value: cookie.value, maxAgeSeconds: cookie.maxAgeSeconds },
+          device: toDeviceView(ref.id, { ...doc, expiresAt: cookie.expiresAt, lastSeenAt: now.toISOString() }),
+        };
+      }
+    }
+
+    const connected = await tx.get(db.collection(COLLECTIONS.staffDevices).where("active", "==", true));
+    const name = nextWaiterDeviceName(connected.docs.map((d) => String((d.data() as StaffDeviceDoc).name ?? "")));
+    const ref = db.collection(COLLECTIONS.staffDevices).doc();
+    const cookie = signDeviceSession({ deviceId: ref.id, sessionVersion: 1, now: now.getTime() });
+    const doc: StaffDeviceDoc = {
+      name,
       role: "waiter",
       active: true,
       sessionVersion: 1,
       createdAt: now.toISOString(),
-      createdBy: pairing!.createdBy,
-      expiresAt: session.expiresAt,
+      createdBy: "waiter-qr",
+      expiresAt: cookie.expiresAt,
       lastSeenAt: now.toISOString(),
+      source: "qr",
+      joinVersion: keyDoc!.version,
     };
-    tx.set(deviceRef, device);
-    tx.update(pairingRef, { used: true });
-    return { ok: true as const, cookie: { value: session.value, maxAgeSeconds: session.maxAgeSeconds }, device: toDeviceView(deviceRef.id, device) };
+    tx.set(ref, doc);
+    return { ok: true as const, renewed: false, cookie: { value: cookie.value, maxAgeSeconds: cookie.maxAgeSeconds }, device: toDeviceView(ref.id, doc) };
   });
 }
 
-/** The fixed device behind the cookie: still connected (not disconnected, not expired). */
+/** The device behind the cookie: still connected (not disconnected, not expired). */
 export async function readStaffDevice(db: Firestore, cookieValue: string | null | undefined, now = new Date()): Promise<StaffDeviceView | null> {
   const session = readDeviceSession(cookieValue, now.getTime());
   if (!session) return null;
@@ -86,15 +149,27 @@ export async function readStaffDevice(db: Firestore, cookieValue: string | null 
   return toDeviceView(snap.id, doc);
 }
 
-export async function listDevices(db: Firestore): Promise<StaffDeviceView[]> {
-  const snap = await db.collection(COLLECTIONS.staffDevices).get();
+/** Connected devices (not disconnected, not past their end date), newest first. */
+export async function listDevices(db: Firestore, now = new Date()): Promise<StaffDeviceView[]> {
+  const snap = await db.collection(COLLECTIONS.staffDevices).where("active", "==", true).get();
   return snap.docs
     .map((d) => toDeviceView(d.id, d.data() as StaffDeviceDoc))
-    .filter((d) => d.active)
+    .filter((d) => Date.parse(d.expiresAt) > now.getTime())
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** Disconnect: the tablet is signed out on its next request. */
+/** Rename a connected device (its actions from now on carry the new name). */
+export async function renameDevice(db: Firestore, deviceId: string, name: string): Promise<boolean> {
+  const ref = db.collection(COLLECTIONS.staffDevices).doc(deviceId);
+  return db.runTransaction(async (tx) => {
+    const doc = (await tx.get(ref)).data() as StaffDeviceDoc | undefined;
+    if (!doc || !doc.active) return false;
+    tx.update(ref, { name });
+    return true;
+  });
+}
+
+/** Disconnect: the device is signed out on its next request. */
 export async function revokeDevice(db: Firestore, deviceId: string): Promise<boolean> {
   const ref = db.collection(COLLECTIONS.staffDevices).doc(deviceId);
   return db.runTransaction(async (tx) => {

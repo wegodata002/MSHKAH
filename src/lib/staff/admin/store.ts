@@ -19,20 +19,24 @@ export async function listStaff(db: Firestore): Promise<StaffMemberView[]> {
     .sort((a, b) => Number(b.active) - Number(a.active) || a.role.localeCompare(b.role) || a.name.localeCompare(b.name, "he"));
 }
 
-/** Is this code already someone else's? (codes are unique: sign-in is by code alone) */
+/**
+ * Is this code already someone else's? (codes are unique: sign-in is by code alone). A waiter's
+ * old code no longer counts: waiters join with the waiters' QR and have no code.
+ */
 async function pinInUse(db: Firestore, pinHash: string, exceptId?: string): Promise<boolean> {
-  const snap = await staffCol(db).where("pinHash", "==", pinHash).limit(2).get();
-  return snap.docs.some((doc) => doc.id !== exceptId);
+  const snap = await staffCol(db).where("pinHash", "==", pinHash).limit(5).get();
+  return snap.docs.some((doc) => doc.id !== exceptId && (doc.data() as StaffMemberDoc).role !== "waiter");
 }
 
-export type StaffWriteResult = { ok: true; member: StaffMemberView } | { ok: false; code: "PIN_IN_USE" | "NOT_FOUND" };
+export type StaffWriteResult = { ok: true; member: StaffMemberView } | { ok: false; code: "PIN_IN_USE" | "NOT_FOUND" | "WAITER_NO_PIN" };
 
 export async function createStaff(
   db: Firestore,
-  input: { name: string; phone: string; role: StaffRole; pin: string; actor: string }
+  input: { name: string; phone: string; role: StaffRole; pin?: string; actor: string }
 ): Promise<StaffWriteResult> {
-  const pinHash = hashPin(input.pin);
-  if (await pinInUse(db, pinHash)) return { ok: false, code: "PIN_IN_USE" };
+  // Waiters have no code (they join with the waiters' QR); couriers always have one.
+  const pinHash = input.role === "courier" && input.pin ? hashPin(input.pin) : null;
+  if (pinHash && (await pinInUse(db, pinHash))) return { ok: false, code: "PIN_IN_USE" };
   const now = new Date().toISOString();
   const doc: StaffMemberDoc = {
     name: input.name,
@@ -40,7 +44,7 @@ export async function createStaff(
     role: input.role,
     active: true,
     pinHash,
-    pinSetAt: now,
+    pinSetAt: pinHash ? now : null,
     sessionVersion: 1,
     workingDate: null,
     createdAt: now,
@@ -64,6 +68,12 @@ export async function updateStaff(
     if (input.name !== undefined) patch.name = input.name;
     if (input.phone !== undefined) patch.phone = input.phone;
     if (input.role !== undefined) patch.role = input.role;
+    // Becoming a waiter: the code is removed and any open sign-in ends.
+    if (input.role === "waiter" && current.role !== "waiter") {
+      patch.pinHash = null;
+      patch.pinSetAt = null;
+      patch.sessionVersion = (current.sessionVersion ?? 1) + 1;
+    }
     if (input.active !== undefined && input.active !== current.active) {
       patch.active = input.active;
       // Disabled: every open login of this member ends now.
@@ -84,6 +94,7 @@ export async function setStaffPin(db: Firestore, input: { id: string; pin: strin
     const snap = await tx.get(ref);
     if (!snap.exists) return { ok: false as const, code: "NOT_FOUND" as const };
     const current = snap.data() as StaffMemberDoc;
+    if (current.role === "waiter") return { ok: false as const, code: "WAITER_NO_PIN" as const };
     const now = new Date().toISOString();
     const patch: Partial<StaffMemberDoc> = {
       pinHash,
@@ -98,8 +109,9 @@ export async function setStaffPin(db: Firestore, input: { id: string; pin: strin
 }
 
 export async function findActiveStaffByPinHash(db: Firestore, pinHash: string) {
-  const snap = await staffCol(db).where("pinHash", "==", pinHash).limit(2).get();
-  const doc = snap.docs.find((d) => (d.data() as StaffMemberDoc).active);
+  const snap = await staffCol(db).where("pinHash", "==", pinHash).limit(5).get();
+  // Couriers only: waiters no longer sign in with a code (an old waiter code is a wrong code).
+  const doc = snap.docs.find((d) => (d.data() as StaffMemberDoc).active && (d.data() as StaffMemberDoc).role !== "waiter");
   if (!doc) return null;
   const data = doc.data() as StaffMemberDoc;
   return { id: doc.id, name: data.name, role: data.role, sessionVersion: data.sessionVersion ?? 1 };
@@ -113,6 +125,8 @@ export async function readStaffMember(db: Firestore, cookieValue: string | null 
   if (!snap.exists) return null;
   const data = snap.data() as StaffMemberDoc;
   if (!data.active || (data.sessionVersion ?? 1) !== session.sessionVersion) return null;
+  // A waiter's old code sign-in (12 hours) no longer counts: waiters use the waiters' QR.
+  if (data.role === "waiter") return null;
   return toStaffView(snap.id, data);
 }
 
