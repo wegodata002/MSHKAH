@@ -96,6 +96,9 @@ export function createFakeFirestore() {
   }
 
   const db = {
+    async getAll(...refs: Ref[]) {
+      return Promise.all(refs.map((ref) => ref.get()));
+    },
     collection(name: string) {
       return {
         // Auto ids look like real ones (letters and digits, 20 characters).
