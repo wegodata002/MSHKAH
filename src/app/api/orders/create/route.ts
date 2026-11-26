@@ -10,6 +10,7 @@ import { CLUB_COOKIE_NAME } from "@/lib/loyalty/session";
 import { readSessionMember } from "@/lib/loyalty/admin/session-member";
 import { checkCouponForMember, saveOrderWithCoupon } from "@/lib/loyalty/admin/coupons";
 import type { LoyaltyMember } from "@/lib/loyalty/types";
+import { saveMemberCheckoutDetails } from "@/lib/loyalty/admin/checkout-details";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 
 export const runtime = "nodejs";
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       const ref = await db.collection(COLLECTIONS.orders).add({ ...draft, createdAt: now, receivedAt: now });
       return ref.id;
     },
+    rememberMemberCheckout: (memberId, order) => saveMemberCheckoutDetails(db, memberId, order),
   });
   // The customer's tracking link ("Track your order" on the confirmation screen).
   // The order is saved by now: a tracking-link problem must not turn this into an error.

@@ -128,6 +128,11 @@ export interface LoyaltyMember {
   coffeeLastAddAt?: string;
   welcomeEmailAttemptAt?: string;
   linkedCustomerId?: string;
+  /**
+   * Last checkout details, saved by the order route after an order is saved (phone; area, address
+   * and location link from the last delivery). Read only by the member's own session to fill the checkout.
+   */
+  checkoutDetails?: { phone?: string; zoneId?: string; address?: string; locationUrl?: string; updatedAt?: string };
   createdAt: string;
   updatedAt: string;
 }
