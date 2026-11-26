@@ -1,5 +1,6 @@
 "use client";
 
+import { SaleBadge, SalePrice } from "@/features/sales/sale-price-view";
 import { X } from "lucide-react";
 import {
   Dialog,
@@ -86,9 +87,10 @@ function MenuProductDetailsBody({ product }: { product: Product }) {
               {localized.description}
             </p>
           ) : null}
-          <p className="pt-1 text-2xl font-bold tabular-nums text-turquoise">
-            {formatPrice(product.price)}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <SalePrice product={product} size="lg" until className="text-2xl font-bold text-turquoise" />
+            <SaleBadge product={product} />
+          </div>
         </div>
 
         {groups.length > 0 ? (

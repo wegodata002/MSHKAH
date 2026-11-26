@@ -3,7 +3,8 @@
 import { motion } from "framer-motion";
 import { Heart, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { formatPrice, cn } from "@/lib/utils";
+import { cn } from "@/lib/utils";
+import { SaleBadge, SalePrice, useProductPrice } from "@/features/sales/sale-price-view";
 import { useT, useLocale } from "@/components/providers/locale-provider";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
@@ -21,6 +22,7 @@ interface ProductCardProps {
 
 export function ProductCard({ product, index = 0, onClick }: ProductCardProps) {
   const t = useT();
+  const onSale = useProductPrice(product).sale !== null;
   const { dir } = useLocale();
   const localized = useLocalizedProduct(product);
   const { addItem, openCart } = useCart();
@@ -81,8 +83,9 @@ export function ProductCard({ product, index = 0, onClick }: ProductCardProps) {
             strokeWidth={1.75}
           />
         </button>
-        {(product.isNew || product.isPopular) && (
+        {(product.isNew || product.isPopular || onSale) && (
           <div className="absolute start-1.5 top-1.5 z-10 flex flex-wrap gap-1 md:start-2 md:top-2">
+            <SaleBadge product={product} />
             {product.isNew && (
               <Badge variant="new" className="px-1.5 py-0 text-[10px]">
                 {t("catalog.newBadge")}
@@ -121,9 +124,7 @@ export function ProductCard({ product, index = 0, onClick }: ProductCardProps) {
         )}
 
         <div className="mt-auto flex items-center justify-between gap-1.5 pt-2 md:gap-3 md:pt-3">
-          <span dir="ltr" className="text-price min-w-0 truncate text-[13px] tabular-nums sm:text-base md:text-lg lg:text-xl">
-            {formatPrice(product.price)}
-          </span>
+          <SalePrice product={product} size="md" until className="min-w-0 truncate text-[13px] sm:text-base md:text-lg lg:text-xl" />
           <button
             type="button"
             onClick={handleAdd}

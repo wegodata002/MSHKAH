@@ -1,5 +1,6 @@
 "use client";
 
+import { useProductPrice } from "@/features/sales/sale-price-view";
 import { useMemo, useState, useCallback, useEffect } from "react";
 import Image from "next/image";
 import { Minus, Plus } from "lucide-react";
@@ -250,9 +251,11 @@ export function ProductBuilder({
     [config, locale, product.categoryId, product.id, state]
   );
 
+  // The product's price now (sale price while a sale is on); add-ons at their full price.
+  const pricing = useProductPrice(product);
   const unitPrice = useMemo(
-    () => calculateUnitPrice(product.price, selections),
-    [product.price, selections]
+    () => calculateUnitPrice(pricing.price, selections),
+    [pricing.price, selections]
   );
 
   const errors = useMemo(
@@ -286,9 +289,14 @@ export function ProductBuilder({
           <p className="font-display text-2xl font-bold text-turquoise">
             {formatPrice(unitPrice)}
           </p>
-          {unitPrice !== product.price && (
+          {unitPrice !== pricing.price && (
             <p className="text-xs text-coffee/45">
-              {t("builder.basePrice")}: {formatPrice(product.price)}
+              {t("builder.basePrice")}: {formatPrice(pricing.price)}
+            </p>
+          )}
+          {pricing.sale && (
+            <p className="text-xs text-[#9A2B1A] dark:text-[#FF8A73]" data-builder-sale>
+              {t("sale.regularPrice").replace("{price}", formatPrice(pricing.regular))} · {t("sale.addonsFull")}
             </p>
           )}
         </div>

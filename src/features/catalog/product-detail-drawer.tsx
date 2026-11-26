@@ -30,6 +30,7 @@ import {
 } from "@/lib/product-builder/engine";
 import { AddonsWizard } from "@/features/catalog/addons-wizard";
 import { ProductCard } from "./product-card";
+import { SalePrice, useProductPrice } from "@/features/sales/sale-price-view";
 import type { CartItem, Product } from "@/types";
 import type { SelectedModifier } from "@/types/modifiers";
 
@@ -74,7 +75,9 @@ function ProductDetailContent({
   // (price, availability). Gone from the menu or unavailable → cannot be saved (delete still works).
   const liveProduct = isEdit ? products.find((p) => p.id === product.id) : product;
   const available = isEdit ? !productsLoading && !!liveProduct?.available : product.available;
-  const basePrice = liveProduct?.price ?? product.price;
+  // The price now: the sale price while a sale is on (add-ons stay full price).
+  const pricing = useProductPrice(liveProduct ?? product);
+  const basePrice = pricing.price;
   // Edit without an add-ons step: add-ons kept from before stay at their price.
   const editUnitPrice = editItem && editItem.selections.length > 0 ? editItem.unitPrice : basePrice;
   const suggestions = config && !isEdit ? getSuggestedProducts(config, products, locale) : [];
@@ -106,7 +109,7 @@ function ProductDetailContent({
     }
     addItem(product, {
       selections: [],
-      unitPrice: product.price,
+      unitPrice: basePrice,
       notes: notes.trim() || undefined,
       quantity,
     });
@@ -244,7 +247,15 @@ function ProductDetailContent({
               <h2 className="font-display text-2xl font-bold sm:text-[1.75rem]" dir={localized.dir}>
                 {localized.name}
               </h2>
-              <p className="text-2xl font-bold text-turquoise">{formatPrice(basePrice)}</p>
+              <div className="flex flex-wrap items-end gap-x-3 gap-y-1" data-detail-price>
+                <SalePrice product={liveProduct ?? product} size="lg" until className="text-2xl font-bold text-turquoise" />
+                {pricing.sale && (
+                  <span className="text-sm font-semibold text-[#9A2B1A] dark:text-[#FF8A73]" data-sale-save>
+                    {t("sale.save").replace("{amount}", formatPrice(Math.round((pricing.regular - pricing.price) * 100) / 100))}
+                  </span>
+                )}
+              </div>
+              {pricing.sale && hasBuilder && <p className="text-xs text-coffee/60">{t("sale.addonsFull")}</p>}
               {isEdit && !productsLoading && !available && (
                 <p className="text-sm font-medium text-red-600">{t("catalog.unavailable")}</p>
               )}
@@ -332,7 +343,7 @@ function ProductDetailContent({
               ) : (
                 <>
                   <ShoppingBag className="h-4 w-4" strokeWidth={1.75} />
-                  {t("catalog.addToCart")} · {formatPrice(calculateLineTotal(product.price, quantity))}
+                  {t("catalog.addToCart")} · {formatPrice(calculateLineTotal(basePrice, quantity))}
                 </>
               )}
             </Button>

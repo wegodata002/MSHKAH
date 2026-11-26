@@ -19,6 +19,8 @@ import { EditLineButton, useCartLineEditor } from "@/features/cart/cart-line-edi
 import { FulfillmentNote } from "@/features/checkout/fulfillment-note";
 import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
 import { couponMessageKey } from "@/lib/orders/coupons";
+import { SaleBadge, SalePrice } from "@/features/sales/sale-price-view";
+import { SaleNotices, SaleSavingsRow } from "@/features/sales/cart-sale-parts";
 
 function CartLineItem({
   item,
@@ -75,7 +77,10 @@ function CartLineItem({
               </button>
             </div>
           </div>
-          <p className="text-price mt-0.5 text-base">{formatPrice(item.unitPrice)}</p>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
+            <SalePrice product={item.product} size="sm" amount={item.unitPrice} regularAmount={item.regularUnitPrice} className="text-base" />
+            <SaleBadge product={item.product} className="px-1.5 text-[10px] md:text-[10px]" />
+          </div>
           {item.selections.length > 0 && (
             <ul className="mt-1 space-y-0.5">
               {item.selections.map((s) => (
@@ -104,9 +109,13 @@ function CartLineItem({
                 <Plus className="h-3 w-3" />
               </button>
             </div>
-            <span className="text-price text-base">
-              {formatPrice(calculateLineTotal(item.unitPrice, item.quantity))}
-            </span>
+            <SalePrice
+              product={item.product}
+              size="sm"
+              amount={calculateLineTotal(item.unitPrice, item.quantity)}
+              regularAmount={calculateLineTotal(item.regularUnitPrice ?? item.unitPrice, item.quantity)}
+              className="text-base"
+            />
           </div>
         </div>
       </div>
@@ -243,11 +252,13 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
             </p>
           )}
 
+          <SaleNotices />
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between text-coffee/70">
               <span>{t("cart.subtotal")}</span>
               <span>{formatPrice(subtotal)}</span>
             </div>
+            <SaleSavingsRow />
             {discount > 0 && (
               <div className="flex justify-between text-turquoise">
                 <span className="inline-flex items-center gap-1">

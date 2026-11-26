@@ -75,6 +75,8 @@ export const COLLECTIONS = {
   loyaltyCoffeeLedger: "loyaltyCoffeeLedger",
   /** Couriers and waiters who sign in with a personal 4-digit code (server only; no client rule). */
   staffMembers: "staffMembers",
+  /** Admin → Sales: one document per sale (server only; no client rule). Copied onto `products.sales`. */
+  sales: "sales",
   /** Devices signed in to the waiter screen (server only). */
   staffDevices: "staffDevices",
   /** Old one-time 6-digit pairing codes (no longer created; server only). */

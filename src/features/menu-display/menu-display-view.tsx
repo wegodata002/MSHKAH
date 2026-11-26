@@ -1,5 +1,6 @@
 "use client";
 
+import { SaleBadge, SalePrice } from "@/features/sales/sale-price-view";
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { AppLogo } from "@/components/brand/app-logo";
@@ -111,9 +112,10 @@ function MenuDisplayCard({
           </p>
         ) : null}
         <ProductModifiersTeaser groups={modifierPreview} className="text-[11px] sm:text-xs" />
-        <p className="mt-auto pt-1.5 text-base font-bold text-turquoise sm:pt-2 sm:text-xl md:text-2xl">
-          {formatPrice(product.price)}
-        </p>
+        <div className="mt-auto flex flex-wrap items-center gap-2 pt-1.5 sm:pt-2">
+          <SalePrice product={product} size="md" until className="text-base font-bold text-turquoise sm:text-xl md:text-2xl" />
+          <SaleBadge product={product} />
+        </div>
       </div>
     </motion.article>
   );

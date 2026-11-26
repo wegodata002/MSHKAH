@@ -40,6 +40,7 @@ function localizeProduct(
     name: getProductDisplayName(p, locale),
     description: getLocalizedDescription(p, locale),
     price: p.price,
+    ...(p.sales && p.sales.length > 0 ? { sales: p.sales } : {}),
     image: getProductImage(p.image, p.categoryId),
     categoryId: p.categoryId,
     categoryName,

@@ -185,6 +185,8 @@ export interface AssistantProduct {
   name: string;
   description: string;
   price: number;
+  /** Admin → Sales: the product's sales (the card shows the sale price while one is on). */
+  sales?: import("@/lib/sales/sale-price").ProductSale[];
   image: string;
   categoryId: string;
   categoryName?: string;

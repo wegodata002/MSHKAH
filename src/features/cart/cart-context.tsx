@@ -6,6 +6,7 @@ import {
   useReducer,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactNode,
@@ -22,6 +23,10 @@ import { couponRate, normalizeCouponCode, type CouponCheck } from "@/lib/orders/
 import type { CouponName } from "@/lib/coupons/store-coupons";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { isViewOnlyMenuSurface } from "@/lib/domains/host-routing";
+import { priceNow } from "@/lib/sales/sale-price";
+import { priceCartLine, saleChanges, type SaleChange } from "@/lib/sales/cart-pricing";
+import { useSaleClock } from "@/features/sales/sale-price-view";
+import { subscribeToProducts } from "@/services/productService";
 
 interface CartState {
   items: CartItem[];
@@ -93,6 +98,11 @@ interface CartContextValue {
   lastCouponMinOrder: () => number;
   /** Always pickup — business does not offer delivery. */
   orderType: typeof NEW_ORDER_FULFILLMENT;
+  /** What the sales saved on the products in the cart (regular − sale price), 0 when none. */
+  saleSavings: number;
+  /** Products whose sale started or ended while in the cart (their price was updated). */
+  saleNotices: Array<SaleChange & { product: Product }>;
+  dismissSaleNotices: () => void;
   addItem: (product: Product, options?: AddItemOptions) => void;
   removeItem: (lineId: string) => void;
   updateQuantity: (lineId: string, quantity: number) => void;
@@ -340,6 +350,47 @@ export function CartProvider({ children }: { children: ReactNode }) {
   });
   const [hydrated, setHydrated] = useState(false);
   const lastCouponMinOrderRef = useRef(0);
+  const saleClock = useSaleClock();
+  // While the cart has products: the live menu (same query as the menu, so the listener is shared),
+  // for prices changed meanwhile (a sale ended in the admin, a new price).
+  const [liveProducts, setLiveProducts] = useState<ReadonlyMap<string, Product>>(new Map());
+  const hasItems = state.items.length > 0;
+  useEffect(() => {
+    if (!hasItems) return;
+    return subscribeToProducts(
+      undefined,
+      (list) => setLiveProducts(new Map(list.map((p) => [p.id, p]))),
+      () => {}
+    );
+  }, [hasItems]);
+  // Each line priced now (sale price while a sale is on + add-ons at full price), as the server will.
+  const items: CartItem[] = useMemo(
+    () =>
+      state.items.map((item) => {
+        const live = liveProducts.get(item.product.id);
+        const priced = priceCartLine(item, live, saleClock || Date.now());
+        return { ...item, ...(live ? { product: live } : {}), unitPrice: priced.unitPrice, regularUnitPrice: priced.regularUnitPrice, sale: priced.sale };
+      }),
+    [state.items, liveProducts, saleClock]
+  );
+  const saleSavings = Math.round(items.reduce((sum, i) => sum + Math.max(0, (i.regularUnitPrice ?? i.unitPrice) - i.unitPrice) * i.quantity, 0) * 100) / 100;
+  // A sale that started or ended while the product is in the cart: say so once.
+  const seenSales = useRef(new Map<string, string | null>());
+  const [saleNotices, setSaleNotices] = useState<Array<SaleChange & { product: Product }>>([]);
+  const saleKey = items.map((i) => `${i.lineId}:${i.sale?.saleId ?? ""}`).join("|");
+  useEffect(() => {
+    const lines = items.map((i) => ({ lineId: i.lineId, productId: i.product.id, saleId: i.sale?.saleId ?? null }));
+    const changes = saleChanges(seenSales.current, lines);
+    seenSales.current = new Map(lines.map((l) => [l.lineId, l.saleId]));
+    if (changes.length > 0) {
+      setSaleNotices((prev) => [
+        ...prev.filter((n) => !changes.some((c) => c.lineId === n.lineId)),
+        ...changes.map((c) => ({ ...c, product: items.find((i) => i.lineId === c.lineId)!.product })),
+      ]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only when a line's sale changes
+  }, [saleKey]);
+  const dismissSaleNotices = useCallback(() => setSaleNotices([]), []);
   const lastCouponMinOrder = useCallback(() => lastCouponMinOrderRef.current, []);
 
   useEffect(() => {
@@ -382,7 +433,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     }
     const selections = options?.selections ?? [];
     const unitPrice =
-      options?.unitPrice ?? calculateUnitPrice(product.price, selections);
+      options?.unitPrice ?? calculateUnitPrice(priceNow(product, Date.now()).price, selections);
     dispatch({
       type: "ADD_CONFIGURED_ITEM",
       product,
@@ -464,7 +515,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         return "ok";
       }
       if (!normalized) return "invalid";
-      const currentSubtotal = state.items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
+      const currentSubtotal = items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
       // One coupon per order: a new code replaces the one applied (store or personal).
       const answer = await checkStoreCouponOnServer(normalized, currentSubtotal);
       if (!answer) return "invalid";
@@ -476,13 +527,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "SET_COUPON", code: normalized, ...termsOf(answer.coupon) });
       return "ok";
     },
-    [state.items]
+    [items]
   );
 
   const removeCoupon = useCallback(() => dispatch({ type: "REMOVE_COUPON" }), []);
 
   const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
-  const subtotal = state.items.reduce(
+  const subtotal = items.reduce(
     (sum, item) =>
       sum + calculateLineTotal(item.unitPrice, item.quantity),
     0
@@ -501,7 +552,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
   return (
     <CartContext.Provider
       value={{
-        items: state.items,
+        items,
         isOpen: state.isOpen,
         itemCount,
         subtotal,
@@ -514,6 +565,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         couponMinOrder,
         lastCouponMinOrder,
         orderType: NEW_ORDER_FULFILLMENT,
+        saleSavings,
+        saleNotices,
+        dismissSaleNotices,
         addItem,
         removeItem,
         updateQuantity,
