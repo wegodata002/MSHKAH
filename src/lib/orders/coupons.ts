@@ -20,8 +20,20 @@ export function couponRate(code: unknown): number {
     : 0;
 }
 
-/** "login_required" / "used" / "expired": personal club codes (checked on the server). */
-export type CouponCheck = "ok" | "invalid" | "too_large" | "login_required" | "used" | "expired";
+/**
+ * "login_required" / "used" / "expired": personal club codes (checked on the server).
+ * "members_only" / "already_used" / "min_order": store coupons from Admin → Coupons (checked on the server).
+ */
+export type CouponCheck =
+  | "ok"
+  | "invalid"
+  | "too_large"
+  | "login_required"
+  | "used"
+  | "expired"
+  | "members_only"
+  | "already_used"
+  | "min_order";
 
 /** Message key for a coupon that cannot be applied. */
 export function couponMessageKey(check: Exclude<CouponCheck, "ok">): string {
@@ -34,6 +46,12 @@ export function couponMessageKey(check: Exclude<CouponCheck, "ok">): string {
       return "cart.couponUsed";
     case "expired":
       return "cart.couponExpired";
+    case "members_only":
+      return "cart.couponMembersOnly";
+    case "already_used":
+      return "cart.couponAlreadyUsed";
+    case "min_order":
+      return "cart.couponMinOrder";
     default:
       return "cart.couponInvalid";
   }

@@ -33,6 +33,7 @@ import { useCart } from "@/features/cart/cart-context";
 import { getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
 import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
 import { couponMessageKey } from "@/lib/orders/coupons";
+import { couponDisplayName } from "@/lib/coupons/store-coupons";
 import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
 import { EditLineButton, useCartLineEditor } from "@/features/cart/cart-line-editor";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
@@ -110,6 +111,7 @@ export default function CheckoutPage() {
   const {
     items, subtotal, discount, total,
     clearCart, couponCode, applyCoupon, removeCoupon, removeItem,
+    couponName, couponBelowMinimum, couponMinOrder, lastCouponMinOrder,
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -120,7 +122,7 @@ export default function CheckoutPage() {
   const handleCoupon = async () => {
     if (!couponInput.trim()) return;
     const check = await applyCoupon(couponInput);
-    setCouponError(check === "ok" ? null : t(couponMessageKey(check)));
+    setCouponError(check === "ok" ? null : t(couponMessageKey(check)).replace("{min}", formatPrice(lastCouponMinOrder())));
   };
 
   // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
@@ -340,9 +342,9 @@ export default function CheckoutPage() {
     }
     if (result.code === "COUPON_INVALID") {
       const reason = result.reason;
-      return t(
-        couponMessageKey(reason === "login_required" || reason === "used" || reason === "expired" ? reason : "invalid")
-      );
+      const known = ["login_required", "used", "expired", "members_only", "already_used", "min_order", "too_large"] as const;
+      const key = couponMessageKey((known as readonly string[]).includes(reason ?? "") ? (reason as (typeof known)[number]) : "invalid");
+      return t(key).replace("{min}", formatPrice(result.minOrder ?? 0));
     }
     if (result.code === "BELOW_MINIMUM" && result.minOrder) {
       return t("checkout.minimumError").replace("{min}", formatPrice(result.minOrder));
@@ -706,13 +708,19 @@ export default function CheckoutPage() {
                       </Button>
                     </div>
                     {couponError && <p className="mt-2 text-xs text-red-600">{couponError}</p>}
+                    {couponBelowMinimum && (
+                      <p className="mt-2 text-xs text-amber-700" data-coupon-below-minimum>
+                        {t("cart.couponMinOrder").replace("{min}", formatPrice(couponMinOrder))}
+                      </p>
+                    )}
                     <ClubCouponOffer className="mt-2" />
                     <div className="mt-4 space-y-1.5 border-t border-beige-dark/20 pt-4 text-sm">
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
                       {discount > 0 && (
                         <div className="flex justify-between text-emerald-600">
                           <span className="inline-flex items-center gap-1">
-                            {t("cart.discount")} ({couponCode})
+                            {t("cart.discount")} ({couponCode}
+                            {couponDisplayName(couponName, locale) ? ` · ${couponDisplayName(couponName, locale)}` : ""})
                             <button
                               type="button"
                               onClick={() => {

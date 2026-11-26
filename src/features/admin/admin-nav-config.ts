@@ -21,6 +21,7 @@ import {
   ScanLine,
   IdCard,
   BookOpen,
+  TicketPercent,
 } from "lucide-react";
 import { adminPath, toInternalAdminPath } from "@/lib/domains/host-routing";
 import type { AdminSurface } from "@/lib/domains/host-routing";
@@ -61,6 +62,8 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
       { segment: "orders", labelKey: "admin.orders", icon: ClipboardList },
       { segment: "customers", labelKey: "admin.customers", icon: Users },
       { segment: "club", labelKey: "admin.club.title", icon: Sparkles, adminOnly: true },
+      // Store coupons such as MISHKAT10 (Admin only: they change prices).
+      { segment: "coupons", labelKey: "admin.coupons.title", icon: TicketPercent, adminOnly: true },
       // Counter: every staff member (Admin / Manager / Employee).
       { segment: "club-scan", labelKey: "club3.scan.title", icon: ScanLine },
       // Couriers and waiters with a personal code (Admin only).
@@ -122,6 +125,7 @@ export const ADMIN_PAGE_TITLES: Record<string, string> = {
   "/admin/club": "admin.club.title",
   "/admin/club-scan": "club3.scan.title",
   "/admin/staff": "admin.staff.title",
+  "/admin/coupons": "admin.coupons.title",
 };
 
 export function getAdminPageTitleKey(pathname: string): string {

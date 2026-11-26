@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { formatPrice } from "@/lib/utils";
 import { Logo } from "@/components/brand/logo";
-import { useT } from "@/components/providers/locale-provider";
+import { useLocale, useT } from "@/components/providers/locale-provider";
+import { couponDisplayName } from "@/lib/coupons/store-coupons";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
 import { ProductImage } from "@/components/catalog/product-image";
@@ -132,7 +133,12 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
     applyCoupon,
     removeCoupon,
     couponCode,
+    couponName,
+    couponBelowMinimum,
+    couponMinOrder,
+    lastCouponMinOrder,
   } = useCart();
+  const { locale } = useLocale();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
   // Pen on every line: opens the product window with the line's add-ons, quantity and note.
@@ -141,7 +147,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
   const handleCoupon = async () => {
     if (!couponInput.trim()) return;
     const check = await applyCoupon(couponInput);
-    setCouponError(check === "ok" ? null : t(couponMessageKey(check)));
+    setCouponError(check === "ok" ? null : t(couponMessageKey(check)).replace("{min}", formatPrice(lastCouponMinOrder())));
   };
 
   // Clearing the whole field cancels an applied coupon (same as ✕); partial edits don't.
@@ -225,7 +231,17 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
           </div>
           {couponError && <p className="mb-2 text-xs text-red-600">{couponError}</p>}
           <ClubCouponOffer className="mb-2" />
-          {couponCode && <p className="mb-2 text-xs text-turquoise">{couponCode}</p>}
+          {couponCode && (
+            <p className="mb-2 text-xs text-turquoise" data-coupon-applied>
+              {couponCode}
+              {couponDisplayName(couponName, locale) ? ` · ${couponDisplayName(couponName, locale)}` : ""}
+            </p>
+          )}
+          {couponBelowMinimum && (
+            <p className="mb-2 text-xs text-amber-700" data-coupon-below-minimum>
+              {t("cart.couponMinOrder").replace("{min}", formatPrice(couponMinOrder))}
+            </p>
+          )}
 
           <div className="space-y-1.5 text-sm">
             <div className="flex justify-between text-coffee/70">

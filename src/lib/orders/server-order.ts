@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { couponRate, normalizeCouponCode } from "@/lib/orders/coupons";
+import { storeCouponDiscount, type StoreCoupon } from "@/lib/coupons/store-coupons";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
 import { collectKitchenNotes } from "@/lib/product-builder/engine";
 import {
@@ -131,7 +132,12 @@ export type OrderBuildError =
   | { code: "BELOW_MINIMUM"; minOrder: number }
   | { code: "DINE_IN_UNAVAILABLE"; reason: "disabled" | "no_tables" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_TABLE" }
-  | { code: "COUPON_INVALID"; reason: "login_required" | "invalid" | "used" | "expired" };
+  | {
+      code: "COUPON_INVALID";
+      reason: "login_required" | "invalid" | "used" | "expired" | "members_only" | "already_used" | "min_order" | "too_large";
+      /** min_order: the coupon's minimum (products before the discount). */
+      minOrder?: number;
+    };
 
 /** The order document without timestamps (the route adds createdAt / receivedAt). */
 export type ServerOrderDraft = {
@@ -230,6 +236,11 @@ export function buildServerOrder(
     /** Rate (0–1) of a personal club code the server already checked; codes from the fixed table otherwise. */
     personalCouponRate?: number;
     /**
+     * A store coupon the order route already checked (Admin → Coupons): its terms. null = no store
+     * coupon on this order. Left out (other callers, older tests): the fixed MISHKAT10 table, as before.
+     */
+    storeCoupon?: Pick<StoreCoupon, "type" | "value" | "minOrder"> | null;
+    /**
      * Table orders entered by a waiter only: still accepted this many minutes after closing time
      * (for guests already seated). Customers never get this.
      */
@@ -299,8 +310,26 @@ export function buildServerOrder(
   subtotal = money(subtotal);
 
   const couponCode = normalizeCouponCode(request.couponCode);
-  const rate = ctx.personalCouponRate !== undefined ? ctx.personalCouponRate : couponRate(couponCode);
-  const discount = money(subtotal * rate);
+  let discount: number;
+  let rate: number;
+  if (ctx.personalCouponRate !== undefined) {
+    rate = ctx.personalCouponRate;
+    discount = money(subtotal * rate);
+  } else if (ctx.storeCoupon !== undefined) {
+    if (ctx.storeCoupon === null) {
+      rate = 0;
+      discount = 0;
+    } else {
+      // Minimum order and "never the whole order" on the products, before the delivery fee.
+      const priced = storeCouponDiscount(subtotal, ctx.storeCoupon);
+      if (!priced.ok) return { ok: false, error: { code: "COUPON_INVALID", reason: priced.reason, ...(priced.minOrder ? { minOrder: priced.minOrder } : {}) } };
+      discount = priced.discount;
+      rate = 1; // a coupon applies: keep its code on the order
+    }
+  } else {
+    rate = couponRate(couponCode);
+    discount = money(subtotal * rate);
+  }
 
   // Order type.
   let delivery = 0;

@@ -121,6 +121,9 @@ export function createFakeFirestore() {
           assertNoUndefined(data, "");
           writes.push(() => ref.update(data));
         },
+        delete: (ref: Ref) => {
+          writes.push(() => ref.delete());
+        },
       };
       const result = await fn(tx);
       for (const write of writes) await write();

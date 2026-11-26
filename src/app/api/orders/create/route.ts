@@ -12,6 +12,7 @@ import { checkCouponForMember, saveOrderWithCoupon } from "@/lib/loyalty/admin/c
 import type { LoyaltyMember } from "@/lib/loyalty/types";
 import { saveMemberCheckoutDetails } from "@/lib/loyalty/admin/checkout-details";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
+import { countCustomerUses, readStoreCoupon, saveOrderWithStoreCoupon } from "@/lib/coupons/admin/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -60,6 +61,12 @@ export async function POST(request: NextRequest) {
       return ref.id;
     },
     rememberMemberCheckout: (memberId, order) => saveMemberCheckoutDetails(db, memberId, order),
+    findStoreCoupon: (code) => readStoreCoupon(db, code),
+    countStoreCouponUses: (code, who) => countCustomerUses(db, code, who),
+    saveOrderWithStoreCoupon: async (draft, record) => {
+      const now = Timestamp.now();
+      return saveOrderWithStoreCoupon(db, { order: { ...draft, createdAt: now, receivedAt: now }, record, now: new Date() });
+    },
   });
   // The customer's tracking link ("Track your order" on the confirmation screen).
   // The order is saved by now: a tracking-link problem must not turn this into an error.
