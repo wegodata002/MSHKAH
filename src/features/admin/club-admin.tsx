@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ClubMembersTab } from "@/features/admin/club-members";
 import { Loader2, Save, Send, ShieldAlert, Sparkles } from "lucide-react";
 import { AdminPageHeader } from "@/features/admin/components/admin-page-header";
 import { AdminCard } from "@/features/admin/components/admin-card";
@@ -30,7 +31,44 @@ import { fromMinor, toMinor } from "@/lib/loyalty/points-math";
  *   3. Terms textarea per locale.
  *   4. "Send test email" footer.
  */
+/**
+ * Admin → Club (Admin only): two tabs — "Settings" (below) and "Members" (club-members.tsx).
+ * The tab is kept in the address (?tab=members) so a link back from an order returns to the list.
+ */
 export function ClubAdmin() {
+  const t = useT();
+  const [tab, setTab] = useState<"settings" | "members">("settings");
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("tab") === "members") setTab("members");
+  }, []);
+  const choose = (next: "settings" | "members") => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === "members") url.searchParams.set("tab", "members");
+    else url.searchParams.delete("tab");
+    window.history.replaceState(null, "", url.toString());
+  };
+  const tabs = (
+    <div className="flex gap-1 rounded-xl bg-beige/40 p-1 sm:w-fit" role="tablist" data-club-tabs>
+      {(["settings", "members"] as const).map((key) => (
+        <button
+          key={key}
+          type="button"
+          role="tab"
+          aria-selected={tab === key}
+          onClick={() => choose(key)}
+          className={`h-10 flex-1 rounded-lg px-5 text-sm font-semibold sm:flex-none ${tab === key ? "bg-warm-white text-turquoise shadow-soft" : "text-coffee/65"}`}
+          data-club-tab={key}
+        >
+          {t(key === "settings" ? "admin.club.tab.settings" : "admin.club.tab.members")}
+        </button>
+      ))}
+    </div>
+  );
+  return tab === "members" ? <ClubMembersTab tabs={tabs} /> : <ClubSettingsPanel tabs={tabs} />;
+}
+
+function ClubSettingsPanel({ tabs }: { tabs: ReactNode }) {
   const t = useT();
   const [settings, setSettings] = useState<LoyaltySettings | null>(null);
   const [draft, setDraft] = useState<LoyaltySettings | null>(null);
@@ -101,6 +139,7 @@ export function ClubAdmin() {
           </Button>
         }
       />
+      {tabs}
 
       {paused.length > 0 ? (
         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
