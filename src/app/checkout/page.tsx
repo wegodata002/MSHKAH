@@ -54,6 +54,9 @@ import {
 } from "@/features/checkout/checkout-fulfillment";
 import { rememberTable, useScannedTable } from "@/lib/dine-in/scanned-table";
 import { tableDisplayName } from "@/lib/fulfillment/settings";
+import { detailsFromOrder, valuesToFill, type CheckoutDetails, type FillField } from "@/lib/customers/checkout-details";
+import { readDeviceDetails, rememberDeviceDetails } from "@/lib/customers/saved-checkout-details";
+import { hasClubHint } from "@/lib/loyalty/club-hint";
 
 function OrderLineItem({
   item,
@@ -235,6 +238,58 @@ export default function CheckoutPage() {
     setPendingOrderId(null);
   }, [orderFingerprint]);
 
+  // Details from the last order. A club member logged in here: from the member (server, any
+  // device; name from the profile). Anyone else: what this device kept (180 days).
+  const [saved, setSaved] = useState<{ details: CheckoutDetails; member: boolean } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/checkout/details", { cache: "no-store" })
+      .then(async (res) => {
+        const data = (await res.json()) as { ok?: boolean; member?: boolean; details?: CheckoutDetails };
+        if (!res.ok || !data.ok) throw new Error("details unavailable");
+        return data.member ? { details: data.details ?? {}, member: true } : { details: readDeviceDetails() ?? {}, member: false };
+      })
+      .catch(() => {
+        // Server not reachable: a member (marker cookie) gets nothing filled; others use the device.
+        const member = hasClubHint();
+        return { details: member ? {} : readDeviceDetails() ?? {}, member };
+      })
+      .then((next) => {
+        if (!cancelled) setSaved(next);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Fill only empty fields, each at most once, when its order type is chosen: the name always,
+  // the phone for pickup/delivery, area/address/link for delivery (the area only if it still exists).
+  const filled = useRef(new Set<FillField>());
+  const typePickedByCustomer = useRef(false);
+  const pickOrderType = (next: CheckoutOrderType) => {
+    typePickedByCustomer.current = true;
+    setOrderType(next);
+  };
+  const zoneIds = availability.zones.map((z) => z.id).join("|");
+  useEffect(() => {
+    if (!saved || availability.loading) return;
+    // A scanned table switches to "At the table" in this same pass: wait for it (name only there).
+    if (table && orderTypeChoice !== "dine_in" && !typePickedByCustomer.current) return;
+    const { fill, considered } = valuesToFill(
+      saved.details,
+      { name, phone, zoneId: zoneChoice, address, locationUrl: locationLink },
+      orderType,
+      zoneIds ? zoneIds.split("|") : [],
+      filled.current
+    );
+    considered.forEach((field) => filled.current.add(field));
+    if (fill.name) setName(fill.name);
+    if (fill.phone) setPhone(fill.phone);
+    if (fill.zoneId) setZoneChoice(fill.zoneId);
+    if (fill.address) setAddress(fill.address);
+    if (fill.locationUrl) setLocationLink(fill.locationUrl);
+  }, [saved, availability.loading, table, orderTypeChoice, orderType, zoneIds, name, phone, zoneChoice, address, locationLink]);
+
   const cardDisabled = hypAvailability === "disabled";
 
   if (items.length === 0 && !success) {
@@ -372,6 +427,21 @@ export default function CheckoutPage() {
           return;
         }
         orderId = result.id;
+        // Not a club member logged in here: keep this order's details on the device for next
+        // time (a member's are kept on the server by the order route).
+        if (!(saved ? saved.member : hasClubHint())) {
+          rememberDeviceDetails(
+            detailsFromOrder({
+              name: name.trim(),
+              phone: cleanPhone,
+              orderType,
+              zoneId: deliveryZone?.id,
+              address: address.trim(),
+              locationUrl: location?.url,
+            }),
+            orderType === "delivery"
+          );
+        }
         if (result.trackingToken) tracking = { token: result.trackingToken, orderNumber: result.orderNumber };
         if (customerId !== GUEST_CUSTOMER_ID) {
           await fetch("/api/checkout/customer", {
@@ -466,7 +536,7 @@ export default function CheckoutPage() {
                     </div>
                   ) : (
                     <>
-                      <OrderTypePicker value={orderType} onChange={setOrderType} availability={availability} table={table} />
+                      <OrderTypePicker value={orderType} onChange={pickOrderType} availability={availability} table={table} />
                       {nothingAvailable ? (
                         <StoreContact
                           message={

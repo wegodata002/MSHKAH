@@ -44,6 +44,12 @@ export type CreateOrderDeps = {
     draft: ServerOrderDraft,
     coupon: { code: string; memberId: string; heldBy: string | null }
   ) => Promise<string>;
+  /**
+   * After the order is saved: keep the member's phone (and, from a delivery, area, address and
+   * link) on the member, to fill the checkout next time on any device. Club members only
+   * (active or suspended). A failure here never fails the order.
+   */
+  rememberMemberCheckout?: (memberId: string, order: ServerOrderDraft) => Promise<void>;
 };
 
 export type CreateOrderResponse =
@@ -138,6 +144,11 @@ export async function handleCreateOrder(
       personal && personalCode && member && deps.saveOrderWithCoupon
         ? await deps.saveOrderWithCoupon(order, { code: personalCode, memberId: member.id, heldBy: personal.heldBy })
         : await deps.saveOrder(order);
+    if (member?.id && deps.rememberMemberCheckout && (member.status === "active" || member.status === "suspended")) {
+      await deps.rememberMemberCheckout(member.id, order).catch((error) =>
+        console.error("[orders/create] member checkout details not saved:", error instanceof Error ? error.message : error)
+      );
+    }
     return { status: 200, body: { ok: true, id, orderNumber: built.order.orderNumber, total: built.order.total } };
   } catch (error) {
     // The code was taken by another order a moment ago: nothing was saved.
