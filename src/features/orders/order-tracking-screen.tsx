@@ -273,6 +273,12 @@ export function OrderTrackingScreen({ token }: { token: string }) {
               <span className="tabular-nums">−{formatPrice(view.discount)}</span>
             </div>
           ) : null}
+          {view.points ? (
+            <div className="flex justify-between text-turquoise" data-tracking-points>
+              <span>{t("tracking.points")}</span>
+              <span className="tabular-nums">−{formatPrice(view.points)}</span>
+            </div>
+          ) : null}
           {view.delivery ? (
             <div className="flex justify-between text-coffee/70">
               <span>{t("tracking.deliveryFee")}</span>

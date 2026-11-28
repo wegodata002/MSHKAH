@@ -13,6 +13,7 @@ import {
 import { CouponUnavailableError, isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { checkStoreCoupon, normalizeStoreCode, type StoreCoupon } from "@/lib/coupons/store-coupons";
 import type { ProductBuilderConfig } from "@/types/modifiers";
+import { applyPointsToOrder, checkRedemption, PointsUnavailableError, type PointsRefusal, type RedemptionSettings } from "@/lib/loyalty/redemption";
 
 /**
  * POST /api/orders/create, without the HTTP and Firebase wiring (injected), so it can be tested
@@ -32,7 +33,21 @@ export type CreateOrderDeps = {
    * The club member logged in on this device (from the signed club session), or null.
    * Never trusted from the request body. A failure here must not block the order.
    */
-  findClubMember?: () => Promise<{ id: string; email?: string | null; status?: string } | null>;
+  findClubMember?: () => Promise<{ id: string; email?: string | null; status?: string; balancePoints?: number } | null>;
+  /** The club's points settings (paying with points is off until the point value is set and approved). */
+  loadLoyaltySettings?: () => Promise<RedemptionSettings>;
+  /**
+   * Saves the order with the points taken off the member's balance, plus its coupon if any, in ONE
+   * transaction (throws PointsUnavailableError when the balance changed meanwhile).
+   */
+  saveOrderWithPoints?: (
+    draft: ServerOrderDraft,
+    parts: {
+      points: { memberId: string; points: number; discount: number; pointValueMinor: number };
+      personalCoupon?: { code: string; memberId: string; heldBy: string | null };
+      storeCouponRecord?: { code: string; type: StoreCoupon["type"]; value: number; discount: number };
+    }
+  ) => Promise<string>;
   /** Personal club code (MK-XXXX-XXXX): can the logged-in member use it now? */
   checkClubCoupon?: (
     code: string,
@@ -79,6 +94,10 @@ type CouponReason = Extract<OrderBuildError, { code: "COUPON_INVALID" }>["reason
 
 function couponRefused(reason: CouponReason): CreateOrderResponse {
   return { status: 409, body: { ok: false, code: "COUPON_INVALID", reason } };
+}
+
+function pointsRefused(reason: PointsRefusal, maxPoints = 0): CreateOrderResponse {
+  return { status: 409, body: { ok: false, code: "POINTS_UNAVAILABLE", reason, maxPoints } };
 }
 
 export async function handleCreateOrder(
@@ -160,30 +179,57 @@ export async function handleCreateOrder(
     });
     if (!built.ok) return { status: 409, body: { ok: false, ...built.error } };
 
+    // Paying with points (after the sale and the coupon): checked here against the club settings and
+    // the member's balance; taken off the balance in the same transaction as the order.
+    let redemption: { points: number; discount: number; pointValueMinor: number } | null = null;
+    const requestedPoints = request.redeemPoints ?? 0;
+    if (requestedPoints > 0) {
+      const settings = deps.loadLoyaltySettings && deps.saveOrderWithPoints ? await deps.loadLoyaltySettings() : null;
+      if (!settings) return pointsRefused("disabled");
+      const check = checkRedemption(requestedPoints, {
+        member,
+        settings,
+        productsAfterCoupon: Math.round((built.order.subtotal - built.order.discount) * 100) / 100,
+        totalBeforePoints: built.order.total,
+        dineIn: request.fulfillment.type === "dine_in",
+      });
+      if (!check.ok) return pointsRefused(check.reason, check.maxPoints);
+      redemption = { points: check.points, discount: check.discount, pointValueMinor: settings.pointValueMinor };
+    }
+
     // Club member: points by member id (not by email); their saved email, if any, for the
     // payment confirmation. The checkout no longer asks for an email.
-    const order: ServerOrderDraft = { ...built.order };
+    let order: ServerOrderDraft = { ...built.order };
+    if (redemption) order = applyPointsToOrder(order, redemption.points, redemption.discount);
     if (member?.id) {
       order.loyalty = { memberId: member.id };
       const memberEmail = normalizeCustomerEmail(member.email);
       if (memberEmail && !order.customerEmail) order.customerEmail = memberEmail;
     }
 
-    const id =
-      personal && personalCode && member && deps.saveOrderWithCoupon
+    const storeRecord = storeCoupon && order.discount > 0 ? { code: storeCode, type: storeCoupon.type, value: storeCoupon.value, discount: order.discount } : undefined;
+    const id = redemption && member && deps.saveOrderWithPoints
+      ? await deps.saveOrderWithPoints(order, {
+          points: { memberId: member.id, ...redemption },
+          ...(personal && personalCode ? { personalCoupon: { code: personalCode, memberId: member.id, heldBy: personal.heldBy } } : {}),
+          ...(storeRecord && deps.saveOrderWithStoreCoupon ? { storeCouponRecord: storeRecord } : {}),
+        })
+      : personal && personalCode && member && deps.saveOrderWithCoupon
         ? await deps.saveOrderWithCoupon(order, { code: personalCode, memberId: member.id, heldBy: personal.heldBy })
         : storeCoupon && order.discount > 0 && deps.saveOrderWithStoreCoupon
-          ? await deps.saveOrderWithStoreCoupon(order, { code: storeCode, type: storeCoupon.type, value: storeCoupon.value, discount: order.discount })
+          ? await deps.saveOrderWithStoreCoupon(order, storeRecord!)
           : await deps.saveOrder(order);
     if (member?.id && deps.rememberMemberCheckout && (member.status === "active" || member.status === "suspended")) {
       await deps.rememberMemberCheckout(member.id, order).catch((error) =>
         console.error("[orders/create] member checkout details not saved:", error instanceof Error ? error.message : error)
       );
     }
-    return { status: 200, body: { ok: true, id, orderNumber: built.order.orderNumber, total: built.order.total } };
+    return { status: 200, body: { ok: true, id, orderNumber: built.order.orderNumber, total: order.total } };
   } catch (error) {
     // The code was taken by another order a moment ago: nothing was saved.
     if (error instanceof CouponUnavailableError) return couponRefused(error.reason);
+    // The balance changed a moment ago (another order, an adjustment): nothing was saved.
+    if (error instanceof PointsUnavailableError) return pointsRefused(error.reason);
     console.error("[orders/create] failed:", error instanceof Error ? error.message : error);
     return { status: 500, body: { ok: false, code: "ORDER_SAVE_FAILED" } };
   }

@@ -249,16 +249,16 @@ describe("order route: the server checks and prices", () => {
 describe("card charge", () => {
   it("uses the discount saved with the order; MISHKAT10 and personal codes as before", () => {
     // Saved amount (store coupon).
-    expect(chargeFromCatalogSum(32, { couponCode: "SUMMER15" }, undefined, { discount: 4.8 })).toEqual({ amount: 27.2, discount: 4.8, subtotal: 32 });
-    expect(chargeFromCatalogSum(32, { couponCode: "SUMMER15", delivery: 15 }, undefined, { discount: 10 })).toEqual({ amount: 37, discount: 10, subtotal: 32 });
+    expect(chargeFromCatalogSum(32, { couponCode: "SUMMER15" }, undefined, { discount: 4.8 })).toMatchObject({ amount: 27.2, discount: 4.8, subtotal: 32 });
+    expect(chargeFromCatalogSum(32, { couponCode: "SUMMER15", delivery: 15 }, undefined, { discount: 10 })).toMatchObject({ amount: 37, discount: 10, subtotal: 32 });
     // Never more than the products.
     expect(chargeFromCatalogSum(32, { couponCode: "X" }, undefined, { discount: 99 }).discount).toBe(32);
     // An order priced before the record existed: MISHKAT10 as it works now.
-    expect(chargeFromCatalogSum(32, { couponCode: "MISHKAT10" }, undefined, { rate: 0.1 })).toEqual({ amount: 28.8, discount: 3.2, subtotal: 32 });
+    expect(chargeFromCatalogSum(32, { couponCode: "MISHKAT10" }, undefined, { rate: 0.1 })).toMatchObject({ amount: 28.8, discount: 3.2, subtotal: 32 });
     expect(chargeFromCatalogSum(32, { couponCode: "MISHKAT10" }, undefined, { rate: 0 }).discount).toBe(0);
     // Unchanged calls (no store argument): exactly as before.
-    expect(chargeFromCatalogSum(32, { couponCode: "MISHKAT10" })).toEqual({ amount: 28.8, discount: 3.2, subtotal: 32 });
-    expect(chargeFromCatalogSum(32, { couponCode: "MK-ABCD-2345" }, 0.1)).toEqual({ amount: 28.8, discount: 3.2, subtotal: 32 });
+    expect(chargeFromCatalogSum(32, { couponCode: "MISHKAT10" })).toMatchObject({ amount: 28.8, discount: 3.2, subtotal: 32 });
+    expect(chargeFromCatalogSum(32, { couponCode: "MK-ABCD-2345" }, 0.1)).toMatchObject({ amount: 28.8, discount: 3.2, subtotal: 32 });
   });
 
   it("the charge reads the saved record, never order.discount", () => {

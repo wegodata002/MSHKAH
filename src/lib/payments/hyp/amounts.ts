@@ -34,6 +34,8 @@ function money(value: unknown): number {
 export function amountFromOrderItems(order: {
   items?: Array<{ price?: unknown; quantity?: unknown }>;
   discount?: unknown;
+  /** Club points paid with (only compared here; the charge takes them from the server ledger). */
+  pointsDiscount?: unknown;
   delivery?: unknown;
 }): number {
   const items = Array.isArray(order.items) ? order.items : [];
@@ -43,8 +45,9 @@ export function amountFromOrderItems(order: {
     return sum + money(item.price) * qty;
   }, 0);
   const discount = Math.max(0, money(order.discount));
+  const points = Math.max(0, money(order.pointsDiscount));
   const delivery = Math.max(0, money(order.delivery));
-  return Math.max(Math.round((itemsSum - discount + delivery) * 100) / 100, 0);
+  return Math.max(Math.round((itemsSum - discount - points + delivery) * 100) / 100, 0);
 }
 
 /**
@@ -61,8 +64,13 @@ export function chargeFromCatalogSum(
    * Store coupons (see process.ts): `discount` = the amount the server priced and saved with the order
    * (orderCoupons); `rate` = an order priced before that record existed (MISHKAT10 as it works now).
    */
-  store?: { discount: number } | { rate: number }
-): { amount: number; discount: number; subtotal: number } {
+  store?: { discount: number } | { rate: number },
+  /**
+   * Club points held by this order (server ledger, never the order document), in ₪. They pay for the
+   * products left after the coupon only (never more), not the delivery fee.
+   */
+  heldPointsDiscount = 0
+): { amount: number; discount: number; subtotal: number; pointsDiscount: number } {
   const subtotal = money(catalogSum);
   let discount: number;
   if (personalCouponRate !== undefined) discount = money(subtotal * personalCouponRate);
@@ -70,8 +78,9 @@ export function chargeFromCatalogSum(
   else if (store) discount = money(subtotal * store.rate);
   else discount = money(subtotal * couponRate(order.couponCode));
   const delivery = Math.max(0, money(order.delivery));
-  const amount = Math.max(money(subtotal - discount + delivery), 0);
-  return { amount, discount, subtotal };
+  const pointsDiscount = Math.min(money(Math.max(0, heldPointsDiscount)), Math.max(0, money(subtotal - discount)));
+  const amount = Math.max(money(subtotal - discount - pointsDiscount + delivery), 0);
+  return { amount, discount, subtotal, pointsDiscount };
 }
 
 /**
@@ -82,6 +91,7 @@ export function authoritativeOrderAmount(order: {
   total?: unknown;
   items?: Array<{ price?: unknown; quantity?: unknown }>;
   discount?: unknown;
+  pointsDiscount?: unknown;
   delivery?: unknown;
 }): number {
   const fromItems = amountFromOrderItems(order);

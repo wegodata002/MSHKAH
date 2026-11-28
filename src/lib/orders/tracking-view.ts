@@ -26,6 +26,8 @@ export type OrderTrackingView = {
   items: { name: string; quantity: number; extras: string[]; total: number }[];
   subtotal: number | null;
   discount: number | null;
+  /** Club points paid with, in ₪ (null = none). */
+  points: number | null;
   delivery: number | null;
   total: number;
   payment: "cash" | "card" | "other";
@@ -78,6 +80,7 @@ export function buildTrackingView(order: OrderForTracking): OrderTrackingView {
     })),
     subtotal: money(order.subtotal),
     discount: money(order.discount),
+    points: money(order.pointsDiscount),
     delivery: money(order.delivery),
     total: order.total,
     payment: paymentOf(order),

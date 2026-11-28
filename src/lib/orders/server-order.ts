@@ -67,6 +67,8 @@ export const createOrderRequestSchema = z.object({
   notes: z.string().max(2000).optional(),
   locale: z.enum(["he", "ar", "en"]).optional(),
   couponCode: z.string().max(40).optional(),
+  /** Club points the member asks to pay with (checked on the server; see `@/lib/loyalty/redemption`). */
+  redeemPoints: z.number().int().min(0).max(1_000_000).optional(),
   /** Where the money is collected. */
   payment: z.enum(["online", "counter", "courier", "table"]),
   fulfillment: z.discriminatedUnion("type", [
@@ -135,6 +137,8 @@ export type OrderBuildError =
   | { code: "BELOW_MINIMUM"; minOrder: number }
   | { code: "DINE_IN_UNAVAILABLE"; reason: "disabled" | "no_tables" | "closed"; nextAt: string | null }
   | { code: "UNKNOWN_TABLE" }
+  /** Paying with points refused: why, and how many this order could take (0 = none). */
+  | { code: "POINTS_UNAVAILABLE"; reason: import("@/lib/loyalty/redemption").PointsRefusal; maxPoints: number }
   | {
       code: "COUPON_INVALID";
       reason: "login_required" | "invalid" | "used" | "expired" | "members_only" | "already_used" | "min_order" | "too_large";
@@ -168,6 +172,9 @@ export type ServerOrderDraft = {
   subtotal: number;
   discount: number;
   couponCode?: string;
+  /** Club points paid with (after the coupon), and their value in ₪; `total` is already after them. */
+  pointsRedeemed?: number;
+  pointsDiscount?: number;
   delivery: number;
   total: number;
   paymentMethod: "cash" | "card";
