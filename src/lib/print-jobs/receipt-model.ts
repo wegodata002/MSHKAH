@@ -161,6 +161,8 @@ type OrderLike = {
   total: number;
   subtotal?: number;
   discount?: number;
+  /** Club points paid with (₪): printed inside the discount line (the printer agent knows no other field). */
+  pointsDiscount?: number;
   paymentMethod?: string;
   locale?: string;
   createdAt: string;
@@ -180,7 +182,8 @@ export function buildReceiptModelFromOrder(
   const locale = localeOverride ?? parsePrintLocale(order.locale);
   const copy = COPY[locale];
   const { date, time } = formatReceiptDateParts(order.createdAt, locale);
-  const discount = order.discount && order.discount > 0 ? order.discount : undefined;
+  const allOff = Math.round(((Number(order.discount) || 0) + (Number(order.pointsDiscount) || 0)) * 100) / 100;
+  const discount = allOff > 0 ? allOff : undefined;
   const subtotal = discount && order.subtotal && order.subtotal > 0 ? order.subtotal : undefined;
   const isDelivery = order.orderType === "delivery";
   // Dine-in: "שולחן 3 · פנים" on the fulfillment line the printer agent already prints (no agent update).
@@ -235,6 +238,7 @@ export function buildReceiptModelFromFirestoreOrder(
       total: data.total,
       subtotal: data.subtotal,
       discount: data.discount,
+      pointsDiscount: data.pointsDiscount,
       paymentMethod: data.paymentMethod,
       locale: data.locale,
       createdAt: createdAtIso,

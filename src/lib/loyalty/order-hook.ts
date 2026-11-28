@@ -60,11 +60,13 @@ export async function awardLoyaltyPointsForOrder(
     });
     if (!memberId) return { ok: true, status: "no_member" };
 
+    // `total` is what was paid: already after the coupon AND the club points paid with
+    // (`pointsDiscount`), so no points are earned on the part paid with points. Nothing more is
+    // taken off here (taking the points off again would count them twice).
     const paidTotal = Number(order.total) || 0;
     const qualifying = qualifyingAmountMinor({
       paidAmountMinor: toMinor(paidTotal),
       joinFeePortionMinor: order.loyalty?.joinFeePortionMinor ?? 0,
-      redeemedValueMinor: order.loyalty?.redeemedValueMinor ?? 0,
     });
     if (qualifying <= 0) return { ok: true, status: "skipped" };
 

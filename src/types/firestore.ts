@@ -140,6 +140,11 @@ export interface FirestoreOrder {
   /** Staff member who confirmed a cash payment at the counter. */
   paidBy?: string;
   /** Where an unpaid (cash) order was paid: at the counter, or to the courier in cash / by card. */
+  /** Club points paid with (after the coupon) and their value in ₪; `total` is already after them. */
+  pointsRedeemed?: number;
+  pointsDiscount?: number;
+  /** When the points were given back (order cancelled / card payment failed). */
+  pointsReleasedAt?: string;
   paidVia?: "cash_counter" | "courier_cash" | "courier_card" | "waiter_cash" | "waiter_card";
   /** Dine-in: who marked it served ("רנא" or "רנא · טאבלט בר"). */
   servedBy?: string;

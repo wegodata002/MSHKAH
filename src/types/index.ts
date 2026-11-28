@@ -148,6 +148,11 @@ export interface Order {
   courierId?: string;
   courierName?: string;
   courierAssignedAt?: string | null;
+  /** Club points paid with (after the coupon) and their value in ₪; `total` is already after them. */
+  pointsRedeemed?: number;
+  pointsDiscount?: number;
+  /** When the points were given back (order cancelled / card payment failed). */
+  pointsReleasedAt?: string;
   paidVia?: "cash_counter" | "courier_cash" | "courier_card" | "waiter_cash" | "waiter_card";
   /** Who confirmed the payment (staff email, courier or waiter name). */
   paidBy?: string;

@@ -341,8 +341,8 @@ describe("card charge: delivery fee from the settings", () => {
 
   it("the charge adds the fee it is given, not one stored on the order", () => {
     // process.ts passes { ...order, delivery: <fee from settings> }.
-    expect(chargeFromCatalogSum(70, { couponCode: "MISHKAT10", delivery: 15 })).toEqual({ amount: 78, discount: 7, subtotal: 70 });
-    expect(chargeFromCatalogSum(16, { delivery: 0 })).toEqual({ amount: 16, discount: 0, subtotal: 16 });
+    expect(chargeFromCatalogSum(70, { couponCode: "MISHKAT10", delivery: 15 })).toMatchObject({ amount: 78, discount: 7, subtotal: 70 });
+    expect(chargeFromCatalogSum(16, { delivery: 0 })).toMatchObject({ amount: 16, discount: 0, subtotal: 16 });
   });
 });
 

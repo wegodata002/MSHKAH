@@ -27,6 +27,7 @@ import { orderAgeMs, overdueLevel, stageAgeMs } from "@/lib/orders/overdue";
 import { formatDate, formatPrice, cn } from "@/lib/utils";
 import type { Order, OrderStatus } from "@/types";
 import { ClubMemberBadge } from "@/features/admin/club-member-badge";
+import { pointsHeldOnOrder } from "@/lib/loyalty/redemption";
 import { OrderCourierPicker, type CourierOption } from "@/features/admin/orders/order-courier-picker";
 
 const STATUS_STYLE: Record<OperationalOrderStatus, string> = {
@@ -151,6 +152,8 @@ export function OrderCard({
     paymentStatus === "paid" &&
     (order.paymentProvider === "HYP" || (order.paymentMethod || "").toLowerCase() === "card");
   const paymentLabelKey = paidByCard ? "admin.payment.paidCard" : `admin.payment.${paymentStatus}`;
+  // A card payment that never finished keeps the customer's club points held until the order is cancelled.
+  const heldPoints = pointsHeldOnOrder({ ...order, paymentStatus });
 
   return (
     <article
@@ -190,6 +193,15 @@ export function OrderCard({
               >
                 <Wallet className="h-3 w-3" />
                 {t(paymentLabelKey)}
+              </span>
+            )}
+            {heldPoints > 0 && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full bg-violet-50 px-1.5 py-0.5 text-[11px] font-semibold text-violet-800"
+                title={t("admin.orders.pointsHeldHint")}
+                data-points-held={heldPoints}
+              >
+                {t("admin.orders.pointsHeld").replace("{points}", String(heldPoints))}
               </span>
             )}
             {order.isTestOrder && (
@@ -340,6 +352,13 @@ export function OrderCard({
               {paymentStatus === "paid" && (
                 <p>{t("admin.payment.paidAmount")}: {formatPrice(order.total)}</p>
               )}
+              {(order.pointsRedeemed ?? 0) > 0 && (
+                <p data-order-points>
+                  {t("admin.orders.pointsLine").replace("{points}", String(order.pointsRedeemed))}: −{formatPrice(order.pointsDiscount ?? 0)}
+                  {order.pointsReleasedAt ? ` · ${t("admin.orders.pointsReturned")}` : ""}
+                </p>
+              )}
+              {heldPoints > 0 && <p className="text-violet-800" data-points-held-hint>{t("admin.orders.pointsHeldHint")}</p>}
               {(order.paidVia === "courier_cash" || order.paidVia === "courier_card") && (
                 <p className="font-medium text-emerald-800" data-paid-via-courier>
                   {t(order.paidVia === "courier_card" ? "admin.payment.paidCourierCard" : "admin.payment.paidCourierCash")}

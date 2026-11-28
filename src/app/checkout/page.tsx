@@ -35,6 +35,7 @@ import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/ord
 import { couponMessageKey } from "@/lib/orders/coupons";
 import { couponDisplayName } from "@/lib/coupons/store-coupons";
 import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
+import { PointsAtCheckout, pointsRefusalKey, usePointsAtCheckout } from "@/features/club/points-at-checkout";
 import { EditLineButton, useCartLineEditor } from "@/features/cart/cart-line-editor";
 import { requestNewOrderEmailNotification, requestNewOrderPrintJob, requestCriticalCheckoutFailureNotification } from "@/lib/email/client-notify";
 import { formatPrice, cn } from "@/lib/utils";
@@ -191,6 +192,13 @@ export default function CheckoutPage() {
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [hypAvailability, setHypAvailability] = useState<"unknown" | "enabled" | "disabled">("unknown");
   const [pendingOrderId, setPendingOrderId] = useState<string | null>(null);
+  // Paying with club points (after the sale and the coupon; never at the table). The server decides.
+  const points = usePointsAtCheckout({
+    productsAfterCoupon: Math.round((subtotal - discount) * 100) / 100,
+    totalBeforePoints: displayTotal,
+    allowed: !isDineIn && !pendingOrderId,
+  });
+  const payTotal = Math.round((displayTotal - points.discount) * 100) / 100;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -354,6 +362,9 @@ export default function CheckoutPage() {
       const key = couponMessageKey((known as readonly string[]).includes(reason ?? "") ? (reason as (typeof known)[number]) : "invalid");
       return t(key).replace("{min}", formatPrice(result.minOrder ?? 0));
     }
+    if (result.code === "POINTS_UNAVAILABLE") {
+      return t(pointsRefusalKey(result.reason)).replace("{max}", String(result.maxPoints ?? 0));
+    }
     if (result.code === "BELOW_MINIMUM" && result.minOrder) {
       return t("checkout.minimumError").replace("{min}", formatPrice(result.minOrder));
     }
@@ -417,6 +428,7 @@ export default function CheckoutPage() {
           notes: orderNotes || undefined,
           locale,
           couponCode: couponCode || undefined,
+          ...(points.requested > 0 ? { redeemPoints: points.requested } : {}),
           payment: orderType === "dine_in" ? "table" : payment === "card" ? "online" : orderType === "delivery" ? "courier" : "counter",
           fulfillment:
             orderType === "dine_in" && table
@@ -433,6 +445,7 @@ export default function CheckoutPage() {
               code: result.code,
             });
           }
+          if (result.code === "POINTS_UNAVAILABLE") points.onRefused(result.maxPoints);
           setError(orderErrorMessage(result));
           return;
         }
@@ -722,6 +735,7 @@ export default function CheckoutPage() {
                       </p>
                     )}
                     <ClubCouponOffer className="mt-2" />
+                    <PointsAtCheckout state={points} className="mt-3" />
                     <SaleNotices />
                     <div className="mt-4 space-y-1.5 border-t border-beige-dark/20 pt-4 text-sm">
                       <div className="flex justify-between"><span>{t("cart.subtotal")}</span><span>{formatPrice(subtotal)}</span></div>
@@ -747,6 +761,12 @@ export default function CheckoutPage() {
                           <span>-{formatPrice(discount)}</span>
                         </div>
                       )}
+                      {points.requested > 0 && (
+                        <div className="flex justify-between text-turquoise" data-summary="points">
+                          <span>{t("checkout.points.line").replace("{points}", String(points.requested))}</span>
+                          <span dir="ltr">-{formatPrice(points.discount)}</span>
+                        </div>
+                      )}
                       {orderType === "delivery" && deliveryZone ? (
                         <div className="flex justify-between" data-summary="delivery-fee">
                           <span>
@@ -765,7 +785,7 @@ export default function CheckoutPage() {
                       )}
                       <div className="flex justify-between pt-2 text-lg font-bold">
                         <span>{t("cart.total")}</span>
-                        <span className="text-turquoise" data-summary="total">{formatPrice(displayTotal)}</span>
+                        <span className="text-turquoise" data-summary="total">{formatPrice(payTotal)}</span>
                       </div>
                     </div>
                     {error && <p className="mt-3 text-sm text-red-600">{error}</p>}

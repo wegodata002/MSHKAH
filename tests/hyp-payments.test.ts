@@ -73,16 +73,16 @@ describe("HYP server-side coupon discount", () => {
   it("ignores a forged client discount when there is no coupon", () => {
     const forgedOrder = { discount: 99.99, total: 0.01, delivery: 0 };
     const charge = chargeFromCatalogSum(100, forgedOrder);
-    expect(charge).toEqual({ amount: 100, discount: 0, subtotal: 100 });
+    expect(charge).toEqual({ amount: 100, discount: 0, subtotal: 100, pointsDiscount: 0 });
   });
 
   it("applies exactly 10% for MISHKAT10 (case/space-insensitive)", () => {
-    expect(chargeFromCatalogSum(100, { couponCode: "MISHKAT10" })).toEqual({
+    expect(chargeFromCatalogSum(100, { couponCode: "MISHKAT10" })).toMatchObject({
       amount: 90,
       discount: 10,
       subtotal: 100,
     });
-    expect(chargeFromCatalogSum(44.5, { couponCode: "  mishkat10 " })).toEqual({
+    expect(chargeFromCatalogSum(44.5, { couponCode: "  mishkat10 " })).toMatchObject({
       amount: 40.05,
       discount: 4.45,
       subtotal: 44.5,
@@ -90,12 +90,12 @@ describe("HYP server-side coupon discount", () => {
   });
 
   it("WELCOME15 was removed (Club 2): no discount", () => {
-    expect(chargeFromCatalogSum(100, { couponCode: "WELCOME15" })).toEqual({
+    expect(chargeFromCatalogSum(100, { couponCode: "WELCOME15" })).toMatchObject({
       amount: 100,
       discount: 0,
       subtotal: 100,
     });
-    expect(chargeFromCatalogSum(33, { couponCode: "welcome15" })).toEqual({
+    expect(chargeFromCatalogSum(33, { couponCode: "welcome15" })).toMatchObject({
       amount: 33,
       discount: 0,
       subtotal: 33,
@@ -105,7 +105,7 @@ describe("HYP server-side coupon discount", () => {
   it("gives no discount for unknown or empty codes", () => {
     for (const code of ["FREE100", "MISHKAT", "", undefined, null, 15, "toString"]) {
       expect(couponRate(code)).toBe(0);
-      expect(chargeFromCatalogSum(100, { couponCode: code })).toEqual({
+      expect(chargeFromCatalogSum(100, { couponCode: code })).toMatchObject({
         amount: 100,
         discount: 0,
         subtotal: 100,

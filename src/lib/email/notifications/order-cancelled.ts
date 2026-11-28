@@ -11,6 +11,7 @@ import type { NotifyResult } from "@/lib/email/notifications/new-order";
 import type { FirestoreOrder } from "@/types/firestore";
 import { refundOrderPoints } from "@/lib/loyalty/admin/members";
 import { restoreCouponForCancelledOrder } from "@/lib/loyalty/admin/coupons";
+import { releaseOrderPoints } from "@/lib/loyalty/admin/redemption";
 import { toMinor } from "@/lib/loyalty/points-math";
 
 const FIELD = "orderCancelledEmail";
@@ -28,6 +29,15 @@ export async function notifyOrderCancelled(orderId: string): Promise<NotifyResul
     // This endpoint is public: act only on an order that really is cancelled (no email,
     // no points reversed, no code given back for an order that is still going).
     if (data.status !== "cancelled") return { status: "skipped", reason: "not_cancelled" };
+
+    // The club points paid with on this order go back to the member, once (`unredeem:<orderId>`).
+    // Independent of the email below (also when the email was already sent).
+    await releaseOrderPoints(getAdminDb(), orderId, "cancelled").catch((error) =>
+      console.error("[loyalty] points release failed on cancel", {
+        orderId,
+        message: error instanceof Error ? error.message : "unknown",
+      })
+    );
 
     // The manager cancelled: the personal club code used on it goes back to the member
     // (at least 3 more days). Idempotent, and independent of the email below.

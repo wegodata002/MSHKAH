@@ -19,6 +19,7 @@ export type LoyaltyLogEvent =
   | "enroll.cash.ok"
   | "member.earn"
   | "member.redeem"
+  | "member.unredeem"
   | "member.refund"
   | "member.adjust"
   | "member.suspend"

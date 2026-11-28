@@ -12,8 +12,10 @@ export type SubmitOrderResult =
       productNames?: string[];
       minOrder?: number;
       nextAt?: string | null;
-      /** COUPON_INVALID: login_required / invalid / used / expired. */
+      /** COUPON_INVALID: login_required / invalid / used / expired. POINTS_UNAVAILABLE: see PointsRefusal. */
       reason?: string;
+      /** POINTS_UNAVAILABLE: how many points this order could take now. */
+      maxPoints?: number;
     };
 
 export function cartToOrderItems(items: CartItem[]): CreateOrderRequest["items"] {
@@ -62,6 +64,7 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
         minOrder?: number;
         nextAt?: string | null;
         reason?: string;
+        maxPoints?: number;
       }
     | null;
   if (res.ok && data?.ok && data.id) {
@@ -81,5 +84,6 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
     minOrder: typeof data?.minOrder === "number" ? data.minOrder : undefined,
     nextAt: typeof data?.nextAt === "string" ? data.nextAt : null,
     reason: typeof data?.reason === "string" ? data.reason : undefined,
+    maxPoints: typeof data?.maxPoints === "number" ? data.maxPoints : undefined,
   };
 }

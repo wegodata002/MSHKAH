@@ -22,6 +22,7 @@ import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
 import { readOrderCouponRecord, readStoreCoupon } from "@/lib/coupons/admin/store";
+import { heldPointsDiscount, releaseOrderPoints } from "@/lib/loyalty/admin/redemption";
 import { couponStatus, normalizeStoreCode } from "@/lib/coupons/store-coupons";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 import { priceNow } from "@/lib/sales/sale-price";
@@ -44,7 +45,7 @@ function pageLangFromLocale(locale?: string): "HEB" | "ENG" {
 async function trustedChargeAmount(
   order: FirestoreOrder,
   orderId: string
-): Promise<{ amount: number; discount: number; subtotal: number; delivery: number }> {
+): Promise<{ amount: number; discount: number; subtotal: number; delivery: number; pointsDiscount: number }> {
   const items = order.items ?? [];
   if (items.length === 0) {
     throw new HypPaymentError("Order has no items", "INVALID_AMOUNT", 400);
@@ -111,8 +112,10 @@ async function trustedChargeAmount(
       store = { rate: usable ? coupon.value / 100 : 0 };
     } else store = { rate: 0 };
   }
+  // Club points: what the server took off the member for this order (0 once given back).
+  const points = await heldPointsDiscount(db, orderId);
   return {
-    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate, store),
+    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate, store, points),
     delivery: deliveryFee,
   };
 }
@@ -177,7 +180,7 @@ export async function createHypPaymentAttempt(
     order = { ...order, ...customerPatch };
   }
 
-  const { amount, discount, subtotal, delivery } = await trustedChargeAmount(order, id);
+  const { amount, discount, subtotal, delivery, pointsDiscount } = await trustedChargeAmount(order, id);
   if (amount <= 0) {
     throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
   }
@@ -185,10 +188,11 @@ export async function createHypPaymentAttempt(
     amount !== authoritativeOrderAmount(order) ||
     amount !== order.total ||
     discount !== order.discount ||
-    delivery !== (Number(order.delivery) || 0)
+    delivery !== (Number(order.delivery) || 0) ||
+    pointsDiscount !== (Number((order as { pointsDiscount?: unknown }).pointsDiscount) || 0)
   ) {
-    await orderRef.update({ total: amount, subtotal, discount, delivery });
-    order = { ...order, total: amount, subtotal, discount, delivery };
+    await orderRef.update({ total: amount, subtotal, discount, delivery, pointsDiscount });
+    order = { ...order, total: amount, subtotal, discount, delivery, pointsDiscount } as typeof order;
   }
 
   const customerEmail = normalizeCustomerEmail(order.customerEmail);
@@ -453,6 +457,15 @@ export async function handleHypReturn(rawQuery: string): Promise<{
   }
 
   if (!alreadyPaid && (decision.action === "mark_failed" || decision.action === "mark_cancelled")) {
+    // The card payment failed or was cancelled at the payment page: the club points paid with on
+    // this order go back to the member, once. (A payment never finished keeps them held until a
+    // manager cancels the order: the admin shows "points held".)
+    await releaseOrderPoints(db, payment.orderId, "payment_failed").catch((error) =>
+      console.error("[loyalty] points release failed after card failure", {
+        orderId: payment.orderId,
+        message: error instanceof Error ? error.message : "unknown",
+      })
+    );
     void runFailedPostPaymentTasks(payment.orderId, paymentId);
   }
 

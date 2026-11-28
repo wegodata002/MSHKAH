@@ -146,6 +146,8 @@ export interface LoyaltyMember {
 export type LoyaltyLedgerKind =
   | "earn"
   | "redeem"
+  /** Points paid with on an order, given back (order cancelled / card payment failed). */
+  | "unredeem"
   | "refund"
   | "adjustment"
   | "welcome";

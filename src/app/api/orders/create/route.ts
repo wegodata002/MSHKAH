@@ -13,6 +13,8 @@ import type { LoyaltyMember } from "@/lib/loyalty/types";
 import { saveMemberCheckoutDetails } from "@/lib/loyalty/admin/checkout-details";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 import { countCustomerUses, readStoreCoupon, saveOrderWithStoreCoupon } from "@/lib/coupons/admin/store";
+import { readLoyaltySettings } from "@/lib/loyalty/admin/members";
+import { saveOrderWithPoints } from "@/lib/loyalty/admin/redemption";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -41,7 +43,12 @@ export async function POST(request: NextRequest) {
     findClubMember: async () => {
       const member = await readSessionMember(db, request.cookies.get(CLUB_COOKIE_NAME)?.value);
       if (!member) return null;
-      return { id: member.id, email: typeof member.email === "string" ? member.email : null, status: member.status };
+      return {
+        id: member.id,
+        email: typeof member.email === "string" ? member.email : null,
+        status: member.status,
+        balancePoints: Math.max(0, Math.floor(Number(member.balancePoints) || 0)),
+      };
     },
     checkClubCoupon: async (code, member) => {
       const result = await checkCouponForMember(db, {
@@ -61,6 +68,13 @@ export async function POST(request: NextRequest) {
       return ref.id;
     },
     rememberMemberCheckout: (memberId, order) => saveMemberCheckoutDetails(db, memberId, order),
+    // Paying with club points: the settings now, and the order saved with the points taken off the
+    // balance (and its coupon, if any) in one transaction.
+    loadLoyaltySettings: () => readLoyaltySettings(db),
+    saveOrderWithPoints: async (draft, parts) => {
+      const now = Timestamp.now();
+      return saveOrderWithPoints(db, { order: { ...draft, createdAt: now, receivedAt: now }, ...parts, now: new Date() });
+    },
     findStoreCoupon: (code) => readStoreCoupon(db, code),
     countStoreCouponUses: (code, who) => countCustomerUses(db, code, who),
     saveOrderWithStoreCoupon: async (draft, record) => {

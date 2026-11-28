@@ -191,6 +191,9 @@ export function mapOrder(doc: FirestoreDoc<FirestoreOrder>): Order {
     cancelledAt: doc.cancelledAt ? timestampToIso(doc.cancelledAt) : null,
     paidAt: doc.paidAt ? timestampToIso(doc.paidAt) : null,
     paidVia: doc.paidVia,
+    ...(Number(doc.pointsRedeemed) > 0
+      ? { pointsRedeemed: Math.floor(Number(doc.pointsRedeemed)), pointsDiscount: Number(doc.pointsDiscount) || 0, ...(typeof doc.pointsReleasedAt === "string" ? { pointsReleasedAt: doc.pointsReleasedAt } : {}) }
+      : {}),
     paidBy: doc.paidBy || undefined,
     servedBy: doc.servedBy || undefined,
     createdBy: doc.createdBy || undefined,
