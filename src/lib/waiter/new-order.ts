@@ -11,6 +11,8 @@ import {
   type ServerOrderDraft,
 } from "@/lib/orders/server-order";
 import type { ProductBuilderConfig } from "@/types/modifiers";
+import type { Bundle } from "@/lib/bundles/bundle";
+import { requestProductIds } from "@/lib/orders/price-lines";
 
 /**
  * "New order" on the waiter screen: the waiter enters the guest's order at a table. It goes through
@@ -26,6 +28,11 @@ export const WAITER_GRACE_MINUTES = 30;
 export const WAITER_ORDER_LIMIT = { windowSeconds: 10 * 60, limit: 60 } as const;
 
 const ID = /^[A-Za-z0-9_-]{1,200}$/;
+// Only which add-on and how many: prices and names come from the catalog.
+const waiterModifiers = z
+  .array(z.object({ groupId: z.string().min(1).max(200), optionId: z.string().min(1).max(200), quantity: z.number().int().min(1).max(99) }))
+  .max(40)
+  .optional();
 
 const waiterOrderSchema = z.object({
   tableId: z.string().trim().min(1).max(100),
@@ -38,16 +45,26 @@ const waiterOrderSchema = z.object({
       z.object({
         productId: z.string().trim().regex(ID),
         quantity: z.number().int().min(1).max(99),
-        // Only which add-on and how many: prices and names come from the catalog.
-        modifiers: z
-          .array(z.object({ groupId: z.string().min(1).max(200), optionId: z.string().min(1).max(200), quantity: z.number().int().min(1).max(99) }))
-          .max(40)
-          .optional(),
+        modifiers: waiterModifiers,
         notes: z.string().trim().max(500).optional(),
       })
     )
-    .min(1)
-    .max(60),
+    .max(60)
+    .default([]),
+  /** Bundles (Admin → Sales → Bundles): priced from the bundle in the database, like a guest's order. */
+  bundles: z
+    .array(
+      z.object({
+        bundleId: z.string().trim().regex(ID),
+        quantity: z.number().int().min(1).max(99),
+        picks: z
+          .array(z.object({ slotId: z.string().trim().regex(ID), productId: z.string().trim().regex(ID), modifiers: waiterModifiers, notes: z.string().trim().max(500).optional() }))
+          .min(1)
+          .max(60),
+      })
+    )
+    .max(60)
+    .optional(),
 });
 
 export type WaiterOrderDeps = {
@@ -57,6 +74,8 @@ export type WaiterOrderDeps = {
   loadProducts: (ids: string[]) => Promise<ReadonlyMap<string, CatalogProduct | undefined>>;
   loadContext: () => Promise<{ fulfillment: FulfillmentSettings; openingHours: OpeningHours }>;
   loadModifierConfigs: (ids: string[]) => Promise<ReadonlyMap<string, ProductBuilderConfig>>;
+  /** The bundles asked for, from the database; missing = deleted. */
+  loadBundles?: (ids: string[]) => Promise<ReadonlyMap<string, Bundle | undefined>>;
   saveOrder: (draft: ServerOrderDraft) => Promise<string>;
   /** Kitchen print + new-order email, after the order is saved (never fails the order). */
   afterSave: (orderId: string) => Promise<void>;
@@ -80,6 +99,7 @@ export async function handleWaiterOrder(body: unknown, actor: string, deps: Wait
 
   const request = createOrderRequestSchema.safeParse({
     items: input.items,
+    ...(input.bundles && input.bundles.length > 0 ? { bundles: input.bundles } : {}),
     customer: { name: input.customerName, phone },
     notes: input.notes || undefined,
     locale: input.locale,
@@ -90,12 +110,19 @@ export async function handleWaiterOrder(body: unknown, actor: string, deps: Wait
 
   if (!(await deps.rateLimit())) return { status: 429, body: { ok: false, code: "RATE_LIMITED" } };
 
-  const ids = request.data.items.map((i) => i.productId);
-  const [products, context, modifierConfigs] = await Promise.all([deps.loadProducts(ids), deps.loadContext(), deps.loadModifierConfigs(ids)]);
+  const ids = requestProductIds(request.data.items, request.data.bundles ?? []);
+  const bundleIds = [...new Set((request.data.bundles ?? []).map((b) => b.bundleId))];
+  const [products, context, modifierConfigs, bundles] = await Promise.all([
+    deps.loadProducts(ids),
+    deps.loadContext(),
+    deps.loadModifierConfigs(ids),
+    bundleIds.length > 0 && deps.loadBundles ? deps.loadBundles(bundleIds) : Promise.resolve(new Map<string, Bundle | undefined>()),
+  ]);
   const now = deps.now();
   const built = buildServerOrder(request.data, {
     products,
     modifierConfigs,
+    bundles,
     fulfillment: context.fulfillment,
     openingHours: context.openingHours,
     now,

@@ -108,7 +108,7 @@ describe("Admin → Sales (rendered)", () => {
     fireEvent.click(document.querySelector("[data-sale-save]")!);
     await waitFor(() => expect(fetchMock.mock.calls.some((c) => c[1].action === "create")).toBe(true));
     const sent = fetchMock.mock.calls.find((c) => c[1].action === "create")![1].sale;
-    expect(sent).toEqual({ name: { he: "מבצע חורף", ar: "", en: "" }, kind: "price", value: 15, startsAt: "2026-11-30T22:00:00.000Z", endsAt: "2026-12-07T21:59:00.000Z", productIds: ["latte", "tea"] });
+    expect(sent).toEqual({ name: { he: "מבצע חורף", ar: "", en: "" }, kind: "price", value: 15, startsAt: "2026-11-30T22:00:00.000Z", endsAt: "2026-12-07T21:59:00.000Z", productIds: ["latte", "tea"], freeDelivery: false, freeDeliveryMin: 0 });
   });
 
   it("a refusal from the server is shown in words (overlap names the sale and the products)", async () => {

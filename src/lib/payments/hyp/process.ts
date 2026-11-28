@@ -17,7 +17,6 @@ import { HYP_CURRENCY, HYP_PROVIDER } from "@/lib/payments/hyp/types";
 import type { FirestoreOrder } from "@/types/firestore";
 import { loadFulfillmentContext } from "@/lib/orders/server-context";
 import { loadModifierConfigs } from "@/lib/orders/admin-modifier-config";
-import { priceLineModifiers } from "@/lib/orders/modifier-pricing";
 import { deliveryFeeForZone } from "@/lib/fulfillment/availability";
 import { isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { personalCouponRateForOrder } from "@/lib/loyalty/admin/coupons";
@@ -25,7 +24,22 @@ import { readOrderCouponRecord, readStoreCoupon } from "@/lib/coupons/admin/stor
 import { heldPointsDiscount, releaseOrderPoints } from "@/lib/loyalty/admin/redemption";
 import { couponStatus, normalizeStoreCode } from "@/lib/coupons/store-coupons";
 import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
-import { priceNow } from "@/lib/sales/sale-price";
+import { linesFromStoredItems, priceOrderLines, requestProductIds } from "@/lib/orders/price-lines";
+import type { CatalogProduct } from "@/lib/orders/server-order";
+import { loadBundles } from "@/lib/bundles/admin";
+import { deliveryFeeAfterOffers } from "@/lib/bundles/bundle";
+
+/** A bundle that was on when the order was placed still counts at the card charge, this long after. */
+export const BUNDLE_CHARGE_GRACE_MS = 60 * 60_000;
+
+/** When the order was placed (server time), if it was a short while ago; else null. */
+function placedRecently(order: FirestoreOrder, now: Date): Date | null {
+  const raw = (order as { createdAt?: unknown }).createdAt as { toDate?: () => Date } | undefined;
+  const at = raw && typeof raw.toDate === "function" ? raw.toDate() : null;
+  if (!at || !Number.isFinite(at.getTime())) return null;
+  const age = now.getTime() - at.getTime();
+  return age >= 0 && age <= BUNDLE_CHARGE_GRACE_MS ? at : null;
+}
 
 export class HypPaymentError extends Error {
   constructor(
@@ -51,49 +65,35 @@ async function trustedChargeAmount(
     throw new HypPaymentError("Order has no items", "INVALID_AMOUNT", 400);
   }
   const db = getAdminDb();
-  const productIds = items.map((item) => item.productId?.trim() ?? "");
-  if (productIds.some((id) => !id)) {
+  // The order's lines (products on their own, and each bundle's products) — only ids and quantities;
+  // every price is worked out again by the SAME function as the order route (price-lines): the sale
+  // price while a sale is on, the bundle price from the bundle in the database, add-ons from the
+  // products' add-on groups. Never a price written on the order.
+  const lines = linesFromStoredItems(items as Parameters<typeof linesFromStoredItems>[0]);
+  if (!lines) {
     throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
   }
-  // Add-on prices from the products' add-on groups — never from the prices stored on the order.
-  const modifierConfigs = await loadModifierConfigs(db, productIds);
-  let catalogSum = 0;
-  for (const [index, item] of items.entries()) {
-    const productId = productIds[index]!;
-    const snap = await db.collection(COLLECTIONS.products).doc(productId).get();
-    if (!snap.exists) {
-      throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
-    }
-    // The product's price now, from the catalog: the sale price while a sale is on (Admin → Sales),
-    // exactly as the order route priced it. Never a price written on the order.
-    const catalogPrice = priceNow({ price: snap.data()?.price, sales: snap.data()?.sales }, new Date()).price;
-    if (!Number.isFinite(catalogPrice) || catalogPrice < 0) {
-      throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
-    }
-    const categoryId = snap.data()?.categoryId;
-    const priced = priceLineModifiers(
-      modifierConfigs.get(productId),
-      (item.modifiers ?? []).map((m) => ({ groupId: String(m.groupId ?? ""), optionId: String(m.optionId ?? ""), quantity: Number(m.quantity) })),
-      { productId, categoryId: typeof categoryId === "string" && categoryId ? categoryId : undefined },
-      "he"
-    );
-    if (!priced.ok) {
-      throw new HypPaymentError("Order add-ons are invalid", "INVALID_AMOUNT", 400);
-    }
-    const unit = catalogPrice + priced.extras;
-    if (unit < 0) {
-      throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
-    }
-    const qty = Number(item.quantity) || 0;
-    if (qty <= 0) {
-      throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
-    }
-    catalogSum += unit * qty;
+  const productIds = requestProductIds(lines.items, lines.bundles);
+  const now = new Date();
+  const [modifierConfigs, products, bundles] = await Promise.all([
+    loadModifierConfigs(db, productIds),
+    loadChargeProducts(db, productIds),
+    lines.bundles.length > 0 ? loadBundles(db, lines.bundles.map((b) => b.bundleId)) : Promise.resolve(new Map()),
+  ]);
+  const priced = priceOrderLines(lines, { products, modifierConfigs, bundles, now, locale: "he", charge: { placedAt: placedRecently(order, now) } });
+  if (!priced.ok) {
+    const error = priced.error;
+    if (error.code === "BUNDLE_UNAVAILABLE") throw new HypPaymentError("A bundle in the order is over", "BUNDLE_UNAVAILABLE", 409);
+    if (error.code === "OPTIONS_UNAVAILABLE") throw new HypPaymentError("Order add-ons are invalid", "INVALID_AMOUNT", 400);
+    if (error.code === "INVALID_PRICE") throw new HypPaymentError("Order amount is invalid", "INVALID_AMOUNT", 400);
+    throw new HypPaymentError("Order items are invalid", "INVALID_AMOUNT", 400);
   }
+  const catalogSum = priced.value.subtotal;
   // Discount is derived from the stored coupon code only — never order.discount.
   // Delivery fee comes from the settings for the order's area — never order.delivery,
-  // which the browser could still write directly until the rules are locked.
-  const deliveryFee = await trustedDeliveryFee(order);
+  // which the browser could still write directly until the rules are locked; free when a sale or
+  // a bundle in the order gives free delivery (from its minimum), exactly as the order route.
+  const deliveryFee = deliveryFeeAfterOffers(await trustedDeliveryFee(order), catalogSum, priced.value.freeDeliveryFrom).fee;
   // A personal club code counts only if it is recorded as used by this very order.
   const personalRate = isPersonalCouponCode(order.couponCode)
     ? await personalCouponRateForOrder(db, orderId, order.couponCode)
@@ -115,9 +115,21 @@ async function trustedChargeAmount(
   // Club points: what the server took off the member for this order (0 once given back).
   const points = await heldPointsDiscount(db, orderId);
   return {
-    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate, store, points),
+    ...chargeFromCatalogSum(catalogSum, { ...order, delivery: deliveryFee }, personalRate, store, points, priced.value.couponBase),
     delivery: deliveryFee,
   };
+}
+
+/** The order's products from the catalog (one read each; a product deleted since = missing). */
+async function loadChargeProducts(db: ReturnType<typeof getAdminDb>, ids: readonly string[]): Promise<Map<string, CatalogProduct | undefined>> {
+  const out = new Map<string, CatalogProduct | undefined>();
+  await Promise.all(
+    ids.map(async (id) => {
+      const snap = await db.collection(COLLECTIONS.products).doc(id).get();
+      out.set(id, snap.exists ? (snap.data() as CatalogProduct) : undefined);
+    })
+  );
+  return out;
 }
 
 async function trustedDeliveryFee(order: FirestoreOrder): Promise<number> {

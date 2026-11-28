@@ -33,13 +33,17 @@ export type CouponCheck =
   | "expired"
   | "members_only"
   | "already_used"
-  | "min_order";
+  | "min_order"
+  /** Only bundles that coupons don't apply to in the order. */
+  | "bundles_only";
 
 /** Message key for a coupon that cannot be applied. */
 export function couponMessageKey(check: Exclude<CouponCheck, "ok">): string {
   switch (check) {
     case "too_large":
       return "cart.couponTooLarge";
+    case "bundles_only":
+      return "bundles.couponNotOnBundles";
     case "login_required":
       return "cart.couponLogin";
     case "used":

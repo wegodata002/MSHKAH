@@ -63,8 +63,21 @@ export function SaleBadge({ product, className }: { product: { price: unknown; s
   const label = useSaleBadgeText();
   if (!sale) return null;
   return (
-    <span className={cn("inline-flex items-center rounded-full bg-[#B4331F] px-2 py-0.5 text-[11px] font-bold text-white shadow-soft md:text-xs", className)} data-sale-badge={sale.kind}>
-      {label(sale)}
+    <>
+      <span className={cn("inline-flex items-center rounded-full bg-[#B4331F] px-2 py-0.5 text-[11px] font-bold text-white shadow-soft md:text-xs", className)} data-sale-badge={sale.kind}>
+        {label(sale)}
+      </span>
+      {sale.freeDelivery && <FreeDeliveryTag min={sale.freeDeliveryMin} className={className} />}
+    </>
+  );
+}
+
+/** "🚚 Free delivery" (from ₪X): a sale or a bundle with free delivery. */
+export function FreeDeliveryTag({ min, className }: { min?: number; className?: string }) {
+  const t = useT();
+  return (
+    <span className={cn("inline-flex items-center rounded-full bg-warm-white px-2 py-0.5 text-[11px] font-bold text-turquoise shadow-soft ring-1 ring-turquoise/30 md:text-xs", className)} data-free-delivery-tag>
+      🚚 {min ? t("offers.freeDeliveryFrom").replace("{min}", formatPrice(min)) : t("offers.freeDelivery")}
     </span>
   );
 }

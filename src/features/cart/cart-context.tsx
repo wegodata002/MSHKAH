@@ -11,7 +11,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { Product, CartItem } from "@/types";
+import type { Product, CartItem, CartBundleLine } from "@/types";
 import type { SelectedModifier } from "@/types/modifiers";
 import {
   calculateUnitPrice,
@@ -27,9 +27,13 @@ import { priceNow } from "@/lib/sales/sale-price";
 import { priceCartLine, saleChanges, type SaleChange } from "@/lib/sales/cart-pricing";
 import { useSaleClock } from "@/features/sales/sale-price-view";
 import { subscribeToProducts } from "@/services/productService";
+import { useActiveBundles } from "@/features/bundles/use-bundles";
+import { cartFreeDeliveryFrom, priceCartBundle } from "@/lib/bundles/cart-bundle";
 
 interface CartState {
   items: CartItem[];
+  /** Bundles (several products for one price), each with the product chosen for each part. */
+  bundles: CartBundleLine[];
   isOpen: boolean;
   couponCode: string;
   /** Percent coupons: the rate (0–1) shown in the cart. The server prices the order on its own. */
@@ -54,6 +58,9 @@ type CartAction =
       configurable?: boolean;
     }
   | { type: "REMOVE_ITEM"; lineId: string }
+  | { type: "ADD_BUNDLE"; line: Omit<CartBundleLine, "lineId"> }
+  | { type: "UPDATE_BUNDLE_QUANTITY"; lineId: string; quantity: number }
+  | { type: "REMOVE_BUNDLE"; lineId: string }
   | { type: "UPDATE_QUANTITY"; lineId: string; quantity: number }
   | {
       type: "UPDATE_CONFIGURED_ITEM";
@@ -104,6 +111,17 @@ interface CartContextValue {
   saleNotices: Array<SaleChange & { product: Product }>;
   dismissSaleNotices: () => void;
   addItem: (product: Product, options?: AddItemOptions) => void;
+  /** Bundles in the cart, priced now (bundle price + add-ons; `available: false` when it is over). */
+  bundleLines: CartBundleLine[];
+  addBundle: (line: Omit<CartBundleLine, "lineId">) => void;
+  updateBundleQuantity: (lineId: string, quantity: number) => void;
+  removeBundle: (lineId: string) => void;
+  /** The part of the subtotal a coupon may take off (bundles without "coupons allowed" left out). */
+  couponBase: number;
+  /** Products total from which delivery is free (a sale or a bundle with free delivery), or null. */
+  freeDeliveryFrom: number | null;
+  /** A bundle in the cart is over: it must be removed before ordering. */
+  hasEndedBundle: boolean;
   removeItem: (lineId: string) => void;
   updateQuantity: (lineId: string, quantity: number) => void;
   updateConfiguredItem: (
@@ -186,7 +204,7 @@ const NO_COUPON = { couponCode: "", couponDiscount: 0, couponFixed: 0, couponMin
 
 /** A coupon applies to one order only: drop it once the cart is empty. */
 function resetCouponIfEmpty(state: CartState): CartState {
-  return state.items.length === 0 && (state.couponCode || state.couponDiscount || state.couponFixed)
+  return state.items.length === 0 && bundlesOf(state).length === 0 && (state.couponCode || state.couponDiscount || state.couponFixed)
     ? { ...state, ...NO_COUPON }
     : state;
 }
@@ -203,6 +221,14 @@ function savedTerms(state: Partial<CartState>): CouponTerms {
     name: state.couponName && typeof state.couponName === "object" ? state.couponName : null,
   };
 }
+
+/** Same bundle, same choices (products, add-ons, notes). */
+function bundleKey(l: Omit<CartBundleLine, "lineId">): string {
+  return JSON.stringify([l.bundleId, l.picks.map((p) => [p.slotId, p.product.id, p.selections.map((s) => [s.groupId, s.optionId, s.quantity]), p.notes ?? ""])]);
+}
+
+/** A cart saved before bundles existed has no `bundles`. */
+const bundlesOf = (state: CartState): CartBundleLine[] => (Array.isArray(state.bundles) ? state.bundles : []);
 
 export function cartReducer(state: CartState, action: CartAction): CartState {
   switch (action.type) {
@@ -242,6 +268,25 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
         ],
       };
     }
+    case "ADD_BUNDLE": {
+      // The same bundle with the same choices: one line, more of it.
+      const twin = bundlesOf(state).find((b) => bundleKey(b) === bundleKey(action.line));
+      if (twin) {
+        return { ...state, bundles: bundlesOf(state).map((b) => (b === twin ? { ...b, quantity: Math.min(99, b.quantity + action.line.quantity) } : b)) };
+      }
+      const lineId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : "bundle-" + Date.now();
+      return { ...state, bundles: [...bundlesOf(state), { ...action.line, lineId }] };
+    }
+    case "UPDATE_BUNDLE_QUANTITY":
+      return resetCouponIfEmpty({
+        ...state,
+        bundles:
+          action.quantity <= 0
+            ? bundlesOf(state).filter((b) => b.lineId !== action.lineId)
+            : bundlesOf(state).map((b) => (b.lineId === action.lineId ? { ...b, quantity: Math.min(99, action.quantity) } : b)),
+      });
+    case "REMOVE_BUNDLE":
+      return resetCouponIfEmpty({ ...state, bundles: bundlesOf(state).filter((b) => b.lineId !== action.lineId) });
     case "REMOVE_ITEM":
       return resetCouponIfEmpty({
         ...state,
@@ -301,9 +346,10 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       // A store coupon keeps its saved terms for display (capped) and is checked with the server right
       // after loading too (MISHKAT10 saved by an older cart still shows its 10% meanwhile).
       const items = Array.isArray(action.state.items) ? action.state.items : state.items;
+      const bundles = Array.isArray(action.state.bundles) ? action.state.bundles.filter((b) => b && typeof b.bundleId === "string" && Array.isArray(b.picks)) : bundlesOf(state);
       if (isPersonalCouponCode(code)) {
         const rate = personalDisplayRate(action.state.couponDiscount);
-        return resetCouponIfEmpty({ ...state, items, ...NO_COUPON, couponCode: rate > 0 ? code : "", couponDiscount: rate, isOpen: state.isOpen });
+        return resetCouponIfEmpty({ ...state, items, bundles, ...NO_COUPON, couponCode: rate > 0 ? code : "", couponDiscount: rate, isOpen: state.isOpen });
       }
       const terms = savedTerms(action.state);
       const rate = terms.discount || (terms.fixed ? 0 : couponRate(code));
@@ -311,6 +357,7 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
       return resetCouponIfEmpty({
         ...state,
         items,
+        bundles,
         ...NO_COUPON,
         ...(applies ? { couponCode: code, couponDiscount: rate, couponFixed: terms.fixed, couponMinOrder: terms.minOrder, couponName: terms.name } : {}),
         // Loading the saved cart never closes a cart already opened (e.g. by /cart a moment earlier).
@@ -319,7 +366,7 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
     }
     case "CLEAR_CART":
       // After a successful order (cash or HYP success page) the coupon is used up.
-      return { ...state, items: [], ...NO_COUPON };
+      return { ...state, items: [], bundles: [], ...NO_COUPON };
     case "OPEN_CART":
       return { ...state, isOpen: true };
     case "CLOSE_CART":
@@ -345,6 +392,7 @@ export function cartReducer(state: CartState, action: CartAction): CartState {
 export function CartProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(cartReducer, {
     items: [],
+    bundles: [],
     isOpen: false,
     ...NO_COUPON,
   });
@@ -354,7 +402,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   // While the cart has products: the live menu (same query as the menu, so the listener is shared),
   // for prices changed meanwhile (a sale ended in the admin, a new price).
   const [liveProducts, setLiveProducts] = useState<ReadonlyMap<string, Product>>(new Map());
-  const hasItems = state.items.length > 0;
+  const hasItems = state.items.length > 0 || state.bundles.length > 0;
+  // The bundles on now: a bundle in the cart is priced from it (and shown as over when it is gone).
+  const { bundles: activeBundles, loaded: bundlesLoaded } = useActiveBundles();
   useEffect(() => {
     if (!hasItems) return;
     return subscribeToProducts(
@@ -373,7 +423,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }),
     [state.items, liveProducts, saleClock]
   );
-  const saleSavings = Math.round(items.reduce((sum, i) => sum + Math.max(0, (i.regularUnitPrice ?? i.unitPrice) - i.unitPrice) * i.quantity, 0) * 100) / 100;
+  const bundleLines: CartBundleLine[] = useMemo(() => {
+    const byId = new Map(activeBundles.map((b) => [b.id, b]));
+    return state.bundles.map((line) => {
+      const bundle = byId.get(line.bundleId);
+      const priced = priceCartBundle(bundle, line.picks, liveProducts, saleClock || Date.now());
+      const picks = line.picks.map((p) => ({ ...p, product: liveProducts.get(p.product.id) ?? p.product }));
+      // Until the bundles have loaded, a saved bundle is not shown as over.
+      return { ...line, picks, bundle, unitPrice: priced.unitPrice, regularUnitPrice: priced.regularUnitPrice, bundlePrice: priced.bundlePrice, available: priced.available || !bundlesLoaded };
+    });
+  }, [state.bundles, activeBundles, bundlesLoaded, liveProducts, saleClock]);
+  const saleSavings =
+    Math.round(
+      (items.reduce((sum, i) => sum + Math.max(0, (i.regularUnitPrice ?? i.unitPrice) - i.unitPrice) * i.quantity, 0) +
+        bundleLines.reduce((sum, b) => sum + (b.available ? Math.max(0, (b.regularUnitPrice ?? 0) - (b.unitPrice ?? 0)) * b.quantity : 0), 0)) *
+        100
+    ) / 100;
   // A sale that started or ended while the product is in the cart: say so once.
   const seenSales = useRef(new Map<string, string | null>());
   const [saleNotices, setSaleNotices] = useState<Array<SaleChange & { product: Product }>>([]);
@@ -415,6 +480,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       CART_STORAGE_KEY,
       JSON.stringify({
         items: state.items,
+        bundles: state.bundles,
         couponCode: state.couponCode,
         couponDiscount: state.couponDiscount,
         couponFixed: state.couponFixed ?? 0,
@@ -422,7 +488,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         couponName: state.couponName ?? null,
       })
     );
-  }, [hydrated, state.couponCode, state.couponDiscount, state.couponFixed, state.couponMinOrder, state.couponName, state.items]);
+  }, [hydrated, state.couponCode, state.couponDiscount, state.couponFixed, state.couponMinOrder, state.couponName, state.items, state.bundles]);
 
   const addItem = useCallback((product: Product, options?: AddItemOptions) => {
     if (
@@ -448,6 +514,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
   const removeItem = useCallback((lineId: string) => {
     dispatch({ type: "REMOVE_ITEM", lineId });
   }, []);
+
+  const addBundle = useCallback((line: Omit<CartBundleLine, "lineId">) => {
+    if (typeof window !== "undefined" && isViewOnlyMenuSurface(window.location.hostname, window.location.pathname)) return;
+    // Only what was chosen is kept; the price is worked out again each time (and by the server).
+    dispatch({ type: "ADD_BUNDLE", line: { bundleId: line.bundleId, quantity: line.quantity, picks: line.picks } });
+  }, []);
+  const updateBundleQuantity = useCallback((lineId: string, quantity: number) => dispatch({ type: "UPDATE_BUNDLE_QUANTITY", lineId, quantity }), []);
+  const removeBundle = useCallback((lineId: string) => dispatch({ type: "REMOVE_BUNDLE", lineId }), []);
 
   const updateQuantity = useCallback((lineId: string, quantity: number) => {
     dispatch({ type: "UPDATE_QUANTITY", lineId, quantity });
@@ -515,7 +589,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         return "ok";
       }
       if (!normalized) return "invalid";
-      const currentSubtotal = items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
+      const currentSubtotal = subtotalRef.current;
       // One coupon per order: a new code replaces the one applied (store or personal).
       const answer = await checkStoreCouponOnServer(normalized, currentSubtotal);
       if (!answer) return "invalid";
@@ -527,25 +601,28 @@ export function CartProvider({ children }: { children: ReactNode }) {
       dispatch({ type: "SET_COUPON", code: normalized, ...termsOf(answer.coupon) });
       return "ok";
     },
-    [items]
+    []
   );
 
   const removeCoupon = useCallback(() => dispatch({ type: "REMOVE_COUPON" }), []);
 
-  const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0);
-  const subtotal = items.reduce(
-    (sum, item) =>
-      sum + calculateLineTotal(item.unitPrice, item.quantity),
-    0
-  );
+  const itemCount = state.items.reduce((sum, i) => sum + i.quantity, 0) + state.bundles.reduce((sum, b) => sum + b.quantity, 0);
+  const productsTotal = items.reduce((sum, item) => sum + calculateLineTotal(item.unitPrice, item.quantity), 0);
+  const bundlesTotal = bundleLines.reduce((sum, b) => sum + calculateLineTotal(b.unitPrice ?? 0, b.quantity), 0);
+  const subtotal = Math.round((productsTotal + bundlesTotal) * 100) / 100;
+  // A coupon takes off the products, and the bundles that allow coupons (off by default).
+  const couponBase =
+    Math.round((productsTotal + bundleLines.reduce((sum, b) => sum + (b.bundle?.couponsAllowed ? calculateLineTotal(b.unitPrice ?? 0, b.quantity) : 0), 0)) * 100) / 100;
+  const freeDeliveryFrom = cartFreeDeliveryFrom(items, bundleLines.map((b) => ({ bundle: b.bundle, available: b.available === true && !!b.bundle })));
+  const hasEndedBundle = bundleLines.some((b) => b.available === false);
   subtotalRef.current = subtotal;
   const couponMinOrder = state.couponMinOrder ?? 0;
   const couponBelowMinimum = !!state.couponCode && couponMinOrder > 0 && subtotal < couponMinOrder;
   const discount = couponBelowMinimum
     ? 0
     : (state.couponFixed ?? 0) > 0
-      ? Math.min(state.couponFixed ?? 0, subtotal)
-      : subtotal * state.couponDiscount;
+      ? Math.min(state.couponFixed ?? 0, couponBase)
+      : couponBase * state.couponDiscount;
   const deliveryFee = 0;
   const total = subtotal - discount;
 
@@ -569,6 +646,13 @@ export function CartProvider({ children }: { children: ReactNode }) {
         saleNotices,
         dismissSaleNotices,
         addItem,
+        bundleLines,
+        addBundle,
+        updateBundleQuantity,
+        removeBundle,
+        couponBase,
+        freeDeliveryFrom,
+        hasEndedBundle,
         removeItem,
         updateQuantity,
         updateConfiguredItem,

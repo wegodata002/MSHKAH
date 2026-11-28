@@ -204,7 +204,9 @@ describe("card charge and earning", () => {
 
   it("the charge prices from the catalog with the sale price and the server's points; failures give the points back", () => {
     const process = read("src/lib/payments/hyp/process.ts");
-    expect(process).toContain("priceNow({ price: snap.data()?.price, sales: snap.data()?.sales }, new Date()).price");
+    // The sale price comes from the same pricing function as the order route (price-lines → priceNow).
+    expect(process).toContain("const priced = priceOrderLines(lines, { products, modifierConfigs, bundles, now,");
+    expect(read("src/lib/orders/price-lines.ts")).toContain("const pricing = priceNow(product, ctx.now);");
     expect(process).toContain("const points = await heldPointsDiscount(db, orderId);");
     expect(process).toContain(`await releaseOrderPoints(db, payment.orderId, "payment_failed")`);
     const cancel = read("src/lib/email/notifications/order-cancelled.ts");

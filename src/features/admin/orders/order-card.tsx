@@ -60,6 +60,11 @@ function OrderItems({
           <div className="flex items-start justify-between gap-2">
             <p className="font-semibold text-dark-brown dark:text-warm-white">
               {item.quantity}× {item.productName}
+              {item.bundle && (
+                <span className="ms-1.5 rounded-full bg-[#FBE7E3] px-1.5 py-0.5 text-[10px] font-semibold text-[#9A2B1A]" data-order-item-bundle>
+                  📦 {item.bundle.name}
+                </span>
+              )}
             </p>
             {onEditItem && order.status !== "delivered" && order.status !== "cancelled" && (
               <button

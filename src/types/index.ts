@@ -99,6 +99,8 @@ export interface OrderItem {
   modifiers?: import("@/types/modifiers").SelectedModifier[];
   notes?: string;
   kitchenNotes?: string[];
+  /** A product of a bundle (Admin → Sales → Bundles): which bundle line, its name and price. */
+  bundle?: { lineId: string; bundleId: string; name: string; slotId: string; price: number; regularPrice: number };
 }
 
 export interface Order {
@@ -195,6 +197,20 @@ export interface CartItem {
   /** From the cart, priced now (not kept): the regular unit price, and the sale on now, if any. */
   regularUnitPrice?: number;
   sale?: import("@/lib/sales/sale-price").ProductSale | null;
+}
+
+/** A bundle in the cart (Admin → Sales → Bundles): which bundle, how many, and the product chosen for each part. */
+export interface CartBundleLine {
+  lineId: string;
+  bundleId: string;
+  quantity: number;
+  picks: Array<{ slotId: string; product: Product; selections: import("@/types/modifiers").SelectedModifier[]; notes?: string }>;
+  /** From the cart, priced now (not kept): the bundle as it is now, its price with add-ons, separately, on or not. */
+  bundle?: import("@/lib/bundles/bundle").Bundle;
+  unitPrice?: number;
+  regularUnitPrice?: number;
+  bundlePrice?: number;
+  available?: boolean;
 }
 
 export interface ProductFilters {

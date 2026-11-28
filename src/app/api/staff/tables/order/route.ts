@@ -9,6 +9,7 @@ import { notifyNewOrder } from "@/lib/email/notifications";
 import { maybeEnqueueNewOrderPrint } from "@/lib/print-jobs/enqueue-new-order";
 import { actorFor, readWaiterContext } from "@/lib/waiter/admin/context";
 import { handleWaiterOrder, WAITER_ORDER_LIMIT } from "@/lib/waiter/new-order";
+import { loadBundles } from "@/lib/bundles/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export async function POST(request: NextRequest) {
       loadProducts: (ids) => loadCatalogProducts(db, ids),
       loadContext: () => loadFulfillmentContext(db),
       loadModifierConfigs: (ids) => loadModifierConfigs(db, ids),
+      loadBundles: (ids) => loadBundles(db, ids),
       saveOrder: async (draft) => {
         const now = Timestamp.now();
         const ref = await db.collection(COLLECTIONS.orders).add({ ...draft, createdAt: now, receivedAt: now });

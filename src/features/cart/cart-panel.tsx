@@ -21,6 +21,7 @@ import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
 import { couponMessageKey } from "@/lib/orders/coupons";
 import { SaleBadge, SalePrice } from "@/features/sales/sale-price-view";
 import { SaleNotices, SaleSavingsRow } from "@/features/sales/cart-sale-parts";
+import { CartBundleRow } from "@/features/bundles/cart-bundle-row";
 
 function CartLineItem({
   item,
@@ -146,7 +147,12 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
     couponBelowMinimum,
     couponMinOrder,
     lastCouponMinOrder,
+    bundleLines,
+    updateBundleQuantity,
+    removeBundle,
+    hasEndedBundle,
   } = useCart();
+  const empty = items.length === 0 && bundleLines.length === 0;
   const { locale } = useLocale();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -184,7 +190,7 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
 
       <div className="min-h-0 flex-1 overflow-y-auto py-2">
         <AnimatePresence mode="popLayout">
-          {items.length === 0 ? (
+          {empty ? (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -206,12 +212,21 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
                   onEdit={edit}
                 />
               ))}
+              {bundleLines.map((line) => (
+                <CartBundleRow
+                  key={line.lineId}
+                  line={line}
+                  compact={compact}
+                  onQuantity={(q) => updateBundleQuantity(line.lineId, q)}
+                  onRemove={() => removeBundle(line.lineId)}
+                />
+              ))}
             </div>
           )}
         </AnimatePresence>
       </div>
 
-      {items.length > 0 && (
+      {!empty && (
         <div className="shrink-0 border-t border-beige-dark/15 pt-4">
           {/* Shown in the mobile/tablet drawer too. text-base below md avoids iOS focus zoom. */}
           <div className="mb-3 flex gap-2">
@@ -286,10 +301,16 @@ export function CartPanel({ compact, onCheckout, className }: CartPanelProps) {
             </div>
           </div>
 
-          <Link href="/checkout" onClick={onCheckout}>
+          {hasEndedBundle && (
+            <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status" data-cart-bundle-ended>
+              {t("bundles.removeEnded")}
+            </p>
+          )}
+          <Link href={hasEndedBundle ? "#" : "/checkout"} onClick={(e) => (hasEndedBundle ? e.preventDefault() : onCheckout?.())} aria-disabled={hasEndedBundle}>
             <Button
               variant="turquoise"
               size="lg"
+              disabled={hasEndedBundle}
               className="mt-4 h-12 w-full rounded-xl text-base transition-transform hover:scale-[1.01]"
             >
               {t("cart.checkout")}

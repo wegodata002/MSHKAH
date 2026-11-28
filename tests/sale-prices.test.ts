@@ -150,7 +150,9 @@ describe("the server prices the order with the sale (and coupons after it)", () 
 
   it("waiter / table orders go through the same pricing", () => {
     expect(read("src/lib/waiter/new-order.ts")).toContain("buildServerOrder(");
-    expect(read("src/lib/orders/server-order.ts")).toContain("const pricing = priceNow(product, ctx.now);");
+    // One pricing function for the order route and the card charge (price-lines).
+    expect(read("src/lib/orders/server-order.ts")).toContain("const lines = priceOrderLines(");
+    expect(read("src/lib/orders/price-lines.ts")).toContain("const pricing = priceNow(product, ctx.now);");
   });
 });
 

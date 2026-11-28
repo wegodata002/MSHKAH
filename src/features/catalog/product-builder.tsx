@@ -204,7 +204,10 @@ export function ProductBuilder({
   onValidChange,
   onSelectionsChange,
   initialState,
+  inBundle = false,
 }: {
+  /** Inside a bundle window: no price of its own and no quantity (the bundle has them). */
+  inBundle?: boolean;
   product: Product;
   config: ProductBuilderConfig;
   quantity: number;
@@ -284,6 +287,7 @@ export function ProductBuilder({
 
   return (
     <div className="space-y-5">
+      {!inBundle && (
       <div className="flex items-end justify-between gap-3">
         <div>
           <p className="font-display text-2xl font-bold text-turquoise">
@@ -318,6 +322,7 @@ export function ProductBuilder({
           </button>
         </div>
       </div>
+      )}
 
       {visibleConfig.groups.map((group) => (
         <ModifierGroupRenderer
@@ -334,11 +339,11 @@ export function ProductBuilder({
       )}
 
       <div>
-        <Label htmlFor="product-notes" className="text-sm">
+        <Label htmlFor={inBundle ? `bundle-notes-${product.id}` : "product-notes"} className="text-sm">
           {t("builder.notes")}
         </Label>
         <Textarea
-          id="product-notes"
+          id={inBundle ? `bundle-notes-${product.id}` : "product-notes"}
           value={notes}
           onChange={(e) => onNotesChange(e.target.value)}
           placeholder={t("builder.notesPlaceholder")}
@@ -346,9 +351,11 @@ export function ProductBuilder({
         />
       </div>
 
-      <p className="text-xs text-coffee/40" dir={localized.dir}>
-        {localized.description}
-      </p>
+      {!inBundle && (
+        <p className="text-xs text-coffee/40" dir={localized.dir}>
+          {localized.description}
+        </p>
+      )}
     </div>
   );
 }

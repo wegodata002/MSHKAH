@@ -13,6 +13,8 @@ import { CATALOG_GRID_CLASS } from "@/features/catalog/catalog-grid";
 import { splitOffers, type OfferEntry } from "@/lib/catalog/offers";
 import { useSaleClock } from "@/features/sales/sale-price-view";
 import type { Product } from "@/types";
+import { BundlesSection } from "@/features/bundles/bundles-section";
+import { useActiveBundles } from "@/features/bundles/use-bundles";
 
 /**
  * "Offers": products on sale now (Admin → Sales) first, then the ones chosen in the admin as
@@ -39,11 +41,13 @@ export function OffersScreen() {
   const clock = useSaleClock();
   const { onSale, recommended } = useMemo(() => splitOffers(products, offers ?? [], clock || Date.now()), [offers, products, clock]);
   const popular = useMemo(() => topPopular(products, 8), [products]);
-  const ready = !loading && offers !== null;
-  const hasOffers = onSale.length > 0 || recommended.length > 0;
+  const { bundles, loaded: bundlesLoaded } = useActiveBundles();
+  const ready = !loading && offers !== null && bundlesLoaded;
+  // Bundles first, then products on sale, then the ones chosen in the admin.
+  const hasOffers = onSale.length > 0 || recommended.length > 0 || bundles.length > 0;
   const sections: Array<{ key: "onSale" | "recommended" | "popular"; title: string | null; list: Product[] }> = hasOffers
     ? [
-        { key: "onSale" as const, title: recommended.length > 0 ? t("offers.onSale") : null, list: onSale },
+        { key: "onSale" as const, title: recommended.length > 0 || bundles.length > 0 ? t("offers.onSale") : null, list: onSale },
         { key: "recommended" as const, title: onSale.length > 0 ? t("offers.recommended") : null, list: recommended },
       ].filter((s) => s.list.length > 0)
     : [{ key: "popular" as const, title: null, list: popular }];
@@ -66,6 +70,7 @@ export function OffersScreen() {
                 {popular.length > 0 && <p className="mt-1 text-sm text-coffee/60">{t("offers.popularInstead")}</p>}
               </div>
             )}
+            <BundlesSection products={products} gridClassName={CATALOG_GRID_CLASS} />
             {sections.map((section) =>
               section.list.length > 0 ? (
                 <section key={section.key} className="mb-8" data-offers-section={section.key}>

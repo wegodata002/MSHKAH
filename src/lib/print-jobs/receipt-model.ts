@@ -145,7 +145,7 @@ function mapItem(item: OrderItem | FirestoreOrderItem): ReceiptItemLine {
 
   return {
     quantity: item.quantity,
-    name: item.productName,
+    name: "bundle" in item && item.bundle?.name ? `${item.productName} (${item.bundle.name})` : item.productName,
     lineTotal: calculateLineTotal(item.price, item.quantity),
     modifiers,
     notes: extras.length ? extras.join(" · ") : undefined,

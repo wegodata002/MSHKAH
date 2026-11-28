@@ -1,5 +1,5 @@
-import { SalesAdmin } from "@/features/admin/sales-admin";
+import { SalesPage } from "@/features/admin/sales-page";
 
 export default function AdminSalesPage() {
-  return <SalesAdmin />;
+  return <SalesPage />;
 }

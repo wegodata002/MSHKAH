@@ -73,7 +73,8 @@ export function buildTrackingView(order: OrderForTracking): OrderTrackingView {
     deliveryZoneName: order.deliveryZoneName || null,
     tableId: order.tableId || null,
     items: (order.items ?? []).map((item) => ({
-      name: item.productName,
+      // A product of a bundle: "Cappuccino (Morning bundle)".
+      name: item.bundle?.name ? `${item.productName} (${item.bundle.name})` : item.productName,
       quantity: item.quantity,
       extras: (item.modifiers ?? []).map((m) => (m.quantity > 1 ? `${m.optionName} ×${m.quantity}` : m.optionName)),
       total: Math.round(item.price * item.quantity * 100) / 100,

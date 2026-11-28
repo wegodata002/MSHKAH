@@ -69,14 +69,20 @@ export function chargeFromCatalogSum(
    * Club points held by this order (server ledger, never the order document), in ₪. They pay for the
    * products left after the coupon only (never more), not the delivery fee.
    */
-  heldPointsDiscount = 0
+  heldPointsDiscount = 0,
+  /**
+   * The part of the products a coupon may take off (bundles without "coupons allowed" left out), as
+   * priced by price-lines. Left out: all the products.
+   */
+  couponBase?: number
 ): { amount: number; discount: number; subtotal: number; pointsDiscount: number } {
   const subtotal = money(catalogSum);
+  const base = couponBase === undefined ? subtotal : Math.min(subtotal, Math.max(0, money(couponBase)));
   let discount: number;
-  if (personalCouponRate !== undefined) discount = money(subtotal * personalCouponRate);
-  else if (store && "discount" in store) discount = Math.min(money(Math.max(0, store.discount)), subtotal);
-  else if (store) discount = money(subtotal * store.rate);
-  else discount = money(subtotal * couponRate(order.couponCode));
+  if (personalCouponRate !== undefined) discount = money(base * personalCouponRate);
+  else if (store && "discount" in store) discount = Math.min(money(Math.max(0, store.discount)), base);
+  else if (store) discount = money(base * store.rate);
+  else discount = money(base * couponRate(order.couponCode));
   const delivery = Math.max(0, money(order.delivery));
   const pointsDiscount = Math.min(money(Math.max(0, heldPointsDiscount)), Math.max(0, money(subtotal - discount)));
   const amount = Math.max(money(subtotal - discount - pointsDiscount + delivery), 0);
