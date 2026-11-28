@@ -18,6 +18,8 @@ import { useAllProducts, useCategories } from "@/hooks/useProducts";
 import { topPopular, usePopularProducts } from "@/hooks/usePopularity";
 import { ProductCarousel } from "@/features/catalog/catalog-sections";
 import { useT, useLocale } from "@/components/providers/locale-provider";
+import { CATALOG_GRID_CLASS } from "@/features/catalog/catalog-grid";
+import { BundlesSection } from "@/features/bundles/bundles-section";
 import { buildCatalogSections, catalogSearchMatcher, isPublicMenuProduct } from "@/lib/menu/category-tree";
 import { cn } from "@/lib/utils";
 import type { Product, ProductFilters } from "@/types";
@@ -280,6 +282,8 @@ export function CatalogView() {
                   {t("catalog.searchClose").replace("{query}", searchQuery.trim())}
                 </p>
               )}
+              {/* Bundles (Admin → Sales → Bundles) at the top of the menu; not while searching. */}
+              {!searchQuery.trim() && <BundlesSection products={allProducts} className="mb-2 pt-6" gridClassName={CATALOG_GRID_CLASS} />}
               {sectionsContent}
             </>
           )}

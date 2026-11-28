@@ -11,8 +11,15 @@ import { useProductBuilderConfig } from "@/hooks/useModifiers";
 import { getLocalizedName } from "@/lib/i18n/localized-content";
 import { tableDisplayName, type DineInTable } from "@/lib/fulfillment/settings";
 import { cn, formatPrice } from "@/lib/utils";
-import type { Product } from "@/types";
+import type { CartBundleLine, Product } from "@/types";
 import type { SelectedModifier } from "@/types/modifiers";
+import { Package } from "lucide-react";
+import { useActiveBundles } from "@/features/bundles/use-bundles";
+import { BundleSheet } from "@/features/bundles/bundle-sheet";
+import { priceCartBundle } from "@/lib/bundles/cart-bundle";
+import { bundleName, bundleSeparateRange, type Bundle } from "@/lib/bundles/bundle";
+
+type BundleLine = Omit<CartBundleLine, "lineId"> & { key: string };
 
 /**
  * "New order" on the waiter screen: products and add-ons from the menu (the same add-on window as the
@@ -106,6 +113,10 @@ export function WaiterNewOrder({
   const [categoryId, setCategoryId] = useState<string>("all");
   const [picking, setPicking] = useState<Product | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
+  // Bundles (Admin → Sales → Bundles), chosen in the same window as on the site.
+  const { bundles } = useActiveBundles();
+  const [bundleLines, setBundleLines] = useState<BundleLine[]>([]);
+  const [pickingBundle, setPickingBundle] = useState<Bundle | null>(null);
   const [step, setStep] = useState<"menu" | "details">("menu");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -127,8 +138,18 @@ export function WaiterNewOrder({
       .sort((a, b) => (order.get(a.categoryId) ?? 99) - (order.get(b.categoryId) ?? 99) || a.sortOrder - b.sortOrder);
   }, [categoryId, menu, query, usedCategories]);
 
-  const count = lines.reduce((sum, l) => sum + l.quantity, 0);
-  const total = money(lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0));
+  const byBundle = useMemo(() => new Map(bundles.map((b) => [b.id, b])), [bundles]);
+  const pricedBundles = bundleLines.map((l) => ({ line: l, priced: priceCartBundle(byBundle.get(l.bundleId), l.picks, new Map(), Date.now()) }));
+  const orderableBundles = useMemo(
+    () => bundles.filter((b) => bundleSeparateRange(b, menu.map((p) => ({ id: p.id, categoryId: p.categoryId, priceNow: priceNow(p, Date.now()).price, orderable: p.available !== false }))) !== null),
+    [bundles, menu]
+  );
+  const count = lines.reduce((sum, l) => sum + l.quantity, 0) + bundleLines.reduce((sum, l) => sum + l.quantity, 0);
+  const total = money(lines.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0) + pricedBundles.reduce((sum, b) => sum + b.priced.unitPrice * b.line.quantity, 0));
+  const empty = lines.length === 0 && bundleLines.length === 0;
+  const addBundleLine = (line: Omit<CartBundleLine, "lineId">) => setBundleLines((prev) => [...prev, { ...line, key: `${line.bundleId}-${Date.now()}-${prev.length}` }]);
+  const changeBundleQty = (key: string, delta: number) =>
+    setBundleLines((prev) => prev.flatMap((l) => (l.key !== key ? [l] : l.quantity + delta <= 0 ? [] : [{ ...l, quantity: Math.min(99, l.quantity + delta) }])));
 
   const addLine = (line: Omit<Line, "key">) => {
     setLines((prev) => [...prev, { ...line, key: `${line.product.id}-${Date.now()}-${prev.length}` }]);
@@ -153,13 +174,17 @@ export function WaiterNewOrder({
         return t("waiter.newOrder.error.phone");
       case "RATE_LIMITED":
         return t("checkout.tooManyOrders");
+      case "BUNDLE_UNAVAILABLE":
+        return t("bundles.error.ended").replace("{bundles}", items);
+      case "BUNDLE_INVALID":
+        return t("bundles.error.invalid").replace("{bundles}", items);
       default:
         return t("courier.error.generic");
     }
   };
 
   const send = async () => {
-    if (busy || lines.length === 0 || !name.trim()) return;
+    if (busy || empty || !name.trim()) return;
     setBusy(true);
     setError(null);
     try {
@@ -178,12 +203,26 @@ export function WaiterNewOrder({
             modifiers: l.selections.map((m) => ({ groupId: m.groupId, optionId: m.optionId, quantity: m.quantity })),
             notes: l.notes || undefined,
           })),
+          ...(bundleLines.length > 0
+            ? {
+                bundles: bundleLines.map((b) => ({
+                  bundleId: b.bundleId,
+                  quantity: b.quantity,
+                  picks: b.picks.map((p) => ({
+                    slotId: p.slotId,
+                    productId: p.product.id,
+                    modifiers: p.selections.map((m) => ({ groupId: m.groupId, optionId: m.optionId, quantity: m.quantity })),
+                    notes: p.notes || undefined,
+                  })),
+                })),
+              }
+            : {}),
         }),
       });
       if (res.status === 401) return onSignedOut();
-      const data = (await res.json().catch(() => null)) as { ok?: boolean; orderNumber?: string; code?: string; productNames?: string[] } | null;
+      const data = (await res.json().catch(() => null)) as { ok?: boolean; orderNumber?: string; code?: string; productNames?: string[]; bundleNames?: string[] } | null;
       if (res.ok && data?.ok && data.orderNumber) return onSent(data.orderNumber);
-      setError(errorText(data?.code, data?.productNames));
+      setError(errorText(data?.code, data?.bundleNames ?? data?.productNames));
     } catch {
       setError(t("courier.error.generic"));
     } finally {
@@ -236,6 +275,36 @@ export function WaiterNewOrder({
               </div>
             </li>
           ))}
+          {pricedBundles.map(({ line: b, priced }) => {
+            const bundle = byBundle.get(b.bundleId);
+            return (
+              <li key={b.key} className="flex items-start justify-between gap-3 rounded-2xl bg-warm-white p-3 shadow-soft" data-order-bundle={b.bundleId}>
+                <div className="min-w-0">
+                  <p className="flex items-center gap-1.5 font-semibold text-dark-brown">
+                    <Package className="h-4 w-4 text-[#9A2B1A]" />
+                    {bundle ? bundleName(bundle, locale) : t("bundles.title")}
+                  </p>
+                  <p className="text-xs text-coffee/60">
+                    {b.picks.map((p) => getLocalizedName(p.product, locale) + (p.selections.length > 0 ? ` (${p.selections.map((s) => s.optionName).join(", ")})` : "")).join(" · ")}
+                  </p>
+                  {priced.available ? (
+                    <p className="mt-0.5 text-sm text-coffee/70">{formatPrice(money(priced.unitPrice * b.quantity))}</p>
+                  ) : (
+                    <p className="mt-0.5 text-xs font-medium text-amber-800">{t("bundles.ended")}</p>
+                  )}
+                </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <button type="button" onClick={() => changeBundleQty(b.key, -1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-beige-dark/40" aria-label="-">
+                    {b.quantity === 1 ? <Trash2 className="h-4 w-4 text-red-600" /> : <Minus className="h-4 w-4" />}
+                  </button>
+                  <span className="w-6 text-center font-bold">{b.quantity}</span>
+                  <button type="button" onClick={() => changeBundleQty(b.key, 1)} className="flex h-9 w-9 items-center justify-center rounded-full border border-beige-dark/40" aria-label="+">
+                    <Plus className="h-4 w-4" />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
         <div className="mt-4 space-y-3 rounded-2xl bg-warm-white p-4 shadow-soft">
@@ -261,7 +330,7 @@ export function WaiterNewOrder({
         <p className="mt-3 text-xs text-coffee/55">{t("waiter.newOrder.payLater")}</p>
         <button
           type="button"
-          disabled={busy || lines.length === 0 || !name.trim()}
+          disabled={busy || empty || !name.trim()}
           onClick={() => void send()}
           className="mt-3 flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-dark-brown text-lg font-bold text-warm-white disabled:opacity-50"
           data-send-order
@@ -309,6 +378,27 @@ export function WaiterNewOrder({
           <Loader2 className="h-7 w-7 animate-spin text-turquoise" />
         </div>
       ) : (
+        <>
+        {categoryId === "all" && !query.trim() && orderableBundles.length > 0 && (
+          <ul className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-3" data-menu-bundles>
+            {orderableBundles.map((b) => (
+              <li key={b.id}>
+                <button
+                  type="button"
+                  onClick={() => setPickingBundle(b)}
+                  className="flex h-full min-h-[4.5rem] w-full flex-col items-start justify-between rounded-2xl bg-[#FBE7E3] p-3 text-start shadow-soft"
+                  data-menu-bundle={b.id}
+                >
+                  <span className="flex items-center gap-1.5 text-sm font-semibold text-[#7A2214]">
+                    <Package className="h-4 w-4" />
+                    {bundleName(b, locale)}
+                  </span>
+                  <span className="mt-1 text-xs font-bold text-[#9A2B1A]">{formatPrice(b.price)}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" data-menu-products>
           {shown.map((p) => (
             <li key={p.id}>
@@ -333,9 +423,10 @@ export function WaiterNewOrder({
             </li>
           ))}
         </ul>
+        </>
       )}
 
-      {lines.length > 0 && (
+      {!empty && (
         <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] mt-4">
           <button
             type="button"
@@ -352,6 +443,7 @@ export function WaiterNewOrder({
       )}
 
       {picking && <ItemSheet product={picking} onAdd={addLine} onClose={() => setPicking(null)} />}
+      <BundleSheet bundle={pickingBundle} products={menu} open={!!pickingBundle} onOpenChange={(open) => !open && setPickingBundle(null)} onAdd={addBundleLine} />
     </div>
   );
 }

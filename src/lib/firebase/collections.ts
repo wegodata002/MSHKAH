@@ -77,6 +77,8 @@ export const COLLECTIONS = {
   staffMembers: "staffMembers",
   /** Admin → Sales: one document per sale (server only; no client rule). Copied onto `products.sales`. */
   sales: "sales",
+  /** Admin → Sales → Bundles: one document per bundle (server only; no client rule). Read by the menu through /api/catalog/bundles. */
+  bundles: "bundles",
   /** Devices signed in to the waiter screen (server only). */
   staffDevices: "staffDevices",
   /** Old one-time 6-digit pairing codes (no longer created; server only). */

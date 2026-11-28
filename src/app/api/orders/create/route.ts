@@ -15,6 +15,7 @@ import { tryCreateTrackingToken } from "@/lib/orders/tracking-token";
 import { countCustomerUses, readStoreCoupon, saveOrderWithStoreCoupon } from "@/lib/coupons/admin/store";
 import { readLoyaltySettings } from "@/lib/loyalty/admin/members";
 import { saveOrderWithPoints } from "@/lib/loyalty/admin/redemption";
+import { loadBundles } from "@/lib/bundles/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export async function POST(request: NextRequest) {
     loadProducts: (ids) => loadCatalogProducts(db, ids),
     loadContext: () => loadFulfillmentContext(db),
     loadModifierConfigs: (ids) => loadModifierConfigs(db, ids),
+    loadBundles: (ids) => loadBundles(db, ids),
     rateLimit: async (key, windowSeconds, limit) =>
       (await consumeRateLimit(db, { key: rateLimitKey([key]), windowSeconds, limit })).ok,
     findClubMember: async () => {

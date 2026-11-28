@@ -13,6 +13,8 @@ import {
 import { CouponUnavailableError, isPersonalCouponCode } from "@/lib/loyalty/coupons";
 import { checkStoreCoupon, normalizeStoreCode, type StoreCoupon } from "@/lib/coupons/store-coupons";
 import type { ProductBuilderConfig } from "@/types/modifiers";
+import type { Bundle } from "@/lib/bundles/bundle";
+import { requestProductIds } from "@/lib/orders/price-lines";
 import { applyPointsToOrder, checkRedemption, PointsUnavailableError, type PointsRefusal, type RedemptionSettings } from "@/lib/loyalty/redemption";
 
 /**
@@ -26,6 +28,8 @@ export type CreateOrderDeps = {
   loadContext: () => Promise<{ fulfillment: FulfillmentSettings; openingHours: OpeningHours }>;
   /** The products' add-on groups from the database: add-on prices are taken only from here. */
   loadModifierConfigs: (productIds: string[]) => Promise<ReadonlyMap<string, ProductBuilderConfig>>;
+  /** The bundles asked for, from the database (Admin → Sales → Bundles); missing = deleted. */
+  loadBundles?: (ids: string[]) => Promise<ReadonlyMap<string, Bundle | undefined>>;
   /** Returns true when under the limit. */
   rateLimit: (key: string, windowSeconds: number, limit: number) => Promise<boolean>;
   saveOrder: (draft: ServerOrderDraft) => Promise<string>;
@@ -129,11 +133,14 @@ export async function handleCreateOrder(
     const ipOk = !ip || (await deps.rateLimit(`create-order|ip|${ip}`, perIp.windowSeconds, perIp.limit));
     if (!phoneOk || !ipOk) return { status: 429, body: { ok: false, code: "RATE_LIMITED" } };
 
-    const productIds = request.items.map((i) => i.productId);
-    const [products, context, modifierConfigs] = await Promise.all([
+    // The products of the lines and of the bundles' picks; the bundles themselves from the database.
+    const productIds = requestProductIds(request.items, request.bundles ?? []);
+    const bundleIds = [...new Set((request.bundles ?? []).map((b) => b.bundleId))];
+    const [products, context, modifierConfigs, bundles] = await Promise.all([
       deps.loadProducts(productIds),
       deps.loadContext(),
       deps.loadModifierConfigs(productIds),
+      bundleIds.length > 0 && deps.loadBundles ? deps.loadBundles(bundleIds) : Promise.resolve(new Map<string, Bundle | undefined>()),
     ]);
     const now = deps.now();
     // Club member from the signed session (never from the request body).
@@ -170,6 +177,7 @@ export async function handleCreateOrder(
     const built = buildServerOrder(request, {
       products,
       modifierConfigs,
+      bundles,
       fulfillment: context.fulfillment,
       openingHours: context.openingHours,
       now,

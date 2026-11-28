@@ -31,7 +31,9 @@ import { useT, useLocale } from "@/components/providers/locale-provider";
 import { useLocalizedProduct } from "@/hooks/useLocalizedContent";
 import { useCart } from "@/features/cart/cart-context";
 import { getOrCreateGuestCustomer, GUEST_CUSTOMER_ID } from "@/services";
-import { cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
+import { cartToOrderBundles, cartToOrderItems, submitOrder, type SubmitOrderResult } from "@/lib/orders/submit-order-client";
+import { CartBundleRow } from "@/features/bundles/cart-bundle-row";
+import { deliveryFeeAfterOffers } from "@/lib/bundles/bundle";
 import { couponMessageKey } from "@/lib/orders/coupons";
 import { couponDisplayName } from "@/lib/coupons/store-coupons";
 import { ClubCouponOffer } from "@/features/club/club-coupon-offer";
@@ -121,6 +123,7 @@ export default function CheckoutPage() {
     items, subtotal, discount, total,
     clearCart, couponCode, applyCoupon, removeCoupon, removeItem,
     couponName, couponBelowMinimum, couponMinOrder, lastCouponMinOrder,
+    bundleLines, updateBundleQuantity, removeBundle, freeDeliveryFrom, hasEndedBundle,
   } = useCart();
   const [couponInput, setCouponInput] = useState("");
   const [couponError, setCouponError] = useState<string | null>(null);
@@ -178,7 +181,11 @@ export default function CheckoutPage() {
   // A chosen time that has passed falls back to the earliest one.
   const pickupTime = slotTimes.includes(pickupTimeChoice) ? pickupTimeChoice : slotTimes[0] ?? "";
   const deliveryZone = availability.zones.find((z) => z.id === zoneChoice);
-  const deliveryFee = orderType === "delivery" && deliveryZone ? deliveryZone.fee : 0;
+  // Free delivery from a sale or a bundle in the cart (from its minimum, on all the products), as the
+  // server works it out; the area's minimum order below still applies.
+  const zoneFee = orderType === "delivery" && deliveryZone ? deliveryZone.fee : 0;
+  const deliveryOffer = deliveryFeeAfterOffers(zoneFee, subtotal, freeDeliveryFrom);
+  const deliveryFee = deliveryOffer.fee;
   const belowMinimum = Boolean(deliveryZone && deliveryZone.minOrder > 0 && subtotal < deliveryZone.minOrder);
   const nothingAvailable = !availability.loading && !pickupOk && !deliveryOk && !dineInOk;
   const canOrder =
@@ -187,7 +194,8 @@ export default function CheckoutPage() {
       ? dineInOk
       : orderType === "pickup"
         ? pickupOk && Boolean(pickupTime)
-        : deliveryOk && Boolean(deliveryZone) && !belowMinimum);
+        : deliveryOk && Boolean(deliveryZone) && !belowMinimum) &&
+    !hasEndedBundle;
   const displayTotal = total + deliveryFee;
   const [payment, setPayment] = useState<"cash" | "card">("cash");
   const [hypAvailability, setHypAvailability] = useState<"unknown" | "enabled" | "disabled">("unknown");
@@ -310,7 +318,7 @@ export default function CheckoutPage() {
 
   const cardDisabled = hypAvailability === "disabled";
 
-  if (items.length === 0 && !success) {
+  if (items.length === 0 && bundleLines.length === 0 && !success) {
     return (
       <>
         <Header searchQuery="" onSearchChange={() => {}} />
@@ -341,6 +349,9 @@ export default function CheckoutPage() {
       return t("checkout.productMissing");
     }
     if (result.code === "RATE_LIMITED") return t("checkout.tooManyOrders");
+    if (result.code === "BUNDLE_UNAVAILABLE" || result.code === "BUNDLE_INVALID") {
+      return t(result.code === "BUNDLE_UNAVAILABLE" ? "bundles.error.ended" : "bundles.error.invalid").replace("{bundles}", (result.bundleNames ?? []).join(", "));
+    }
     if (result.code === "PICKUP_TIME_UNAVAILABLE") return t("checkout.pickupTimeGone");
     if (result.code === "PICKUP_CLOSED" || result.code === "DELIVERY_UNAVAILABLE") {
       const next = result.nextAt ? new Date(result.nextAt) : null;
@@ -358,7 +369,7 @@ export default function CheckoutPage() {
     }
     if (result.code === "COUPON_INVALID") {
       const reason = result.reason;
-      const known = ["login_required", "used", "expired", "members_only", "already_used", "min_order", "too_large"] as const;
+      const known = ["login_required", "used", "expired", "members_only", "already_used", "min_order", "too_large", "bundles_only"] as const;
       const key = couponMessageKey((known as readonly string[]).includes(reason ?? "") ? (reason as (typeof known)[number]) : "invalid");
       return t(key).replace("{min}", formatPrice(result.minOrder ?? 0));
     }
@@ -420,6 +431,7 @@ export default function CheckoutPage() {
       if (!orderId) {
         const result = await submitOrder({
           items: cartToOrderItems(items),
+          ...(bundleLines.length > 0 ? { bundles: cartToOrderBundles(bundleLines) } : {}),
           customer: {
             id: customerId,
             name: name.trim(),
@@ -700,7 +712,15 @@ export default function CheckoutPage() {
                       {items.map((item) => (
                         <OrderLineItem key={item.lineId} item={item} onRemove={() => removeItem(item.lineId)} onEdit={editLine} />
                       ))}
+                      {bundleLines.map((line) => (
+                        <CartBundleRow key={line.lineId} line={line} compact onQuantity={(q) => updateBundleQuantity(line.lineId, q)} onRemove={() => removeBundle(line.lineId)} />
+                      ))}
                     </div>
+                    {hasEndedBundle && (
+                      <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900" role="status" data-checkout-bundle-ended>
+                        {t("bundles.removeEnded")}
+                      </p>
+                    )}
                     {/* Coupon field — same look as the cart. Inside the order <form>, so the
                         button is type="button" and Enter applies the coupon instead of submitting. */}
                     <div className="mt-4 flex gap-2">
@@ -772,7 +792,14 @@ export default function CheckoutPage() {
                           <span>
                             {t("checkout.deliveryFeeLabel")} · {zoneName(deliveryZone, locale)}
                           </span>
-                          <span>{formatPrice(deliveryFee)}</span>
+                          {deliveryOffer.free && zoneFee > 0 ? (
+                            <span className="inline-flex items-baseline gap-1.5" data-summary="free-delivery">
+                              <span className="font-semibold text-emerald-700">🚚 {t("offers.freeDeliveryShort")}</span>
+                              <s className="text-xs text-coffee/45">{formatPrice(zoneFee)}</s>
+                            </span>
+                          ) : (
+                            <span>{formatPrice(deliveryFee)}</span>
+                          )}
                         </div>
                       ) : (
                         <p className="text-xs text-coffee/50">

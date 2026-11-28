@@ -16,10 +16,11 @@ import { applySale, isoToIsraelLocal, israelLocalToIso, saleUntilText, type Sale
 import type { SaleError, SaleRecord, SaleStatus } from "@/lib/sales/admin";
 import { cn, formatPrice } from "@/lib/utils";
 import type { Product } from "@/types";
+import { FreeDeliveryFields } from "@/features/admin/free-delivery-fields";
 
 type Item = SaleRecord & { status: SaleStatus };
 type Filter = "all" | SaleStatus;
-type Form = { name: { he: string; ar: string; en: string }; kind: SaleKind; value: string; starts: string; ends: string; productIds: string[] };
+type Form = { name: { he: string; ar: string; en: string }; kind: SaleKind; value: string; starts: string; ends: string; productIds: string[]; freeDelivery: boolean; freeDeliveryMin: string };
 
 const KINDS: SaleKind[] = ["percent", "amount", "price"];
 const LANGS = [
@@ -37,7 +38,7 @@ function emptyForm(): Form {
   const start = new Date();
   start.setSeconds(0, 0);
   const end = new Date(start.getTime() + 7 * 86400_000);
-  return { name: { he: "", ar: "", en: "" }, kind: "percent", value: "", starts: isoToIsraelLocal(start.toISOString()), ends: isoToIsraelLocal(end.toISOString()), productIds: [] };
+  return { name: { he: "", ar: "", en: "" }, kind: "percent", value: "", starts: isoToIsraelLocal(start.toISOString()), ends: isoToIsraelLocal(end.toISOString()), productIds: [], freeDelivery: false, freeDeliveryMin: "" };
 }
 
 /** "−20%", "−₪5" or "₪10" for the list. */
@@ -99,6 +100,7 @@ export function SalesAdmin() {
     const e = error as SaleError;
     if (e?.code === "OVERLAP") return t("admin.sales.error.OVERLAP").replace("{sale}", e.saleName).replace("{products}", e.products.join(", "));
     if (e?.code === "NOT_LOWER") return t("admin.sales.error.NOT_LOWER").replace("{products}", e.products.join(", "));
+    if (e?.code === "FREE_DELIVERY_MIN") return t("admin.bundles.error.FREE_DELIVERY_MIN");
     if (e?.code === "TOO_MANY_PRODUCTS") return t("admin.sales.error.TOO_MANY_PRODUCTS").replace("{max}", String(e.max));
     const known = ["NAME", "KIND", "VALUE", "DATES", "NO_PRODUCTS", "PRODUCT_NOT_FOUND", "NOT_FOUND", "NOT_ACTIVE"];
     return t(known.includes(code) ? `admin.sales.error.${code}` : "admin.sales.error.generic");
@@ -116,7 +118,7 @@ export function SalesAdmin() {
     setSearch("");
     setEditing({
       id: s.id,
-      form: { name: { ...s.name }, kind: s.kind, value: String(s.value), starts: isoToIsraelLocal(s.startsAt), ends: isoToIsraelLocal(s.endsAt), productIds: [...s.productIds] },
+      form: { name: { ...s.name }, kind: s.kind, value: String(s.value), starts: isoToIsraelLocal(s.startsAt), ends: isoToIsraelLocal(s.endsAt), productIds: [...s.productIds], freeDelivery: s.freeDelivery === true, freeDeliveryMin: s.freeDeliveryMin ? String(s.freeDeliveryMin) : "" },
     });
   };
   const setForm = (patch: Partial<Form>) => setEditing((e) => (e ? { ...e, form: { ...e.form, ...patch } } : e));
@@ -150,7 +152,16 @@ export function SalesAdmin() {
     }
     setSaving(true);
     setFormError(null);
-    const sale = { name: editing.form.name, kind: editing.form.kind, value: Number(editing.form.value), startsAt, endsAt, productIds: editing.form.productIds };
+    const sale = {
+      name: editing.form.name,
+      kind: editing.form.kind,
+      value: Number(editing.form.value),
+      startsAt,
+      endsAt,
+      productIds: editing.form.productIds,
+      freeDelivery: editing.form.freeDelivery,
+      freeDeliveryMin: editing.form.freeDelivery && editing.form.freeDeliveryMin ? Number(editing.form.freeDeliveryMin) : 0,
+    };
     const result = await clientAdminFetch<{ sale?: SaleRecord; error?: SaleError }>("/api/admin/sales", editing.id ? { action: "update", id: editing.id, sale } : { action: "create", sale });
     setSaving(false);
     if (result.ok) {
@@ -236,6 +247,11 @@ export function SalesAdmin() {
                   <p className="font-semibold text-dark-brown dark:text-warm-white">{s.name[locale] || s.name.he}</p>
                   <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", STATUS_STYLE[s.status])}>{t(`admin.sales.status.${s.status}`)}</span>
                   <span className="rounded-full bg-[#FBE7E3] px-2 py-0.5 text-[11px] font-bold text-[#9A2B1A]">{t(`admin.sales.kind.${s.kind}`)} · {discountText(s)}</span>
+                  {s.freeDelivery && (
+                    <span className="rounded-full bg-turquoise/10 px-2 py-0.5 text-[11px] font-semibold text-turquoise" data-sale-free-delivery>
+                      🚚 {s.freeDeliveryMin ? t("offers.freeDeliveryFrom").replace("{min}", formatPrice(s.freeDeliveryMin)) : t("offers.freeDelivery")}
+                    </span>
+                  )}
                 </div>
                 <p className="text-xs text-coffee/60" dir="ltr" style={{ textAlign: "start" }}>{dateRange(s)}</p>
                 <p className="line-clamp-2 text-xs text-coffee/70">{s.productIds.map(nameOf).join(" · ")}</p>
@@ -380,6 +396,12 @@ export function SalesAdmin() {
               )}
               <p className="text-xs text-coffee/55">{t("admin.sales.addonsNote")}</p>
             </div>
+            <FreeDeliveryFields
+              enabled={editing.form.freeDelivery}
+              min={editing.form.freeDeliveryMin}
+              onChange={(patch) => setForm(patch)}
+              hint={t("admin.sales.freeDeliveryHint")}
+            />
             {formError && <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700" data-sale-form-error>{formError}</p>}
           </AdminModalBody>
         )}

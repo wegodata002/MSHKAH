@@ -20,6 +20,9 @@ export type ProductSale = {
   value: number;
   startsAt: string;
   endsAt: string;
+  /** Free delivery for an order with this product at this sale (from `freeDeliveryMin` ₪ of products, whole order). */
+  freeDelivery?: true;
+  freeDeliveryMin?: number;
 };
 
 export const SALE_KINDS: readonly SaleKind[] = ["percent", "amount", "price"];
@@ -44,7 +47,15 @@ export function readProductSales(raw: unknown): ProductSale[] {
     if (typeof v.saleId !== "string" || !v.saleId || !SALE_KINDS.includes(kind) || !Number.isFinite(value) || value <= 0) continue;
     if (kind === "percent" && value >= 100) continue;
     if (!isIso(v.startsAt) || !isIso(v.endsAt) || Date.parse(v.startsAt) >= Date.parse(v.endsAt)) continue;
-    out.push({ saleId: v.saleId, kind, value, startsAt: v.startsAt, endsAt: v.endsAt });
+    const min = money(Number(v.freeDeliveryMin));
+    out.push({
+      saleId: v.saleId,
+      kind,
+      value,
+      startsAt: v.startsAt,
+      endsAt: v.endsAt,
+      ...(v.freeDelivery === true ? { freeDelivery: true as const, ...(Number.isFinite(min) && min > 0 ? { freeDeliveryMin: min } : {}) } : {}),
+    });
   }
   return out;
 }

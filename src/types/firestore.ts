@@ -73,6 +73,8 @@ export interface FirestoreOrderItem {
   modifiers?: import("@/types/modifier-firestore").FirestoreOrderModifier[];
   notes?: string;
   kitchenNotes?: string[];
+  /** A product of a bundle (Admin → Sales → Bundles): which bundle line, its name and price. */
+  bundle?: { lineId: string; bundleId: string; name: string; slotId: string; price: number; regularPrice: number };
 }
 
 export type FirestoreOrderAlert = {

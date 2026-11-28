@@ -270,7 +270,9 @@ describe("wiring", () => {
   it("the card charge (HYP) prices add-ons from the catalog, not from the order's stored prices", () => {
     const hyp = read("src/lib/payments/hyp/process.ts");
     expect(hyp).toContain("loadModifierConfigs(db, productIds)");
-    expect(hyp).toContain("priceLineModifiers(");
+    // Add-ons priced by the same function as the order route (price-lines → priceLineModifiers).
+    expect(hyp).toContain("priceOrderLines(lines,");
+    expect(read("src/lib/orders/price-lines.ts")).toContain("priceLineModifiers(");
     expect(hyp).not.toMatch(/stored\s*-\s*base/);
   });
 

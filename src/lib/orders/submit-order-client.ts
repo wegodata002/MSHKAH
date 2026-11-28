@@ -1,4 +1,4 @@
-import type { CartItem } from "@/types";
+import type { CartBundleLine, CartItem } from "@/types";
 import type { CreateOrderRequest } from "@/lib/orders/server-order";
 
 /** Browser side of POST /api/orders/create. The server prices the order; the browser only sends the cart. */
@@ -10,6 +10,8 @@ export type SubmitOrderResult =
       status: number;
       code: string;
       productNames?: string[];
+      /** BUNDLE_UNAVAILABLE / BUNDLE_INVALID: the bundles concerned. */
+      bundleNames?: string[];
       minOrder?: number;
       nextAt?: string | null;
       /** COUPON_INVALID: login_required / invalid / used / expired. POINTS_UNAVAILABLE: see PointsRefusal. */
@@ -41,6 +43,22 @@ export function cartToOrderItems(items: CartItem[]): CreateOrderRequest["items"]
   });
 }
 
+/** The cart's bundles for the order request: which bundle, how many, and each part's product with its add-ons. */
+export function cartToOrderBundles(lines: readonly CartBundleLine[]): NonNullable<CreateOrderRequest["bundles"]> {
+  return lines.map((line) => ({
+    bundleId: line.bundleId,
+    quantity: line.quantity,
+    picks: line.picks.map((pick) => ({
+      slotId: pick.slotId,
+      productId: pick.product.id,
+      ...(pick.selections.length > 0
+        ? { modifiers: pick.selections.map((s) => ({ groupId: s.groupId, optionId: s.optionId, quantity: s.quantity })) }
+        : {}),
+      ...(pick.notes?.trim() ? { notes: pick.notes.trim() } : {}),
+    })),
+  }));
+}
+
 export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOrderResult> {
   let res: Response;
   try {
@@ -61,6 +79,7 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
         trackingToken?: string;
         code?: string;
         productNames?: string[];
+        bundleNames?: string[];
         minOrder?: number;
         nextAt?: string | null;
         reason?: string;
@@ -81,6 +100,7 @@ export async function submitOrder(request: CreateOrderRequest): Promise<SubmitOr
     status: res.status,
     code: data?.code || "ORDER_SAVE_FAILED",
     productNames: Array.isArray(data?.productNames) ? data.productNames : undefined,
+    bundleNames: Array.isArray(data?.bundleNames) ? data.bundleNames : undefined,
     minOrder: typeof data?.minOrder === "number" ? data.minOrder : undefined,
     nextAt: typeof data?.nextAt === "string" ? data.nextAt : null,
     reason: typeof data?.reason === "string" ? data.reason : undefined,

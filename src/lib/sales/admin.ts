@@ -20,6 +20,9 @@ export type SaleRecord = {
   startsAt: string;
   endsAt: string;
   productIds: string[];
+  /** Free delivery for an order with a product of this sale (from `freeDeliveryMin` ₪ of products, whole order; 0 = any). */
+  freeDelivery?: boolean;
+  freeDeliveryMin?: number;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
@@ -29,7 +32,7 @@ export type SaleRecord = {
 
 export type SaleStatus = "active" | "scheduled" | "ended";
 
-export type SaleInput = { name: SaleName; kind: SaleKind; value: number; startsAt: string; endsAt: string; productIds: string[] };
+export type SaleInput = { name: SaleName; kind: SaleKind; value: number; startsAt: string; endsAt: string; productIds: string[]; freeDelivery: boolean; freeDeliveryMin: number };
 
 export type SaleError =
   | { code: "NAME" }
@@ -43,6 +46,7 @@ export type SaleError =
   | { code: "NOT_LOWER"; products: string[] }
   | { code: "OVERLAP"; products: string[]; saleName: string }
   | { code: "NOT_FOUND" }
+  | { code: "FREE_DELIVERY_MIN" }
   /** "End now" on a sale that is not on now. */
   | { code: "NOT_ACTIVE" };
 
@@ -71,9 +75,21 @@ export function parseSaleInput(raw: unknown): { ok: true; input: SaleInput } | {
   const ids = Array.isArray(r.productIds) ? [...new Set(r.productIds.filter((id): id is string => typeof id === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(id)))] : [];
   if (ids.length === 0) return { ok: false, error: { code: "NO_PRODUCTS" } };
   if (ids.length > MAX_SALE_PRODUCTS) return { ok: false, error: { code: "TOO_MANY_PRODUCTS", max: MAX_SALE_PRODUCTS } };
+  const freeDelivery = r.freeDelivery === true;
+  const min = r.freeDeliveryMin === undefined || r.freeDeliveryMin === null || r.freeDeliveryMin === "" ? 0 : Math.round(Number(r.freeDeliveryMin) * 100) / 100;
+  if (!Number.isFinite(min) || min < 0 || min > 10_000) return { ok: false, error: { code: "FREE_DELIVERY_MIN" } };
   return {
     ok: true,
-    input: { name, kind, value, startsAt: new Date(r.startsAt).toISOString(), endsAt: new Date(r.endsAt).toISOString(), productIds: ids },
+    input: {
+      name,
+      kind,
+      value,
+      startsAt: new Date(r.startsAt).toISOString(),
+      endsAt: new Date(r.endsAt).toISOString(),
+      productIds: ids,
+      freeDelivery,
+      freeDeliveryMin: freeDelivery ? min : 0,
+    },
   };
 }
 
@@ -119,12 +135,14 @@ export function nextProductSales(current: unknown, saleId: string, entry: Produc
   return entry ? [...kept, entry].sort((a, b) => a.startsAt.localeCompare(b.startsAt)) : kept;
 }
 
-const toEntry = (sale: Pick<SaleRecord, "id" | "kind" | "value" | "startsAt" | "endsAt">): ProductSale => ({
+const toEntry = (sale: Pick<SaleRecord, "id" | "kind" | "value" | "startsAt" | "endsAt" | "freeDelivery" | "freeDeliveryMin">): ProductSale => ({
   saleId: sale.id,
   kind: sale.kind,
   value: sale.value,
   startsAt: sale.startsAt,
   endsAt: sale.endsAt,
+  // Free delivery is copied onto the products too: the order pricing reads it from there.
+  ...(sale.freeDelivery ? { freeDelivery: true as const, ...((sale.freeDeliveryMin ?? 0) > 0 ? { freeDeliveryMin: sale.freeDeliveryMin } : {}) } : {}),
 });
 
 const salesField = (list: ProductSale[]) => (list.length > 0 ? list : FieldValue.delete());
@@ -140,6 +158,7 @@ function readSale(id: string, data: Record<string, unknown> | undefined): SaleRe
     startsAt: String(data.startsAt ?? ""),
     endsAt: String(data.endsAt ?? ""),
     productIds: Array.isArray(data.productIds) ? data.productIds.filter((x): x is string => typeof x === "string") : [],
+    ...(data.freeDelivery === true ? { freeDelivery: true, freeDeliveryMin: Number(data.freeDeliveryMin) > 0 ? Number(data.freeDeliveryMin) : 0 } : {}),
     createdAt: String(data.createdAt ?? ""),
     updatedAt: String(data.updatedAt ?? ""),
     ...(typeof data.createdBy === "string" ? { createdBy: data.createdBy } : {}),

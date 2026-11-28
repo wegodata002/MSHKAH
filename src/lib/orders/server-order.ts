@@ -2,7 +2,6 @@ import { z } from "zod";
 import { couponRate, normalizeCouponCode } from "@/lib/orders/coupons";
 import { storeCouponDiscount, type StoreCoupon } from "@/lib/coupons/store-coupons";
 import { normalizeCustomerEmail } from "@/lib/orders/customer-email";
-import { collectKitchenNotes } from "@/lib/product-builder/engine";
 import {
   acceptedPickupTime,
   deliveryAvailability,
@@ -17,8 +16,10 @@ import { parseLocationLink } from "@/lib/fulfillment/location-link";
 import { jerusalemDate } from "@/lib/staff/types";
 import type { OpeningHours } from "@/lib/settings/opening-hours";
 import type { ProductBuilderConfig, SelectedModifier } from "@/types/modifiers";
-import { priceLineModifiers } from "@/lib/orders/modifier-pricing";
-import { priceNow } from "@/lib/sales/sale-price";
+import { catalogProductName, isProductOrderable, priceOrderLines, type LinePricingError, type PricedOrderLine } from "@/lib/orders/price-lines";
+import { deliveryFeeAfterOffers, type Bundle } from "@/lib/bundles/bundle";
+
+export { catalogProductName, isProductOrderable };
 
 /**
  * Builds a storefront order on the server (POST /api/orders/create).
@@ -54,8 +55,31 @@ export const createOrderRequestSchema = z.object({
         notes: z.string().max(500).optional(),
       })
     )
-    .min(1)
     .max(MAX_ITEMS),
+  /**
+   * Bundles (Admin → Sales → Bundles): which bundle, how many, and the product chosen for each unit
+   * of each part, with its add-ons. The price comes from the bundle in the database.
+   */
+  bundles: z
+    .array(
+      z.object({
+        bundleId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        quantity: z.number().int().min(1).max(MAX_QUANTITY),
+        picks: z
+          .array(
+            z.object({
+              slotId: z.string().trim().regex(/^[A-Za-z0-9_-]{1,128}$/),
+              productId: z.string().trim().min(1).max(200),
+              modifiers: z.array(modifierSchema).max(40).optional(),
+              notes: z.string().max(500).optional(),
+            })
+          )
+          .min(1)
+          .max(60),
+      })
+    )
+    .max(MAX_ITEMS)
+    .optional(),
   customer: z.object({
     id: z.string().trim().max(200).optional(),
     name: z.string().trim().min(1).max(120),
@@ -90,6 +114,9 @@ export const createOrderRequestSchema = z.object({
     }),
   ]),
 }).superRefine((request, ctx) => {
+  if (request.items.length + (request.bundles?.length ?? 0) === 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["items"], message: "empty order" });
+  }
   if (request.fulfillment.type !== "dine_in" && !request.customer.phone) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["customer", "phone"], message: "phone required" });
   }
@@ -122,11 +149,8 @@ export type CatalogProduct = {
 };
 
 export type OrderBuildError =
-  | { code: "PRODUCT_NOT_FOUND"; productIds: string[] }
-  | { code: "PRODUCT_UNAVAILABLE"; productNames: string[] }
-  | { code: "INVALID_PRICE" }
-  /** An add-on that is not on the product, is out of stock, or over the group's limit. */
-  | { code: "OPTIONS_UNAVAILABLE"; productNames: string[] }
+  /** Products and bundles (see price-lines): not found, off, bad price, add-on refused, bundle over / not filled. */
+  | LinePricingError
   | { code: "PAYMENT_NOT_ALLOWED" }
   | { code: "PICKUP_CLOSED"; reason: "disabled" | "closed"; nextAt: string | null }
   | { code: "PICKUP_TIME_UNAVAILABLE" }
@@ -141,7 +165,9 @@ export type OrderBuildError =
   | { code: "POINTS_UNAVAILABLE"; reason: import("@/lib/loyalty/redemption").PointsRefusal; maxPoints: number }
   | {
       code: "COUPON_INVALID";
-      reason: "login_required" | "invalid" | "used" | "expired" | "members_only" | "already_used" | "min_order" | "too_large";
+      reason: "login_required" | "invalid" | "used" | "expired" | "members_only" | "already_used" | "min_order" | "too_large"
+        /** The order has only bundles that coupons don't apply to. */
+        | "bundles_only";
       /** min_order: the coupon's minimum (products before the discount). */
       minOrder?: number;
     };
@@ -154,20 +180,8 @@ export type ServerOrderDraft = {
   customerFullName: string;
   customerPhone: string;
   customerEmail?: string;
-  items: Array<{
-    productId: string;
-    productName: string;
-    quantity: number;
-    price: number;
-    /** The product's own price charged (the sale price while a sale is on); add-ons not included. */
-    basePrice: number;
-    /** On sale only: the regular price and which sale (for reports). */
-    regularBasePrice?: number;
-    saleId?: string;
-    modifiers?: SelectedModifier[];
-    notes?: string;
-    kitchenNotes?: string[];
-  }>;
+  /** Lines priced on the server (see price-lines): products on their own and the products of each bundle. */
+  items: PricedOrderLine[];
   status: "pending";
   subtotal: number;
   discount: number;
@@ -176,6 +190,8 @@ export type ServerOrderDraft = {
   pointsRedeemed?: number;
   pointsDiscount?: number;
   delivery: number;
+  /** Delivery made free by a sale or a bundle in the order: the area's fee it would have been. */
+  freeDelivery?: { regularFee: number };
   total: number;
   paymentMethod: "cash" | "card";
   paymentStatus: "pending";
@@ -217,32 +233,14 @@ export function generateOrderNumber(now: Date, random: () => number = Math.rando
   return `MC-${now.getFullYear()}-${tail.slice(-8)}`;
 }
 
-function str(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
-
-/** Same fallbacks as getLocalizedName on the storefront. */
-export function catalogProductName(product: CatalogProduct, locale: "he" | "ar" | "en" | undefined): string {
-  const he = str(product.nameHe);
-  const ar = str(product.nameAr);
-  const en = str(product.nameEn);
-  if (locale === "ar") return ar || he || en;
-  if (locale === "en") return en || he;
-  if (locale === "he") return he || en;
-  return he || en;
-}
-
-/** Unavailable = switched off in the catalog (`available: false` or `active: false`). */
-export function isProductOrderable(product: CatalogProduct): boolean {
-  return product.available !== false && product.active !== false;
-}
-
 export function buildServerOrder(
   request: CreateOrderRequest,
   ctx: {
     products: ReadonlyMap<string, CatalogProduct | undefined>;
     /** Add-on groups per product id (server-loaded); a product missing here has no add-ons. */
     modifierConfigs: ReadonlyMap<string, ProductBuilderConfig>;
+    /** The bundles in the request, from the database (missing = deleted). */
+    bundles?: ReadonlyMap<string, Bundle | undefined>;
     fulfillment: FulfillmentSettings;
     openingHours: OpeningHours;
     now: Date;
@@ -268,87 +266,42 @@ export function buildServerOrder(
     return { ok: false, error: { code: "PAYMENT_NOT_ALLOWED" } };
   }
 
-  // Products: all must exist and be orderable.
-  const missing = [...new Set(request.items.map((i) => i.productId).filter((id) => !ctx.products.get(id)))];
-  if (missing.length > 0) return { ok: false, error: { code: "PRODUCT_NOT_FOUND", productIds: missing } };
-  const unavailable = [
-    ...new Set(
-      request.items
-        .map((i) => ctx.products.get(i.productId)!)
-        .filter((p) => !isProductOrderable(p))
-        .map((p) => catalogProductName(p, locale))
-    ),
-  ];
-  if (unavailable.length > 0) return { ok: false, error: { code: "PRODUCT_UNAVAILABLE", productNames: unavailable } };
-
-  const items: ServerOrderDraft["items"] = [];
-  let subtotal = 0;
-  let isTest = false;
-  const badOptions = new Set<string>();
-  for (const line of request.items) {
-    const product = ctx.products.get(line.productId)!;
-    // The sale price while a sale is on (Admin → Sales), else the regular price. Add-ons stay full price.
-    const pricing = priceNow(product, ctx.now);
-    const base = pricing.price;
-    if (!Number.isFinite(base) || base < 0) return { ok: false, error: { code: "INVALID_PRICE" } };
-    const priced = priceLineModifiers(
-      ctx.modifierConfigs.get(line.productId),
-      line.modifiers ?? [],
-      { productId: line.productId, categoryId: str(product.categoryId) || undefined },
-      locale ?? "he"
-    );
-    if (!priced.ok) {
-      badOptions.add(catalogProductName(product, locale));
-      continue;
-    }
-    const modifiers: SelectedModifier[] = priced.modifiers;
-    const unit = money(base + priced.extras);
-    if (unit < 0) return { ok: false, error: { code: "INVALID_PRICE" } };
-
-    const item: ServerOrderDraft["items"][number] = {
-      productId: line.productId,
-      productName: catalogProductName(product, locale),
-      quantity: line.quantity,
-      price: unit,
-      basePrice: base,
-    };
-    if (pricing.sale) {
-      item.regularBasePrice = pricing.regular;
-      item.saleId = pricing.sale.saleId;
-    }
-    if (modifiers.length > 0) item.modifiers = modifiers;
-    const note = line.notes?.trim();
-    if (note) item.notes = note;
-    const kitchenNotes = collectKitchenNotes(modifiers);
-    if (kitchenNotes.length > 0) item.kitchenNotes = kitchenNotes;
-    items.push(item);
-
-    subtotal += unit * line.quantity;
-    if (product.isTestProduct === true) isTest = true;
-  }
-  if (badOptions.size > 0) return { ok: false, error: { code: "OPTIONS_UNAVAILABLE", productNames: [...badOptions] } };
-  subtotal = money(subtotal);
+  // Products and bundles, priced by the same function as the card charge (see price-lines).
+  const lines = priceOrderLines(
+    { items: request.items, bundles: request.bundles ?? [] },
+    { products: ctx.products, modifierConfigs: ctx.modifierConfigs, bundles: ctx.bundles, now: ctx.now, locale }
+  );
+  if (!lines.ok) return { ok: false, error: lines.error };
+  const { items, subtotal, couponBase, isTest } = lines.value;
 
   const couponCode = normalizeCouponCode(request.couponCode);
+  const hasCoupon = ctx.personalCouponRate !== undefined || (ctx.storeCoupon !== undefined ? ctx.storeCoupon !== null : couponRate(couponCode) > 0);
+  // A coupon only on what it may take off: bundles without "coupons allowed" are left out.
+  if (hasCoupon && couponBase <= 0 && subtotal > 0) return { ok: false, error: { code: "COUPON_INVALID", reason: "bundles_only" } };
   let discount: number;
   let rate: number;
   if (ctx.personalCouponRate !== undefined) {
     rate = ctx.personalCouponRate;
-    discount = money(subtotal * rate);
+    discount = money(couponBase * rate);
   } else if (ctx.storeCoupon !== undefined) {
     if (ctx.storeCoupon === null) {
       rate = 0;
       discount = 0;
     } else {
-      // Minimum order and "never the whole order" on the products, before the delivery fee.
-      const priced = storeCouponDiscount(subtotal, ctx.storeCoupon);
+      // Minimum order on all the products, before the delivery fee; the discount (and "never the whole
+      // of it") on the products it may take off (`couponBase`: bundles without coupons left out).
+      const coupon = ctx.storeCoupon;
+      const priced =
+        coupon.minOrder > 0 && subtotal < coupon.minOrder
+          ? ({ ok: false, reason: "min_order", minOrder: coupon.minOrder } as const)
+          : storeCouponDiscount(couponBase, { ...coupon, minOrder: 0 });
       if (!priced.ok) return { ok: false, error: { code: "COUPON_INVALID", reason: priced.reason, ...(priced.minOrder ? { minOrder: priced.minOrder } : {}) } };
       discount = priced.discount;
       rate = 1; // a coupon applies: keep its code on the order
     }
   } else {
     rate = couponRate(couponCode);
-    discount = money(subtotal * rate);
+    discount = money(couponBase * rate);
   }
 
   // Order type.
@@ -391,7 +344,11 @@ export function buildServerOrder(
         ? { ok: false, error: { code: "UNKNOWN_ZONE" } }
         : { ok: false, error: { code: "BELOW_MINIMUM", minOrder: quote.minOrder } };
     }
-    delivery = money(quote.fee);
+    // Free delivery from a sale or a bundle in the order (from its minimum, on all the products);
+    // the area's minimum order above still applies.
+    const fee = deliveryFeeAfterOffers(quote.fee, subtotal, lines.value.freeDeliveryFrom);
+    delivery = fee.fee;
+    if (fee.free && quote.fee > 0) typeFields.freeDelivery = { regularFee: money(quote.fee) };
     typeFields.deliveryAddress = fulfillment.address.trim();
     if (fulfillment.locationUrl?.trim()) {
       const link = parseLocationLink(fulfillment.locationUrl);
